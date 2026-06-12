@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  password  String?
+  role      String    @default("admin")
+  createdAt DateTime  @default(now())
+}
+
+model ItemSchema {
+  id          String   @id @default(cuid())
+  rawValue    String
+  dimension   String
+  mappedValue String
+  confidence  Float    @default(1.0)
+  approved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([rawValue, dimension])
+  @@index([dimension])
+}
+
+model SchemaVersion {
+  id         String    @id @default(cuid())
+  version    Int       @default(1)
+  approvedAt DateTime?
+  approvedBy String?
+  isActive   Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  type      String
+  severity  String   @default("warning")
+  title     String
+  message   String
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([read, createdAt])
+}
+
+model WarehouseSnapshot {
+  id         String   @id @default(cuid())
+  receivedAt DateTime @default(now())
+  fileName   String?
+  rawData    Json
+  processed  Boolean  @default(false)
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  role      String
+  content   String
+  chartData Json?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
