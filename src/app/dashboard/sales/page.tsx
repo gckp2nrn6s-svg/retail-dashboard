@@ -82,6 +82,7 @@ function SalesContent() {
   const [fx, setFx] = useState(52);
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<"area" | "bar">("area");
+  const [autoOpened, setAutoOpened] = useState(false);
 
   const days = Math.ceil((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000);
   const chartRange = days <= 8 ? "7d" : days <= 32 ? "30d" : days <= 92 ? "90d" : "12m";
@@ -104,6 +105,17 @@ function SalesContent() {
   }, [range.from, range.to, group, chartRange]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-open store drill when navigated from insight card with ?store=CODE
+  useEffect(() => {
+    const storeParam = sp.get("store");
+    if (!storeParam || autoOpened || loading) return;
+    setAutoOpened(true);
+    openDrill({
+      title: `${sName(storeParam)} · ${range.label}`,
+      endpoint: `/api/drill?type=store&store=${encodeURIComponent(storeParam)}&from=${range.from}&to=${range.to}`,
+    });
+  }, [loading, sp, autoOpened, openDrill, range]);
 
   const val = (v: { egp: number; usd: number }) => fmt(v.egp, v.usd, currency);
   const sub = (v: { egp: number; usd: number }) => currency === "USD" ? `EGP ${Math.round(v.egp).toLocaleString()}` : `$${Math.round(v.usd).toLocaleString()}`;

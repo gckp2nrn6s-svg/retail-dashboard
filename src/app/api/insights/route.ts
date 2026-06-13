@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { query, STORE_NAMES } from "@/lib/db";
+
+function sn(code: string) { return STORE_NAMES[code] ?? code; }
 
 export interface Insight {
   id: string;
@@ -230,16 +232,17 @@ export async function GET() {
   if (bestStore && parseFloat(bestStore.pct_change) > 15) {
     const pct = parseFloat(bestStore.pct_change);
     const rev = parseFloat(bestStore.this_week);
+    const name = sn(bestStore.store_code);
     insights.push({
       id: `win-store-${bestStore.store_code}`,
       type: "win",
       icon: "🏆",
-      title: `${bestStore.store_code} is on fire this week`,
-      body: `${bestStore.store_code} revenue is up ${Math.round(pct)}% vs last week — EGP ${Math.round(rev).toLocaleString()} this week.`,
-      action: "See full breakdown",
+      title: `${name} is on fire this week`,
+      body: `${name} revenue is up ${Math.round(pct)}% vs last week — EGP ${Math.round(rev).toLocaleString()} this week.`,
+      action: "See store products",
       metric: `+${Math.round(pct)}%`,
       metricSub: "vs last week",
-      link: "/dashboard/sales",
+      link: `/dashboard/sales?store=${encodeURIComponent(bestStore.store_code)}`,
     });
   }
 
@@ -247,16 +250,17 @@ export async function GET() {
     const pct = Math.abs(parseFloat(worstStore.pct_change));
     const rev = parseFloat(worstStore.last_week);
     const missing = rev - parseFloat(worstStore.this_week);
+    const name = sn(worstStore.store_code);
     insights.push({
       id: `warn-store-${worstStore.store_code}`,
       type: "warning",
       icon: "📉",
-      title: `${worstStore.store_code} down ${Math.round(pct)}% this week`,
-      body: `${worstStore.store_code} is significantly underperforming vs last week. Missing EGP ${Math.round(missing).toLocaleString()} in expected revenue. Investigate.`,
+      title: `${name} down ${Math.round(pct)}% this week`,
+      body: `${name} is significantly underperforming vs last week. Missing EGP ${Math.round(missing).toLocaleString()} in expected revenue. Investigate.`,
       action: "Check store sales",
       metric: `-${Math.round(pct)}%`,
       metricSub: "vs last week",
-      link: "/dashboard/sales",
+      link: `/dashboard/sales?store=${encodeURIComponent(worstStore.store_code)}`,
     });
   }
 
@@ -305,16 +309,17 @@ export async function GET() {
     const topShare = totalRetailRev > 0
       ? Math.round((parseFloat(top.this_week) / totalRetailRev) * 100)
       : 0;
+    const name = sn(top.store_code);
     insights.push({
       id: "win-top-store",
       type: "win",
       icon: "⭐",
-      title: `${top.store_code} leads retail — ${topShare}% of this week's revenue`,
-      body: `${top.store_code} generated EGP ${Math.round(parseFloat(top.this_week)).toLocaleString()} this week, leading all 5 retail stores.`,
-      action: "View store breakdown",
+      title: `${name} leads retail — ${topShare}% of this week's revenue`,
+      body: `${name} generated EGP ${Math.round(parseFloat(top.this_week)).toLocaleString()} this week, leading all 5 retail stores.`,
+      action: "View top products",
       metric: `${topShare}% share`,
       metricSub: "of retail revenue",
-      link: "/dashboard/sales",
+      link: `/dashboard/sales?store=${encodeURIComponent(top.store_code)}`,
     });
   }
 
