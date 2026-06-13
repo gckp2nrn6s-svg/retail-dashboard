@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { query, SALES_FILTER } from "@/lib/db";
+import { query } from "@/lib/db";
 
 export async function GET() {
   const [summary, byCategory, byBrand, byColour, bySize, fxRow] = await Promise.all([
@@ -70,8 +70,8 @@ export async function GET() {
 
   // 30-day velocity
   const velocityRow = await query<{ units_sold: string; revenue: string }>(`
-    SELECT SUM(-invoiced_qty)::numeric AS units_sold, SUM(sales_amount)::numeric AS revenue
-    FROM nav_sales WHERE ${SALES_FILTER} AND posting_date >= CURRENT_DATE - 30
+    SELECT SUM(units)::numeric AS units_sold, SUM(revenue)::numeric AS revenue
+    FROM all_sales WHERE sale_date >= CURRENT_DATE - 30
   `);
 
   return NextResponse.json({

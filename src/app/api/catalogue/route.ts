@@ -45,10 +45,9 @@ export async function GET(req: NextRequest) {
     FROM item_categorisation ic
     LEFT JOIN warehouse_stock ws ON ic.item_no = ws.item_no
     LEFT JOIN (
-      SELECT item_no, SUM(-invoiced_qty) AS units_sold, SUM(sales_amount) AS revenue
-      FROM nav_sales
-      WHERE document_type = 'Sales Invoice' AND invoiced_qty < 0
-        AND posting_date >= CURRENT_DATE - 30
+      SELECT item_no, SUM(units) AS units_sold, SUM(revenue) AS revenue
+      FROM all_sales
+      WHERE sale_date >= CURRENT_DATE - 30
       GROUP BY item_no
     ) recent ON ic.item_no = recent.item_no
     ${whereClause}

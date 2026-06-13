@@ -1,0 +1,114 @@
+[2026-06-13T08:18:40.660Z] starting sync loop, every 5 min
+[2026-06-13T08:19:13.581Z] sales: full refresh, 34036 rows
+[2026-06-13T08:19:13.689Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:19:14.164Z] sync complete
+[2026-06-13T08:24:08.623Z] sales: full refresh, 34036 rows
+[2026-06-13T08:24:08.725Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:24:08.958Z] sync complete
+[2026-06-13T08:29:09.947Z] sales: full refresh, 34036 rows
+[2026-06-13T08:29:10.056Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:29:10.328Z] sync complete
+[2026-06-13T08:34:16.883Z] sales: full refresh, 34036 rows
+[2026-06-13T08:34:17.204Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:34:17.521Z] sync complete
+[2026-06-13T08:44:25.738Z] sales: full refresh, 34036 rows
+[2026-06-13T08:44:26.041Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:44:26.377Z] sync complete
+[2026-06-13T08:49:06.869Z] sales: full refresh, 34036 rows
+[2026-06-13T08:49:06.965Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:49:07.204Z] sync complete
+[2026-06-13T08:54:13.853Z] sales: full refresh, 34036 rows
+[2026-06-13T08:54:13.964Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:54:14.271Z] sync complete
+[2026-06-13T08:59:06.677Z] sales: full refresh, 34036 rows
+[2026-06-13T08:59:06.776Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T08:59:07.005Z] sync complete
+[2026-06-13T09:04:07.446Z] sales: full refresh, 34036 rows
+[2026-06-13T09:04:07.623Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:04:07.857Z] sync complete
+[2026-06-13T09:09:15.329Z] sales: full refresh, 34036 rows
+[2026-06-13T09:09:15.425Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:09:15.755Z] sync complete
+[2026-06-13T09:14:09.746Z] sales: full refresh, 34036 rows
+[2026-06-13T09:14:09.839Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:14:10.074Z] sync complete
+[2026-06-13T09:19:03.537Z] sales: full refresh, 34036 rows
+[2026-06-13T09:19:03.620Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:19:03.848Z] sync complete
+[2026-06-13T09:24:10.671Z] sales: full refresh, 34036 rows
+[2026-06-13T09:24:10.780Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:24:11.097Z] sync complete
+[2026-06-13T09:29:03.722Z] sales: full refresh, 34036 rows
+[2026-06-13T09:29:03.818Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:29:04.044Z] sync complete
+[2026-06-13T09:34:05.035Z] sales: full refresh, 34036 rows
+[2026-06-13T09:34:05.148Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:34:05.380Z] sync complete
+[2026-06-13T09:39:04.794Z] sales: full refresh, 34036 rows
+[2026-06-13T09:39:04.879Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:39:05.102Z] sync complete
+[2026-06-13T09:44:12.904Z] sales: full refresh, 34036 rows
+[2026-06-13T09:44:13.004Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T09:44:13.256Z] sync complete
+[2026-06-13T09:48:55.747Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 in 15000ms
+[2026-06-13T09:53:40.745Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T09:58:40.744Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T10:04:06.047Z] sales: full refresh, 34036 rows
+[2026-06-13T10:04:06.134Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T10:04:06.371Z] sync complete
+[2026-06-13T10:09:05.646Z] sales: full refresh, 34036 rows
+[2026-06-13T10:09:05.800Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T10:09:06.037Z] sync complete
+[2026-06-13T10:14:05.583Z] sales: full refresh, 34036 rows
+[2026-06-13T10:14:05.834Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T10:14:06.190Z] sync complete
+[2026-06-13T10:19:10.324Z] sales: full refresh, 34036 rows
+[2026-06-13T10:19:10.427Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T10:19:10.742Z] sync complete
+[2026-06-13T10:24:06.843Z] sales: full refresh, 34036 rows
+[2026-06-13T10:24:06.929Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T10:24:07.167Z] sync complete
+[2026-06-13T10:58:16.646Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T11:32:00.085Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T12:21:30.236Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T12:59:26.541Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T13:09:38.918Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T13:15:06.664Z] sales: full refresh, 34036 rows
+[2026-06-13T13:15:06.785Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:15:07.220Z] sync complete
+[2026-06-13T13:20:11.690Z] sales: full refresh, 34036 rows
+[2026-06-13T13:20:11.805Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:20:12.324Z] sync complete
+[2026-06-13T13:25:12.150Z] sales: full refresh, 34036 rows
+[2026-06-13T13:25:12.300Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:25:12.761Z] sync complete
+[2026-06-13T13:30:34.151Z] sales: full refresh, 34036 rows
+[2026-06-13T13:30:34.617Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:30:34.958Z] sync complete
+[2026-06-13T13:34:51.875Z] SYNC ERROR: Failed to connect to 164.160.104.73:1433 - Could not connect (sequence)
+[2026-06-13T13:36:08.820Z] starting sync loop, every 5 min
+[2026-06-13T13:36:41.251Z] sales: full refresh, 34036 rows
+[2026-06-13T13:36:41.357Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:36:41.820Z] sync complete
+[2026-06-13T13:36:45.906Z] Shopify american-tourister-egypt: upserted 11 line items
+[2026-06-13T13:36:47.260Z] Shopify samsonite-eg-globosoft: upserted 2 line items
+[2026-06-13T13:42:01.301Z] sales: full refresh, 34036 rows
+[2026-06-13T13:42:01.569Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:42:01.797Z] sync complete
+[2026-06-13T13:42:04.983Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-13T13:42:06.408Z] Shopify samsonite-eg-globosoft: upserted 2 line items
+[2026-06-13T13:46:36.027Z] sales: full refresh, 34036 rows
+[2026-06-13T13:46:36.121Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:46:36.637Z] sync complete
+[2026-06-13T13:46:40.634Z] Shopify american-tourister-egypt: upserted 10 line items
+[2026-06-13T13:46:41.726Z] Shopify samsonite-eg-globosoft: upserted 2 line items
+[2026-06-13T13:51:36.720Z] sales: full refresh, 34036 rows
+[2026-06-13T13:51:36.870Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:51:37.110Z] sync complete
+[2026-06-13T13:51:40.753Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-13T13:51:42.334Z] Shopify samsonite-eg-globosoft: upserted 2 line items
+[2026-06-13T13:56:35.970Z] sales: full refresh, 34036 rows
+[2026-06-13T13:56:36.065Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T13:56:36.301Z] sync complete
+[2026-06-13T13:56:40.579Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-13T13:56:41.818Z] Shopify samsonite-eg-globosoft: upserted 2 line items

@@ -1,14 +1,13 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import {
-  TrendingUp, TrendingDown, Package, AlertTriangle,
-  RefreshCw, ChevronRight, Zap, Store, ShoppingBag,
-} from "lucide-react";
+import { RefreshCw, ChevronRight, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { useCurrency, CurrencyToggle, fmt } from "@/components/CurrencyToggle";
-import { AreaChart, Area, ResponsiveContainer, Tooltip } from "recharts";
-
-type Range = "today" | "week" | "month" | "year";
+import { useDateRange } from "@/contexts/DateRangeContext";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import { DrillDownSheet, useDrill, DrillParams } from "@/components/DrillDownSheet";
+import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import type { Insight } from "@/app/api/insights/route";
 
 interface KPI {
   revenue: { egp: number; usd: number };
@@ -22,319 +21,363 @@ interface KPI {
 
 interface ChartPoint { date: string; egp: number; usd: number; units: number }
 
-interface Mover {
-  item_no: string; description: string; brand: string; category: string;
-  colour_exact: string; size: string; units_sold: number;
-  revenue: { egp: number; usd: number }; in_stock: number; daysRemaining: number | null;
-}
-
-interface LowStock {
-  item_no: string; description: string; brand: string; category: string;
-  colour_exact: string; in_stock: number; units_sold_30d: number; daysRemaining: number | null;
-}
-
-const RANGE_LABELS: Record<Range, string> = {
-  today: "Today", week: "This week", month: "This month", year: "This year",
+const TYPE_STYLES: Record<Insight["type"], { bg: string; border: string; pill: string; text: string; metricColor: string }> = {
+  critical:    { bg: "#FFF1F2", border: "#FDA4AF", pill: "#EF4444", text: "#991B1B", metricColor: "#EF4444" },
+  warning:     { bg: "#FFFBEB", border: "#FCD34D", pill: "#F59E0B", text: "#78350F", metricColor: "#D97706" },
+  opportunity: { bg: "#F0FDF4", border: "#86EFAC", pill: "#10B981", text: "#064E3B", metricColor: "#10B981" },
+  win:         { bg: "#EFF6FF", border: "#93C5FD", pill: "#2563EB", text: "#1E3A8A", metricColor: "#2563EB" },
 };
+
+function InsightCard({ insight }: { insight: Insight }) {
+  const s = TYPE_STYLES[insight.type];
+  return (
+    <Link href={insight.link} style={{ textDecoration: "none" }}>
+      <div style={{
+        background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 16,
+        padding: "14px 16px", minWidth: 260, maxWidth: 280,
+        display: "flex", flexDirection: "column", gap: 8, cursor: "pointer",
+      }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: "1.1rem" }}>{insight.icon}</span>
+            <span style={{ fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: s.pill, background: `${s.pill}20`, padding: "2px 7px", borderRadius: 20 }}>
+              {insight.type === "critical" ? "URGENT" : insight.type === "warning" ? "ACTION" : insight.type === "opportunity" ? "OPPORTUNITY" : "WIN"}
+            </span>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <p style={{ fontSize: "1.1rem", fontWeight: 800, color: s.metricColor, lineHeight: 1 }}>{insight.metric}</p>
+            {insight.metricSub && <p style={{ fontSize: "0.6rem", color: s.text, opacity: 0.7, marginTop: 1 }}>{insight.metricSub}</p>}
+          </div>
+        </div>
+        <div>
+          <p style={{ fontSize: "0.78rem", fontWeight: 700, color: s.text, lineHeight: 1.3, marginBottom: 4 }}>{insight.title}</p>
+          <p style={{ fontSize: "0.68rem", color: s.text, opacity: 0.75, lineHeight: 1.45 }}>{insight.body}</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: "0.65rem", fontWeight: 600, color: s.pill }}>{insight.action}</span>
+          <ChevronRight size={11} style={{ color: s.pill }} />
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 function Delta({ v }: { v: number | null }) {
   if (v === null) return null;
   const up = v >= 0;
   return (
-    <span className={`badge ${up ? "badge-green" : "badge-red"}`}>
-      {up ? <TrendingUp size={9} /> : <TrendingDown size={9} />}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: "0.68rem", fontWeight: 700, color: up ? "var(--green)" : "var(--red)" }}>
+      {up ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
       {Math.abs(v).toFixed(1)}%
     </span>
   );
 }
 
+// Dual currency display
+function DualMoney({ egp, usd, large = false }: { egp: number; usd: number; large?: boolean }) {
+  const { currency } = useCurrency();
+  const primary = currency === "EGP" ? fmt(egp, usd, "EGP") : fmt(egp, usd, "USD");
+  const secondary = currency === "EGP"
+    ? `$${Math.round(usd).toLocaleString()}`
+    : `EGP ${Math.round(egp).toLocaleString()}`;
+  return (
+    <div>
+      <p style={{ fontSize: large ? "1.6rem" : "1.2rem", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1, color: "var(--text)" }}>{primary}</p>
+      <p style={{ fontSize: "0.65rem", color: "var(--text3)", marginTop: 3 }}>{secondary}</p>
+    </div>
+  );
+}
+
+// Clickable KPI card
+function KpiCard({ label, onClick, loading, children }: { label: string; onClick?: () => void; loading: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      onClick={onClick}
+      className="card p-3"
+      style={{ cursor: onClick ? "pointer" : "default", transition: "all 0.15s", position: "relative" }}
+    >
+      <p style={{ fontSize: "0.6rem", color: "var(--text3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</p>
+      {loading ? <div className="skeleton h-8 w-24 mt-1" /> : children}
+      {onClick && <ChevronRight size={12} style={{ position: "absolute", top: 12, right: 12, color: "var(--text3)" }} />}
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { currency } = useCurrency();
-  const [range, setRange] = useState<Range>("week");
+  const { range } = useDateRange();
+  const { drill, open: openDrill, close: closeDrill } = useDrill();
+
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [chart, setChart] = useState<ChartPoint[]>([]);
-  const [movers, setMovers] = useState<Mover[]>([]);
-  const [lowStock, setLowStock] = useState<LowStock[]>([]);
+  const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
+  const [insightsLoading, setInsightsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async (r: Range) => {
+  const load = useCallback(async (from: string, to: string) => {
     setLoading(true);
     try {
-      const [kpiRes, chartRes, moversRes, lowRes] = await Promise.all([
-        fetch(`/api/kpis?range=${r}`).then((x) => x.json()),
-        fetch(`/api/sales/chart?range=${r === "year" ? "12m" : r === "month" ? "30d" : r === "week" ? "7d" : "7d"}`).then((x) => x.json()),
-        fetch("/api/stock/movers?type=fast&range=30d").then((x) => x.json()),
-        fetch("/api/stock/movers?type=low").then((x) => x.json()),
+      const days = Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / 86400000);
+      const chartRange = days <= 8 ? "7d" : days <= 32 ? "30d" : days <= 92 ? "90d" : "12m";
+      const [kpiRes, chartRes] = await Promise.all([
+        fetch(`/api/kpis?from=${from}&to=${to}`).then(x => x.json()),
+        fetch(`/api/sales/chart?range=${chartRange}&from=${from}&to=${to}`).then(x => x.json()),
       ]);
       setKpi(kpiRes);
       setChart(chartRes.series || []);
-      setMovers(moversRes.items?.slice(0, 5) || []);
-      setLowStock(lowRes.items?.slice(0, 4) || []);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { load(range); }, [range, load]);
+  const loadInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    try {
+      const res = await fetch("/api/insights").then(x => x.json());
+      setInsights(res.insights || []);
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, []);
 
-  const refresh = () => { setRefreshing(true); load(range); };
+  useEffect(() => { load(range.from, range.to); }, [range.from, range.to, load]);
+  useEffect(() => { loadInsights(); }, [loadInsights]);
+
+  const refresh = () => { setRefreshing(true); load(range.from, range.to); loadInsights(); };
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
+  const dateStr = new Date().toLocaleDateString("en", { weekday: "long", day: "numeric", month: "short" });
+
+  const criticalCount = insights.filter(x => x.type === "critical").length;
+  const warningCount  = insights.filter(x => x.type === "warning").length;
+
+  const drillUrl = (params: Record<string, string>) =>
+    "/api/drill?" + new URLSearchParams({ ...params, from: range.from, to: range.to }).toString();
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #0D1B2A 0%, #1a3a5c 100%)" }}>
-        <div className="flex items-center justify-between px-4 pt-12 pb-2">
+    <div style={{ paddingBottom: 80, maxWidth: 1400, margin: "0 auto" }}>
+
+      {/* ── Header ────────────────────────────────────────────────── */}
+      <div style={{ background: "linear-gradient(160deg, #0D1B2A 0%, #0f2d4a 60%, #1a3a5c 100%)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "clamp(20px,4vw,28px) 24px 8px" }}>
           <div>
-            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.72rem" }}>{greeting}</p>
-            <h1 style={{ color: "white", fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.02em" }}>
-              Le Souverain
-            </h1>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.68rem" }}>{greeting} · {dateStr}</p>
+            <h1 style={{ color: "white", fontSize: "1.4rem", fontWeight: 800, letterSpacing: "-0.03em", marginTop: 1 }}>Le Souverain</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <CurrencyToggle />
-            <button
-              onClick={refresh}
-              style={{ color: "rgba(255,255,255,0.5)", padding: 4 }}
-              className={refreshing ? "animate-spin" : ""}
-            >
-              <RefreshCw size={16} />
+            <button onClick={refresh} style={{ color: "rgba(255,255,255,0.4)", padding: 7, background: "rgba(255,255,255,0.07)", borderRadius: 10, border: "none", cursor: "pointer" }}
+              className={refreshing ? "animate-spin" : ""}>
+              <RefreshCw size={15} />
             </button>
           </div>
         </div>
 
-        {/* Range tabs */}
-        <div className="flex gap-1 px-4 pb-3 pt-1">
-          {(Object.keys(RANGE_LABELS) as Range[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              style={{
-                padding: "5px 12px",
-                borderRadius: 20,
-                fontSize: "0.7rem",
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                background: range === r ? "white" : "rgba(255,255,255,0.1)",
-                color: range === r ? "#0D1B2A" : "rgba(255,255,255,0.6)",
-                transition: "all 0.15s",
-              }}
-            >
-              {RANGE_LABELS[r]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="px-4 space-y-3 pt-3">
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="card p-3">
-            <p style={{ fontSize: "0.65rem", color: "var(--text3)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Revenue</p>
-            {loading ? (
-              <div className="skeleton h-7 w-24 mt-1" />
-            ) : (
-              <>
-                <p className="kpi-value mt-1">
-                  {kpi ? fmt(kpi.revenue.egp, kpi.revenue.usd, currency) : "—"}
-                </p>
-                <div className="kpi-sub flex items-center gap-1 mt-1">
-                  <Delta v={kpi?.revChange ?? null} />
-                  <span>vs prev</span>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="card p-3">
-            <p style={{ fontSize: "0.65rem", color: "var(--text3)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Units Sold</p>
-            {loading ? (
-              <div className="skeleton h-7 w-16 mt-1" />
-            ) : (
-              <>
-                <p className="kpi-value mt-1">{kpi?.units.toLocaleString() ?? "—"}</p>
-                <div className="kpi-sub flex items-center gap-1 mt-1">
-                  <Delta v={kpi?.unitsChange ?? null} />
-                  <span>vs prev</span>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="card p-3">
-            <p style={{ fontSize: "0.65rem", color: "var(--text3)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Avg Ticket</p>
-            {loading ? (
-              <div className="skeleton h-7 w-20 mt-1" />
-            ) : (
-              <p className="kpi-value mt-1">
-                {kpi ? fmt(kpi.avgTicket.egp, kpi.avgTicket.usd, currency) : "—"}
-              </p>
-            )}
-          </div>
-          <div className="card p-3">
-            <p style={{ fontSize: "0.65rem", color: "var(--text3)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Rate</p>
-            {loading ? (
-              <div className="skeleton h-7 w-20 mt-1" />
-            ) : (
-              <>
-                <p className="kpi-value mt-1" style={{ fontSize: "1.3rem" }}>
-                  {kpi ? `${kpi.fx.toFixed(1)}` : "—"}
-                </p>
-                <p className="kpi-sub">EGP / USD</p>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Sparkline chart */}
-        <div className="card p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text2)" }}>Revenue trend</p>
-            <Link href="/dashboard/sales" style={{ fontSize: "0.65rem", color: "var(--accent)" }} className="flex items-center gap-0.5">
-              Full view <ChevronRight size={11} />
-            </Link>
-          </div>
-          {loading ? (
-            <div className="skeleton h-16 w-full" />
-          ) : (
-            <ResponsiveContainer width="100%" height={64}>
-              <AreaChart data={chart} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload as ChartPoint;
-                    return (
-                      <div className="card p-2" style={{ fontSize: "0.65rem" }}>
-                        <p style={{ color: "var(--text3)" }}>{d.date}</p>
-                        <p style={{ fontWeight: 700 }}>{fmt(d.egp, d.usd, currency)}</p>
-                        <p style={{ color: "var(--text3)" }}>{d.units} units</p>
-                      </div>
-                    );
-                  }}
-                />
-                <Area type="monotone" dataKey={currency === "USD" ? "usd" : "egp"} stroke="#2563EB" strokeWidth={2} fill="url(#grad)" dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Low stock alerts */}
-        {lowStock.length > 0 && (
-          <div className="card overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: "1px solid var(--border)", background: "#FFF7ED" }}>
-              <div className="flex items-center gap-2">
-                <AlertTriangle size={14} style={{ color: "#D97706" }} />
-                <p style={{ fontSize: "0.72rem", fontWeight: 700, color: "#92400E" }}>
-                  {lowStock.length} critical stock alerts
-                </p>
-              </div>
-              <Link href="/dashboard/stock?tab=low" style={{ fontSize: "0.65rem", color: "#D97706" }} className="flex items-center">
-                See all <ChevronRight size={11} />
-              </Link>
-            </div>
-            {lowStock.map((item) => (
-              <div key={item.item_no} className="list-row px-3">
-                <div className="flex-1 min-w-0">
-                  <p style={{ fontSize: "0.75rem", fontWeight: 600 }} className="truncate">
-                    {item.description || item.item_no}
-                  </p>
-                  <p style={{ fontSize: "0.65rem", color: "var(--text3)" }}>
-                    {item.brand} · {item.category}
-                  </p>
-                </div>
-                <div className="ml-2 text-right shrink-0">
-                  <p style={{
-                    fontSize: "0.85rem", fontWeight: 700,
-                    color: item.in_stock <= 2 ? "var(--red)" : "#D97706"
-                  }}>
-                    {item.in_stock} left
-                  </p>
-                  {item.daysRemaining !== null && (
-                    <p style={{ fontSize: "0.6rem", color: "var(--text3)" }}>{item.daysRemaining}d stock</p>
-                  )}
-                </div>
-              </div>
-            ))}
+        {/* Alert bar */}
+        {!insightsLoading && (criticalCount > 0 || warningCount > 0) && (
+          <div style={{ margin: "6px 24px 0", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "7px 12px", display: "flex", gap: 12 }}>
+            {criticalCount > 0 && <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#FCA5A5" }}>🚨 {criticalCount} urgent</span>}
+            {warningCount > 0  && <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#FCD34D" }}>⚠️ {warningCount} actions needed</span>}
           </div>
         )}
 
-        {/* Fast movers */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2">
-              <Zap size={14} style={{ color: "var(--gold)" }} />
-              <p style={{ fontSize: "0.72rem", fontWeight: 700 }}>Fast movers · last 30 days</p>
-            </div>
-            <Link href="/dashboard/stock?tab=fast" style={{ fontSize: "0.65rem", color: "var(--accent)" }} className="flex items-center">
-              See all <ChevronRight size={11} />
-            </Link>
-          </div>
-          {loading ? (
-            <div className="p-3 space-y-2">
-              {[...Array(4)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}
-            </div>
-          ) : (
-            movers.map((item, i) => (
-              <div key={item.item_no} className="list-row px-3">
-                <div
-                  className="shrink-0 flex items-center justify-center"
-                  style={{
-                    width: 24, height: 24, borderRadius: 8, marginRight: 10, fontWeight: 700, fontSize: "0.7rem",
-                    background: i === 0 ? "#FEF3C7" : i === 1 ? "#F3F4F6" : "#F8FAFC",
-                    color: i === 0 ? "#D97706" : "var(--text3)",
-                  }}
-                >
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p style={{ fontSize: "0.75rem", fontWeight: 600 }} className="truncate">
-                    {item.description || item.item_no}
-                  </p>
-                  <p style={{ fontSize: "0.62rem", color: "var(--text3)" }}>
-                    {[item.brand, item.colour_exact, item.size].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                <div className="ml-2 text-right shrink-0">
-                  <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--green)" }}>{item.units_sold} sold</p>
-                  <p style={{ fontSize: "0.62rem", color: "var(--text3)" }}>{item.in_stock} in stock</p>
-                </div>
-              </div>
-            ))
-          )}
+        {/* Date picker row */}
+        <div style={{ padding: "10px 24px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+          <DateRangePicker dark />
         </div>
-
-        {/* Channel pills */}
-        <div className="card p-3">
-          <p style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
-            Channels
-          </p>
-          <div className="flex gap-2">
-            <Link href="/dashboard/sales?group=retail" className="flex-1 flex flex-col items-center gap-1 rounded-xl p-2.5" style={{ background: "var(--accent-light)" }}>
-              <Store size={18} style={{ color: "var(--accent)" }} />
-              <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--accent)" }}>Retail</span>
-            </Link>
-            <Link href="/dashboard/sales?group=online" className="flex-1 flex flex-col items-center gap-1 rounded-xl p-2.5" style={{ background: "var(--green-light)" }}>
-              <ShoppingBag size={18} style={{ color: "var(--green)" }} />
-              <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--green)" }}>Online</span>
-            </Link>
-            <Link href="/dashboard/sales?group=ho" className="flex-1 flex flex-col items-center gap-1 rounded-xl p-2.5" style={{ background: "var(--gold-light)" }}>
-              <TrendingUp size={18} style={{ color: "var(--gold)" }} />
-              <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--gold)" }}>HO / B2B</span>
-            </Link>
-          </div>
-        </div>
-
-        <div style={{ height: 8 }} />
       </div>
+
+      {/* ── Two-column grid ──────────────────────────────────────── */}
+      <div style={{ padding: "0 24px" }} className="dashboard-content">
+        <div className="home-grid">
+
+          {/* LEFT COLUMN */}
+          <div className="home-col-left">
+
+            {/* KPI row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginTop: 14 }}>
+              <KpiCard label="Revenue" loading={loading}
+                onClick={kpi ? () => openDrill({ title: `Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) }) : undefined}>
+                {kpi && (
+                  <>
+                    <DualMoney egp={kpi.revenue.egp} usd={kpi.revenue.usd} large />
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5 }}>
+                      <Delta v={kpi.revChange} />
+                      <span style={{ fontSize: "0.6rem", color: "var(--text3)" }}>vs prev</span>
+                    </div>
+                  </>
+                )}
+              </KpiCard>
+
+              <KpiCard label="Units Sold" loading={loading}
+                onClick={kpi ? () => openDrill({ title: `Units Sold · ${range.label}`, endpoint: drillUrl({ type: "daily" }) }) : undefined}>
+                {kpi && (
+                  <>
+                    <p style={{ fontSize: "1.6rem", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>{kpi.units.toLocaleString()}</p>
+                    <Delta v={kpi.unitsChange} />
+                  </>
+                )}
+              </KpiCard>
+
+              <KpiCard label="Avg Ticket" loading={loading}
+                onClick={kpi ? () => openDrill({ title: `Top Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) }) : undefined}>
+                {kpi && <DualMoney egp={kpi.avgTicket.egp} usd={kpi.avgTicket.usd} />}
+              </KpiCard>
+
+              <KpiCard label="Active Stores" loading={loading}
+                onClick={kpi ? () => openDrill({ title: `Store Breakdown · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "all" }) }) : undefined}>
+                {kpi && (
+                  <>
+                    <p style={{ fontSize: "1.6rem", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>{kpi.activeStores}</p>
+                    <p style={{ fontSize: "0.62rem", color: "var(--text3)", marginTop: 3 }}>1 EGP = ${kpi.fx.toFixed(2)}</p>
+                  </>
+                )}
+              </KpiCard>
+            </div>
+
+            {/* Sparkline */}
+            <div className="card" style={{ marginTop: 8, padding: "14px 16px 10px", cursor: "pointer" }}
+              onClick={() => openDrill({ title: `Daily Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <p style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text2)" }}>Revenue trend</p>
+                <Link href="/dashboard/sales" onClick={e => e.stopPropagation()} style={{ fontSize: "0.62rem", color: "var(--accent)", display: "flex", alignItems: "center", gap: 2 }}>
+                  Full analysis <ChevronRight size={11} />
+                </Link>
+              </div>
+              {loading ? <div className="skeleton h-20 w-full" /> : (
+                <ResponsiveContainer width="100%" height={80}>
+                  <AreaChart data={chart} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" hide />
+                    <Tooltip content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload as ChartPoint;
+                      return (
+                        <div className="card p-2" style={{ fontSize: "0.65rem" }}>
+                          <p style={{ color: "var(--text3)" }}>{d.date}</p>
+                          <p style={{ fontWeight: 700 }}>{fmt(d.egp, d.usd, currency)}</p>
+                          <p style={{ color: "var(--text3)" }}>{d.usd > 0 ? `$${d.usd.toLocaleString()}` : ""}</p>
+                          <p style={{ color: "var(--text3)" }}>{d.units} units</p>
+                        </div>
+                      );
+                    }} />
+                    <Area type="monotone" dataKey={currency === "USD" ? "usd" : "egp"} stroke="#2563EB" strokeWidth={2} fill="url(#grad)" dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Channel pills */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
+              {[
+                { label: "Retail", color: "#2563EB", bg: "#EFF6FF", ch: "Retail", icon: "🏪" },
+                { label: "Online", color: "#10B981", bg: "#F0FDF4", ch: "Online", icon: "🌐" },
+                { label: "B2B",    color: "#F59E0B", bg: "#FFFBEB", ch: "B2B",    icon: "🤝" },
+              ].map(c => (
+                <button key={c.ch}
+                  onClick={() => openDrill({ title: `${c.label} Channel · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: c.ch }) })}
+                  style={{ padding: "12px 8px", borderRadius: 14, border: `1.5px solid ${c.color}30`, background: c.bg, cursor: "pointer", textAlign: "center" }}>
+                  <p style={{ fontSize: "1.2rem", marginBottom: 4 }}>{c.icon}</p>
+                  <p style={{ fontSize: "0.72rem", fontWeight: 700, color: c.color }}>{c.label}</p>
+                  <p style={{ fontSize: "0.6rem", color: "var(--text3)", marginTop: 1 }}>tap to drill</p>
+                </button>
+              ))}
+            </div>
+
+            {/* Quick actions */}
+            <div style={{ marginTop: 12 }}>
+              <p style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Quick Actions</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[
+                  { label: "Stock Alerts",   sub: "Low & critical", icon: "🚨", href: "/dashboard/stock?tab=low",  color: "#EF4444" },
+                  { label: "Fast Movers",    sub: "Top selling now", icon: "🔥", href: "/dashboard/stock?tab=fast", color: "#F59E0B" },
+                  { label: "Sales Analysis", sub: "Channels & stores",icon:"📊", href: "/dashboard/sales",          color: "#2563EB" },
+                  { label: "Ask AI",         sub: "Get recommendations",icon:"✨",href:"/dashboard/ask",           color: "#8B5CF6" },
+                ].map(q => (
+                  <Link key={q.href} href={q.href} style={{ textDecoration: "none" }}>
+                    <div className="card" style={{ padding: "11px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: `${q.color}15`, fontSize: "1rem" }}>
+                        {q.icon}
+                      </div>
+                      <div>
+                        <p style={{ fontSize: "0.73rem", fontWeight: 700, color: "var(--text)" }}>{q.label}</p>
+                        <p style={{ fontSize: "0.6rem", color: "var(--text3)", marginTop: 1 }}>{q.sub}</p>
+                      </div>
+                      <ChevronRight size={13} style={{ color: "var(--text3)", marginLeft: "auto" }} />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile intelligence feed */}
+            <div style={{ marginTop: 20 }} className="mobile-intel-feed">
+              <p style={{ fontSize: "0.68rem", fontWeight: 800, color: "var(--text)", marginBottom: 10 }}>Intelligence Feed</p>
+              {insightsLoading ? (
+                <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
+                  {[1,2,3].map(i => <div key={i} className="skeleton" style={{ minWidth: 260, height: 140, borderRadius: 16, flexShrink: 0 }} />)}
+                </div>
+              ) : (
+                <div ref={scrollRef} style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8, scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }} className="hide-scrollbar">
+                  {insights.map(i => <div key={i.id} style={{ flexShrink: 0, scrollSnapAlign: "start" }}><InsightCard insight={i} /></div>)}
+                </div>
+              )}
+            </div>
+
+          </div>{/* end left col */}
+
+          {/* RIGHT COLUMN — intelligence feed (desktop) */}
+          <div className="home-col-right">
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div>
+                  <p style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--text)" }}>Intelligence Feed</p>
+                  <p style={{ fontSize: "0.6rem", color: "var(--text3)", marginTop: 1 }}>Auto-generated · live</p>
+                </div>
+                {!insightsLoading && <span style={{ fontSize: "0.62rem", color: "var(--text3)" }}>{insights.length} insights</span>}
+              </div>
+              {insightsLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 130, borderRadius: 16 }} />)}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {insights.map(i => <InsightCard key={i.id} insight={i} />)}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>{/* end home-grid */}
+      </div>
+
+      {/* Drill-down sheet */}
+      {drill && <DrillDownSheet params={drill} onClose={closeDrill} />}
+
+      <style>{`
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @media (min-width: 768px) {
+          .home-grid { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
+          .home-col-left { min-width: 0; }
+          .home-col-right { position: sticky; top: 16px; }
+          .mobile-intel-feed { display: none !important; }
+          .dashboard-content { padding: 0 32px !important; }
+        }
+        @media (max-width: 767px) {
+          .home-grid { display: block; }
+          .home-col-right { display: none; }
+        }
+      `}</style>
     </div>
   );
 }

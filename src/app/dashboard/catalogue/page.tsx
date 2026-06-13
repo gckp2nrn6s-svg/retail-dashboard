@@ -108,7 +108,7 @@ export default function CataloguePage() {
   return (
     <div>
       <div style={{ background: "linear-gradient(135deg, #0D1B2A 0%, #1a3a5c 100%)" }}>
-        <div className="px-4 pt-12 pb-2">
+        <div className="px-4 pb-2" style={{ paddingTop: "clamp(24px, 5vw, 32px)" }}>
           <div className="flex items-center justify-between">
             <div>
               <h1 style={{ color: "white", fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.02em" }}>Products</h1>

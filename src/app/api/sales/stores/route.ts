@@ -1,23 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query, SALES_FILTER } from "@/lib/db";
+import { query } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const range = searchParams.get("range") || "30d";
+  const fromParam = searchParams.get("from");
+  const toParam   = searchParams.get("to");
 
   let days = 30;
   if (range === "7d") days = 7;
   else if (range === "90d") days = 90;
   else if (range === "12m") days = 365;
 
+  const dateFilter = fromParam && toParam
+    ? `sale_date BETWEEN '${fromParam}' AND '${toParam}'`
+    : `sale_date >= CURRENT_DATE - interval '${days} days'`;
+  const aliasedFilter = dateFilter.replace(/sale_date/g, "a.sale_date");
+
   const [storeRows, fxRow, categoryRows] = await Promise.all([
     query<{ store_code: string; revenue: string; units: string }>(`
       SELECT
         store_code,
-        SUM(sales_amount)::numeric AS revenue,
-        SUM(-invoiced_qty)::numeric AS units
-      FROM nav_sales
-      WHERE ${SALES_FILTER} AND posting_date >= CURRENT_DATE - interval '${days} days'
+        SUM(revenue)::numeric AS revenue,
+        SUM(units)::numeric   AS units
+      FROM all_sales
+      WHERE ${dateFilter}
       GROUP BY store_code
       ORDER BY revenue DESC
     `),
@@ -27,11 +34,11 @@ export async function GET(req: NextRequest) {
     query<{ category: string; revenue: string; units: string }>(`
       SELECT
         COALESCE(ic.category, 'Other') AS category,
-        SUM(n.sales_amount)::numeric AS revenue,
-        SUM(-n.invoiced_qty)::numeric AS units
-      FROM nav_sales n
-      LEFT JOIN item_categorisation ic ON n.item_no = ic.item_no
-      WHERE ${SALES_FILTER} AND n.posting_date >= CURRENT_DATE - interval '${days} days'
+        SUM(a.revenue)::numeric AS revenue,
+        SUM(a.units)::numeric   AS units
+      FROM all_sales a
+      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
+      WHERE ${aliasedFilter}
       GROUP BY 1
       ORDER BY revenue DESC
     `),
@@ -40,13 +47,13 @@ export async function GET(req: NextRequest) {
   const fx = parseFloat(fxRow[0]?.egp_per_usd || "50");
   const totalRev = storeRows.reduce((s, r) => s + parseFloat(r.revenue), 0);
 
-  const RETAIL = new Set(["ALMAZA","ATCFC","ATMADI","CCA","CF-HOS","CSTARS","DUTY FREE","FOUR SEASO","GO SPORT1","MOA","MOE","P90","SPINNEYS"]);
-  const ONLINE = new Set(["AMAZON","AMAZON BAN","AMAZON KAM","JUMIA","NOON","ONLINE"]);
+  const RETAIL = new Set(["ALMAZA","CCA","CF-HOS","CSTARS","P90"]);
+  const ONLINE = new Set(["ONLINE","AMAZON BAN","AMAZON KAM"]);
 
   function groupLabel(code: string) {
     if (RETAIL.has(code)) return "Retail";
     if (ONLINE.has(code)) return "Online";
-    return "HO";
+    return "B2B";
   }
 
   const stores = storeRows.map((r) => {
@@ -60,7 +67,7 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const channelTotals = ["Retail", "Online", "HO"].map((grp) => {
+  const channelTotals = ["Retail", "Online", "B2B"].map((grp) => {
     const filtered = stores.filter((s) => s.group === grp);
     const rev = filtered.reduce((s, r) => s + r.revenue.egp, 0);
     const units = filtered.reduce((s, r) => s + r.units, 0);

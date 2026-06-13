@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query, SALES_FILTER } from "@/lib/db";
+import { query } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -30,20 +30,20 @@ export async function GET(req: NextRequest) {
       line_name: string; units_sold: string; revenue: string; in_stock: string;
     }>(`
       SELECT
-        n.item_no,
-        COALESCE(ic.description, ni.description, n.item_no) AS description,
+        a.item_no,
+        COALESCE(ic.description, ni.description, a.item_no) AS description,
         ic.brand, ic.category, ic.subcategory, ic.colour_exact, ic.colour_group,
         ic.size, ic.line_name,
-        SUM(-n.invoiced_qty)::numeric AS units_sold,
-        SUM(n.sales_amount)::numeric AS revenue,
+        SUM(a.units)::numeric AS units_sold,
+        SUM(a.revenue)::numeric AS revenue,
         COALESCE(ws.in_stock, 0)::numeric AS in_stock
-      FROM nav_sales n
-      LEFT JOIN item_categorisation ic ON n.item_no = ic.item_no
-      LEFT JOIN nav_items ni ON n.item_no = ni.item_no
-      LEFT JOIN warehouse_stock ws ON n.item_no = ws.item_no
-      WHERE ${SALES_FILTER} AND n.posting_date >= CURRENT_DATE - interval '${days} days'
+      FROM all_sales a
+      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
+      LEFT JOIN nav_items ni ON a.item_no = ni.item_no
+      LEFT JOIN warehouse_stock ws ON a.item_no = ws.item_no
+      WHERE a.sale_date >= CURRENT_DATE - interval '${days} days'
         ${catFilter} ${brandFilter}
-      GROUP BY n.item_no, ic.description, ni.description, ic.brand, ic.category,
+      GROUP BY a.item_no, ic.description, ni.description, ic.brand, ic.category,
         ic.subcategory, ic.colour_exact, ic.colour_group, ic.size, ic.line_name, ws.in_stock
       ORDER BY units_sold DESC
       LIMIT 50
@@ -79,9 +79,9 @@ export async function GET(req: NextRequest) {
       FROM warehouse_stock ws
       LEFT JOIN item_categorisation ic ON ws.item_no = ic.item_no
       LEFT JOIN (
-        SELECT item_no, SUM(-invoiced_qty) AS units_sold
-        FROM nav_sales
-        WHERE ${SALES_FILTER} AND posting_date >= CURRENT_DATE - 30
+        SELECT item_no, SUM(units) AS units_sold
+        FROM all_sales
+        WHERE sale_date >= CURRENT_DATE - 30
         GROUP BY item_no
       ) recent ON ws.item_no = recent.item_no
       WHERE ws.in_stock > 0 AND ws.in_stock <= 10
@@ -126,9 +126,9 @@ export async function GET(req: NextRequest) {
     FROM warehouse_stock ws
     LEFT JOIN item_categorisation ic ON ws.item_no = ic.item_no
     LEFT JOIN (
-      SELECT item_no, SUM(-invoiced_qty) AS units_sold
-      FROM nav_sales
-      WHERE ${SALES_FILTER} AND posting_date >= CURRENT_DATE - ${days}
+      SELECT item_no, SUM(units) AS units_sold
+      FROM all_sales
+      WHERE sale_date >= CURRENT_DATE - ${days}
       GROUP BY item_no
     ) recent ON ws.item_no = recent.item_no
     WHERE ws.in_stock > 5

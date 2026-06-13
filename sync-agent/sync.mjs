@@ -195,20 +195,105 @@ async function runOnce(runCount) {
   }
 }
 
+// ── Shopify incremental sync ─────────────────────────────────────────────
+const SHOPIFY_STORES = [
+  { handle: "american-tourister-egypt", token: "process.env.SHOPIFY_AMT_TOKEN", store_code: "SHOPIFY-AMT" },
+  { handle: "samsonite-eg-globosoft",   token: "process.env.SHOPIFY_SAM_TOKEN", store_code: "SHOPIFY-SAM" },
+];
+
+async function getShopifyLastSync(pgc, handle) {
+  const { rows } = await pgc.query(
+    `SELECT MAX(created_at) AS last FROM shopify_sales WHERE shopify_store = $1`, [handle]
+  );
+  return rows[0]?.last || null;
+}
+
+async function shopifyIncrementalSync(pgc) {
+  for (const store of SHOPIFY_STORES) {
+    try {
+      const last = await getShopifyLastSync(pgc, store.handle);
+      const since = last
+        ? new Date(new Date(last).getTime() - 3600000)
+        : new Date(Date.now() - 7 * 86400000);
+
+      const url = `https://${store.handle}.myshopify.com/admin/api/2024-01/orders.json`
+        + `?status=any&limit=250&order=created_at+asc`
+        + `&fields=id,order_number,created_at,financial_status,fulfillment_status,line_items,total_discounts`
+        + `&created_at_min=${since.toISOString()}`;
+
+      const headers = { "X-Shopify-Access-Token": store.token };
+      let pageUrl = url;
+      let count = 0;
+
+      while (pageUrl) {
+        const res = await fetch(pageUrl, { headers });
+        if (!res.ok) { log(`Shopify ${store.handle} error: ${res.status}`); break; }
+        const data = await res.json();
+        const orders = data.orders || [];
+
+        for (const order of orders) {
+          if (order.financial_status === "voided") continue;
+          const createdAt = new Date(order.created_at);
+          const saleDate = createdAt.toISOString().slice(0, 10);
+          for (const item of order.line_items || []) {
+            const unitPrice = parseFloat(item.price || "0");
+            const qty = parseInt(item.quantity || "0");
+            await pgc.query(`
+              INSERT INTO shopify_sales
+                (order_id,store_code,shopify_store,order_number,created_at,sale_date,
+                 financial_status,fulfillment_status,line_item_id,product_id,variant_id,
+                 sku,product_title,variant_title,quantity,unit_price,line_total,discount,currency)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'EGP')
+              ON CONFLICT (order_id, line_item_id) DO UPDATE SET
+                financial_status=EXCLUDED.financial_status,
+                fulfillment_status=EXCLUDED.fulfillment_status,
+                line_total=EXCLUDED.line_total
+            `, [
+              order.id, store.store_code, store.handle,
+              String(order.order_number || order.id),
+              createdAt.toISOString(), saleDate,
+              order.financial_status, order.fulfillment_status || "unfulfilled",
+              item.id, item.product_id, item.variant_id,
+              item.sku || null, item.title, item.variant_title || null,
+              qty, unitPrice, unitPrice * qty,
+              parseFloat(item.total_discount || "0"),
+            ]);
+            count++;
+          }
+        }
+
+        const link = res.headers.get("link") || "";
+        const next = link.match(/<([^>]+)>;\s*rel="next"/);
+        pageUrl = next ? next[1] : null;
+      }
+      if (count > 0) log(`Shopify ${store.handle}: upserted ${count} line items`);
+    } catch (e) {
+      log(`Shopify ${store.handle} sync error: ${e.message}`);
+    }
+  }
+}
+
+// ── Main loop ────────────────────────────────────────────────────────────
 const once = process.argv.includes("--once");
 let runCount = 0;
 
+async function tick() {
+  const pgc = new pg.Client({ connectionString: PG_URL });
+  await pgc.connect();
+  try {
+    await runOnce(runCount++);
+    await shopifyIncrementalSync(pgc);
+  } catch (e) {
+    log(`SYNC ERROR: ${e.message}`);
+  } finally {
+    await pgc.end();
+  }
+}
+
 if (once) {
-  runOnce(0).then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+  tick().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
 } else {
   log(`starting sync loop, every ${INTERVAL_MIN} min`);
-  const tick = async () => {
-    try {
-      await runOnce(runCount++);
-    } catch (e) {
-      log(`SYNC ERROR: ${e.message}`);
-    }
-  };
   tick();
   setInterval(tick, INTERVAL_MIN * 60 * 1000);
 }

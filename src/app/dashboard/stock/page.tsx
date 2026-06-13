@@ -3,6 +3,9 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useCurrency, fmt } from "@/components/CurrencyToggle";
+import { useDateRange } from "@/contexts/DateRangeContext";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
 import { AlertTriangle, Zap, TrendingDown, Package, RefreshCw } from "lucide-react";
 
 type StockTab = "fast" | "low" | "slow" | "overview";
@@ -46,7 +49,9 @@ function StockBadge({ n, max }: { n: number; max: number }) {
 
 function StockContent() {
   const { currency } = useCurrency();
+  const { range: dateRange } = useDateRange();
   const sp = useSearchParams();
+  const { drill, open: openDrill, close: closeDrill } = useDrill();
 
   const [tab, setTab] = useState<StockTab>((sp.get("tab") as StockTab) || "overview");
   const [range, setRange] = useState("30d");
@@ -89,11 +94,14 @@ function StockContent() {
   return (
     <div>
       <div style={{ background: "linear-gradient(135deg, #0D1B2A 0%, #1a3a5c 100%)" }}>
-        <div className="px-4 pt-12 pb-2">
-          <h1 style={{ color: "white", fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.02em" }}>Stock Intelligence</h1>
-          <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.72rem", marginTop: 2 }}>
-            {overview ? `${overview.summary.totalUnits.toLocaleString()} units across ${overview.summary.inStock.toLocaleString()} SKUs` : "Warehouse snapshot"}
-          </p>
+        <div style={{ padding: "clamp(20px,4vw,28px) 24px 8px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div>
+            <h1 style={{ color: "white", fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.02em" }}>Stock Intelligence</h1>
+            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.72rem", marginTop: 2 }}>
+              {overview ? `${overview.summary.totalUnits.toLocaleString()} units across ${overview.summary.inStock.toLocaleString()} SKUs` : "Warehouse snapshot"}
+            </p>
+          </div>
+          <DateRangePicker dark />
         </div>
 
         <div className="scroll-x px-4 pb-3 pt-1 gap-2">
@@ -239,7 +247,9 @@ function StockContent() {
                   : "var(--text3)";
 
                 return (
-                  <div key={item.item_no} className="list-row px-3">
+                  <div key={item.item_no} className="list-row px-3"
+                    onClick={() => openDrill({ title: `${item.description || item.item_no} · ${dateRange.label}`, endpoint: `/api/drill?type=item&item=${encodeURIComponent(item.item_no)}&from=${dateRange.from}&to=${dateRange.to}` })}
+                    style={{ cursor: "pointer" }}>
                     {tab === "fast" && (
                       <div style={{
                         width: 22, height: 22, borderRadius: 7, marginRight: 10, flexShrink: 0,
@@ -304,6 +314,8 @@ function StockContent() {
 
         <div style={{ height: 8 }} />
       </div>
+
+      {drill && <DrillDownSheet params={drill} onClose={closeDrill} />}
     </div>
   );
 }

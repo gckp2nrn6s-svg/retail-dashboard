@@ -1,57 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query, SALES_FILTER } from "@/lib/db";
+import { query } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const range = searchParams.get("range") || "today";
+  const from = searchParams.get("from");
+  const to   = searchParams.get("to");
 
+  // Derive comparison period of equal length
   let fromExpr: string;
+  let toExpr: string;
   let prevFromExpr: string;
   let prevToExpr: string;
 
-  switch (range) {
-    case "week":
-      fromExpr = "date_trunc('week', CURRENT_DATE)";
-      prevFromExpr = "date_trunc('week', CURRENT_DATE) - interval '7 days'";
-      prevToExpr = "date_trunc('week', CURRENT_DATE) - interval '1 day'";
-      break;
-    case "month":
-      fromExpr = "date_trunc('month', CURRENT_DATE)";
-      prevFromExpr = "date_trunc('month', CURRENT_DATE) - interval '1 month'";
-      prevToExpr = "date_trunc('month', CURRENT_DATE) - interval '1 day'";
-      break;
-    case "year":
-      fromExpr = "date_trunc('year', CURRENT_DATE)";
-      prevFromExpr = "date_trunc('year', CURRENT_DATE) - interval '1 year'";
-      prevToExpr = "date_trunc('year', CURRENT_DATE) - interval '1 day'";
-      break;
-    default: // today
-      fromExpr = "CURRENT_DATE";
-      prevFromExpr = "CURRENT_DATE - interval '1 day'";
-      prevToExpr = "CURRENT_DATE - interval '1 day'";
+  if (from && to) {
+    fromExpr = `'${from}'::date`;
+    toExpr   = `'${to}'::date`;
+    prevFromExpr = `'${from}'::date - ('${to}'::date - '${from}'::date + 1)`;
+    prevToExpr   = `'${from}'::date - interval '1 day'`;
+  } else {
+    // legacy: default to last 30 days
+    fromExpr = "CURRENT_DATE - interval '29 days'";
+    toExpr   = "CURRENT_DATE";
+    prevFromExpr = "CURRENT_DATE - interval '59 days'";
+    prevToExpr   = "CURRENT_DATE - interval '30 days'";
   }
 
   const [current, previous, fxRow, storeCount] = await Promise.all([
-    query<{ revenue: string; units: string; orders: string }>(`
+    query<{ revenue: string; units: string }>(`
       SELECT
-        COALESCE(SUM(sales_amount), 0)::numeric AS revenue,
-        COALESCE(SUM(-invoiced_qty), 0)::numeric AS units,
-        COUNT(DISTINCT item_no)::int AS orders
-      FROM nav_sales
-      WHERE ${SALES_FILTER} AND posting_date >= ${fromExpr}
+        COALESCE(SUM(revenue), 0)::numeric AS revenue,
+        COALESCE(SUM(units), 0)::numeric   AS units
+      FROM all_sales
+      WHERE sale_date BETWEEN ${fromExpr} AND ${toExpr}
     `),
     query<{ revenue: string; units: string }>(`
       SELECT
-        COALESCE(SUM(sales_amount), 0)::numeric AS revenue,
-        COALESCE(SUM(-invoiced_qty), 0)::numeric AS units
-      FROM nav_sales
-      WHERE ${SALES_FILTER} AND posting_date BETWEEN ${prevFromExpr} AND ${prevToExpr}
+        COALESCE(SUM(revenue), 0)::numeric AS revenue,
+        COALESCE(SUM(units), 0)::numeric   AS units
+      FROM all_sales
+      WHERE sale_date BETWEEN ${prevFromExpr} AND ${prevToExpr}
     `),
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
     ),
     query<{ n: string }>(
-      `SELECT COUNT(DISTINCT store_code) n FROM nav_sales WHERE ${SALES_FILTER} AND posting_date >= ${fromExpr}`
+      `SELECT COUNT(DISTINCT store_code) n FROM all_sales WHERE sale_date BETWEEN ${fromExpr} AND ${toExpr}`
     ),
   ]);
 
@@ -72,6 +65,5 @@ export async function GET(req: NextRequest) {
     revChange,
     unitsChange,
     fx,
-    range,
   });
 }

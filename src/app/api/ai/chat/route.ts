@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query, SALES_FILTER } from "@/lib/db";
+import { query } from "@/lib/db";
 
-const SYSTEM_PROMPT = `You are an expert retail business analyst for Le Souverain, an Egyptian trading company selling Samsonite, American Tourister, Kamiliant, Lipault, and High Sierra luggage across 5+ physical stores and online channels (Amazon, Jumia, Noon).
+const SYSTEM_PROMPT = `You are the chief intelligence analyst for Le Souverain — an Egyptian trading company (Samsonite, American Tourister, Kamiliant, Lipault, High Sierra luggage) operating 5 retail stores, online channels, and B2B distribution.
 
-You have access to live sales data from NAV ERP (since 2019), warehouse stock data (snapshot), and product categorisation with brands, colours, sizes, and line names.
+You are the CEO's personal business advisor. You think like a McKinsey partner but talk like a sharp operator. You give concrete, specific, opinionated advice. You never hedge or give vague answers. Numbers are always in EGP unless asked for USD.
 
-Stores: ALMAZA, ATCFC, ATMADI, CCA, CF-HOS, CSTARS, DUTY FREE, FOUR SEASO, GO SPORT1, MOA, MOE, P90, SPINNEYS (retail), AMAZON/JUMIA/NOON/ONLINE (ecom), HO (head office / B2B).
+RETAIL STORES: CSTARS (City Stars), CF-HOS (CityStars Hotel & Office), CCA (Cairo Festival City), ALMAZA (Almaza City Center), P90 (Point 90)
+ONLINE: ONLINE (own ecom), AMAZON BAN / AMAZON KAM
+B2B ACCOUNTS: HO (head office wholesale), NOON, AMAZON, JUMIA, DUTY FREE, MOE, MOA, ATMADI, ATCFC
 
-Currency: data is in EGP. Current rate is approximately 50 EGP/USD.
+BRANDS: Samsonite (premium), American Tourister (mass market), Kamiliant (value), Lipault (lifestyle/women), High Sierra (outdoor/sport)
+PRODUCT CATEGORIES: Luggage (Hard Shell, Soft Shell, Business), Bags (Backpacks, Laptop Bags, Duffles), Accessories
 
-When answering:
-- Be direct and specific with numbers
-- Reference store names, brands, and product lines by name
-- Flag stock risks clearly with urgency
-- Give actionable recommendations
-- Keep responses concise and mobile-friendly
-- If a chart would help, include a JSON block: <chart>{"type":"bar","data":[{"name":"...","value":...}],"xKey":"name","yKey":"value","label":"Chart title"}</chart>
+DATA YOU HAVE: live sales from 2019 to today, current warehouse stock snapshot, full product catalogue with colours/sizes/lines.
+
+YOUR STYLE:
+- Lead with the most important number or finding
+- Give a clear recommendation after every insight
+- Use bullet points for lists, not paragraphs
+- Flag urgency when stock is low: "⚠️ ORDER TODAY", "📦 REORDER THIS WEEK"
+- Celebrate wins: "🏆 Best week for CSTARS in 6 months"
+- Be specific: name products, stores, brands, quantities
+- Keep it mobile-friendly: short paragraphs, no walls of text
+- When a chart would clarify, include: <chart>{"type":"bar","data":[{"name":"...","value":...}],"xKey":"name","yKey":"value","label":"Chart title"}</chart>
 - Chart types: "bar", "line", "pie"
-- For line charts use dates as xKey`;
+- For line charts use dates as xKey
+- Always end with 1 concrete next action the CEO should take today`;
 
 export async function POST(req: NextRequest) {
   const { message, history } = await req.json();
@@ -27,18 +35,18 @@ export async function POST(req: NextRequest) {
   try {
     const [salesLast30, topItems, lowStock, storeBreakdown, fxRow] = await Promise.all([
       query<{ revenue: string; units: string }>(`
-        SELECT SUM(sales_amount)::numeric AS revenue, SUM(-invoiced_qty)::numeric AS units
-        FROM nav_sales WHERE ${SALES_FILTER} AND posting_date >= CURRENT_DATE - 30
+        SELECT SUM(revenue)::numeric AS revenue, SUM(units)::numeric AS units
+        FROM all_sales WHERE sale_date >= CURRENT_DATE - 30
       `),
       query<{ item_no: string; description: string; category: string; brand: string; units_sold: string; revenue: string }>(`
-        SELECT n.item_no, COALESCE(ic.description, n.item_no) AS description,
+        SELECT a.item_no, COALESCE(ic.description, a.item_no) AS description,
           ic.category, ic.brand,
-          SUM(-n.invoiced_qty)::numeric AS units_sold,
-          SUM(n.sales_amount)::numeric AS revenue
-        FROM nav_sales n
-        LEFT JOIN item_categorisation ic ON n.item_no = ic.item_no
-        WHERE ${SALES_FILTER} AND n.posting_date >= CURRENT_DATE - 30
-        GROUP BY n.item_no, ic.description, ic.category, ic.brand
+          SUM(a.units)::numeric AS units_sold,
+          SUM(a.revenue)::numeric AS revenue
+        FROM all_sales a
+        LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
+        WHERE a.sale_date >= CURRENT_DATE - 30
+        GROUP BY a.item_no, ic.description, ic.category, ic.brand
         ORDER BY units_sold DESC LIMIT 15
       `),
       query<{ item_no: string; description: string; in_stock: string; units_sold_30d: string; days_remaining: string }>(`
@@ -48,13 +56,13 @@ export async function POST(req: NextRequest) {
           CASE WHEN r.units_sold > 0 THEN ROUND(ws.in_stock / (r.units_sold / 30.0)) ELSE NULL END AS days_remaining
         FROM warehouse_stock ws
         LEFT JOIN item_categorisation ic ON ws.item_no = ic.item_no
-        LEFT JOIN (SELECT item_no, SUM(-invoiced_qty) AS units_sold FROM nav_sales WHERE ${SALES_FILTER} AND posting_date >= CURRENT_DATE - 30 GROUP BY item_no) r ON ws.item_no = r.item_no
+        LEFT JOIN (SELECT item_no, SUM(units) AS units_sold FROM all_sales WHERE sale_date >= CURRENT_DATE - 30 GROUP BY item_no) r ON ws.item_no = r.item_no
         WHERE ws.in_stock > 0 AND ws.in_stock <= 5 AND COALESCE(r.units_sold, 0) > 0
         ORDER BY days_remaining ASC NULLS LAST LIMIT 10
       `),
       query<{ store_code: string; revenue: string; units: string }>(`
-        SELECT store_code, SUM(sales_amount)::numeric AS revenue, SUM(-invoiced_qty)::numeric AS units
-        FROM nav_sales WHERE ${SALES_FILTER} AND posting_date >= CURRENT_DATE - 30
+        SELECT store_code, SUM(revenue)::numeric AS revenue, SUM(units)::numeric AS units
+        FROM all_sales WHERE sale_date >= CURRENT_DATE - 30
         GROUP BY store_code ORDER BY revenue DESC
       `),
       query<{ egp_per_usd: string }>(
