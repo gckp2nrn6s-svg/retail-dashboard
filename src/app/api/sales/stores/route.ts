@@ -33,11 +33,38 @@ export async function GET(req: NextRequest) {
     ),
     query<{ category: string; revenue: string; units: string }>(`
       SELECT
-        COALESCE(ic.category, 'Other') AS category,
+        CASE
+          WHEN ic.category IS NOT NULL THEN ic.category
+          WHEN a.source = 'shopify' THEN
+            CASE
+              WHEN LOWER(pt.product_title) LIKE '%spinner%'     THEN 'Luggage'
+              WHEN LOWER(pt.product_title) LIKE '%trolley%'     THEN 'Luggage'
+              WHEN LOWER(pt.product_title) LIKE '%suitcase%'    THEN 'Luggage'
+              WHEN LOWER(pt.product_title) LIKE '%carry%on%'    THEN 'Luggage'
+              WHEN LOWER(pt.product_title) LIKE '%hardcase%'    THEN 'Luggage'
+              WHEN LOWER(pt.product_title) LIKE '%backpack%'    THEN 'Backpacks'
+              WHEN LOWER(pt.product_title) LIKE '%laptop%'      THEN 'Backpacks'
+              WHEN LOWER(pt.product_title) LIKE '%handbag%'     THEN 'Bags'
+              WHEN LOWER(pt.product_title) LIKE '%tote%'        THEN 'Bags'
+              WHEN LOWER(pt.product_title) LIKE '%bag%'         THEN 'Bags'
+              WHEN LOWER(pt.product_title) LIKE '%wallet%'      THEN 'Accessories'
+              WHEN LOWER(pt.product_title) LIKE '%belt%'        THEN 'Accessories'
+              WHEN LOWER(pt.product_title) LIKE '%accessori%'   THEN 'Accessories'
+              WHEN LOWER(pt.product_title) LIKE '%travel%'      THEN 'Travel Accessories'
+              WHEN LOWER(pt.product_title) LIKE '%pillow%'      THEN 'Travel Accessories'
+              WHEN LOWER(pt.product_title) LIKE '%lock%'        THEN 'Travel Accessories'
+              WHEN pt.product_title IS NOT NULL                  THEN 'Online Other'
+              ELSE CONCAT('Line ', UPPER(LEFT(a.item_no, 3)))
+            END
+          ELSE 'Uncategorised'
+        END AS category,
         SUM(a.revenue)::numeric AS revenue,
         SUM(a.units)::numeric   AS units
       FROM all_sales a
       LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
+      LEFT JOIN LATERAL (
+        SELECT product_title FROM shopify_sales WHERE sku = a.item_no LIMIT 1
+      ) pt ON true
       WHERE ${aliasedFilter}
       GROUP BY 1
       ORDER BY revenue DESC

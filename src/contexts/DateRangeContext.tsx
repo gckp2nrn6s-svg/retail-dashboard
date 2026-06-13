@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type DatePreset = "7d" | "30d" | "90d" | "ytd" | "custom";
+export type DatePreset = "mtd" | "7d" | "30d" | "90d" | "ytd" | "custom";
 
 export interface DateRange {
   from: string; // YYYY-MM-DD
@@ -15,14 +15,22 @@ function daysAgo(n: number) {
   const d = new Date(); d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
 }
-function startOfYear() { return `${new Date().getFullYear()}-01-01`; }
+function startOfYear()  { return `${new Date().getFullYear()}-01-01`; }
+function startOfMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+function mtdLabel() {
+  return new Date().toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+}
 
 export const PRESETS: { key: DatePreset; label: string; from: () => string; to: () => string }[] = [
-  { key: "7d",     label: "Last 7 days",  from: () => daysAgo(7),       to: today },
-  { key: "30d",    label: "Last 30 days", from: () => daysAgo(30),      to: today },
-  { key: "90d",    label: "Last 90 days", from: () => daysAgo(90),      to: today },
-  { key: "ytd",    label: "Year to date", from: () => startOfYear(),     to: today },
-  { key: "custom", label: "Custom range", from: () => daysAgo(30),      to: today },
+  { key: "mtd",    label: `MTD · ${mtdLabel()}`, from: startOfMonth,        to: today },
+  { key: "7d",     label: "Last 7 days",          from: () => daysAgo(7),    to: today },
+  { key: "30d",    label: "Last 30 days",          from: () => daysAgo(30),   to: today },
+  { key: "90d",    label: "Last 90 days",          from: () => daysAgo(90),   to: today },
+  { key: "ytd",    label: "Year to date",          from: startOfYear,         to: today },
+  { key: "custom", label: "Custom range",          from: () => daysAgo(30),   to: today },
 ];
 
 function makeRange(preset: DatePreset, customFrom?: string, customTo?: string): DateRange {

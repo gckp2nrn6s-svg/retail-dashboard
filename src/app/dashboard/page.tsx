@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   RefreshCw, ChevronRight, ArrowUpRight, ArrowDownRight,
-  TrendingUp, Package, MessageCircle, BarChart2,
+  TrendingUp, Package, MessageCircle, BarChart2, Store,
 } from "lucide-react";
 import { useCurrency, CurrencyToggle, fmt } from "@/components/CurrencyToggle";
 import { useDateRange } from "@/contexts/DateRangeContext";
@@ -22,6 +22,21 @@ interface KPI {
   fx: number;
 }
 interface ChartPoint { date: string; egp: number; usd: number; units: number }
+interface StoreRow  { code: string; name: string; group: string; egp: number; usd: number; units: number; pct: number; wow: number | null; this7: number }
+interface Channel   { group: string; egp: number; usd: number; units: number; pct: number; storeCount: number }
+interface BrandRow  { brand: string; egp: number; usd: number; units: number; pct: number }
+interface CatRow    { category: string; egp: number; usd: number; units: number; pct: number }
+interface ProductRow{ item_no: string; description: string; brand: string; category: string; egp: number; usd: number; units: number; pct: number }
+
+interface HomeData {
+  stores: StoreRow[];
+  channelTotals: Channel[];
+  brands: BrandRow[];
+  categories: CatRow[];
+  products: ProductRow[];
+  totalRev: number;
+  fx: number;
+}
 
 const TYPE_CFG = {
   critical:    { accent: "#EF4444", bg: "rgba(239,68,68,0.08)",  border: "rgba(239,68,68,0.2)",  label: "URGENT" },
@@ -29,6 +44,14 @@ const TYPE_CFG = {
   opportunity: { accent: "#10B981", bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.2)", label: "OPPORTUNITY" },
   win:         { accent: "#2563EB", bg: "rgba(37,99,235,0.08)",  border: "rgba(37,99,235,0.2)",  label: "WIN" },
 } as const;
+
+const CHANNEL_COLORS: Record<string,string> = { Retail: "#0D9488", Online: "#7C3AED", B2B: "#EA580C" };
+const STORE_COLORS: Record<string,string> = {
+  "CSTARS":"#2563EB","CF-HOS":"#0D9488","ALMAZA":"#7C3AED","P90":"#EA580C",
+  "CCA":"#EC4899","SHOPIFY-AMT":"#10B981","SHOPIFY-SAM":"#059669",
+  "NOON":"#FBBF24","AMAZON":"#F97316","JUMIA":"#EF4444",
+};
+function sColor(code: string) { return STORE_COLORS[code] ?? "#94A3B8"; }
 
 function InsightCard({ insight, idx }: { insight: Insight; idx: number }) {
   const c = TYPE_CFG[insight.type];
@@ -55,11 +78,15 @@ function InsightCard({ insight, idx }: { insight: Insight; idx: number }) {
   );
 }
 
-function Delta({ v, large = false }: { v: number | null; large?: boolean }) {
+function Delta({ v, large = false, dark = false }: { v: number | null; large?: boolean; dark?: boolean }) {
   if (v === null) return null;
   const up = v >= 0;
+  const green = dark ? "#34D399" : "var(--green)";
+  const red   = dark ? "#F87171" : "var(--red)";
+  const greenBg = dark ? "rgba(52,211,153,0.15)" : "var(--green-light)";
+  const redBg   = dark ? "rgba(248,113,113,0.15)" : "var(--red-light)";
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: large ? "0.8rem" : "0.65rem", fontWeight: 700, color: up ? "var(--green)" : "var(--red)", background: up ? "var(--green-light)" : "var(--red-light)", padding: "2px 8px", borderRadius: 20 }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: large ? "0.8rem" : "0.65rem", fontWeight: 700, color: up ? green : red, background: up ? greenBg : redBg, padding: "2px 8px", borderRadius: 20 }}>
       {up ? <ArrowUpRight size={large ? 13 : 11} /> : <ArrowDownRight size={large ? 13 : 11} />}
       {Math.abs(v).toFixed(1)}%
     </span>
@@ -80,22 +107,17 @@ function MiniKpi({ label, value, sub, delta, onClick, dark = false }: { label: s
       <p style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: lbl, marginBottom: 6 }}>{label}</p>
       <p style={{ fontSize: "1.3rem", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1, color: txt }}>{value}</p>
       {sub && <p style={{ fontSize: "0.6rem", color: lbl, marginTop: 4 }}>{sub}</p>}
-      {delta !== undefined && delta !== null && <div style={{ marginTop: 6 }}><Delta v={delta} /></div>}
+      {delta !== undefined && delta !== null && <div style={{ marginTop: 6 }}><Delta v={delta} dark={dark} /></div>}
     </div>
   );
 }
 
-function ChannelPill({ label, icon, color, onClick }: { label: string; icon: string; color: string; onClick: () => void }) {
+function SectionHeader({ title, sub }: { title: string; sub?: string }) {
   return (
-    <button onClick={onClick}
-      style={{ flex: 1, padding: "14px 8px", borderRadius: 16, border: `1.5px solid ${color}25`, background: `${color}08`, cursor: "pointer", textAlign: "center", transition: "all 0.15s" }}
-      onMouseEnter={e => { e.currentTarget.style.background = `${color}15`; e.currentTarget.style.borderColor = `${color}50`; }}
-      onMouseLeave={e => { e.currentTarget.style.background = `${color}08`; e.currentTarget.style.borderColor = `${color}25`; }}
-    >
-      <p style={{ fontSize: "1.4rem", marginBottom: 5 }}>{icon}</p>
-      <p style={{ fontSize: "0.72rem", fontWeight: 700, color }}>{label}</p>
-      <p style={{ fontSize: "0.58rem", color: "var(--text4)", marginTop: 2 }}>drill down →</p>
-    </button>
+    <div style={{ marginBottom: 10, display: "flex", alignItems: "baseline", gap: 8 }}>
+      <p style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text3)" }}>{title}</p>
+      {sub && <p style={{ fontSize: "0.58rem", color: "var(--text4)" }}>{sub}</p>}
+    </div>
   );
 }
 
@@ -107,22 +129,27 @@ export default function HomePage() {
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [home, setHome] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [homeLoading, setHomeLoading] = useState(true);
   const [insightsLoading, setInsightsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (from: string, to: string) => {
     setLoading(true);
+    setHomeLoading(true);
     try {
       const days = Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / 86400000);
       const cr = days <= 8 ? "7d" : days <= 32 ? "30d" : days <= 92 ? "90d" : "12m";
-      const [kpiRes, chartRes] = await Promise.all([
+      const [kpiRes, chartRes, homeRes] = await Promise.all([
         fetch(`/api/kpis?from=${from}&to=${to}`).then(x => x.json()),
         fetch(`/api/sales/chart?range=${cr}&from=${from}&to=${to}`).then(x => x.json()),
+        fetch(`/api/home?from=${from}&to=${to}`).then(x => x.json()),
       ]);
       setKpi(kpiRes);
       setChart(chartRes.series || []);
-    } finally { setLoading(false); setRefreshing(false); }
+      setHome(homeRes);
+    } finally { setLoading(false); setHomeLoading(false); setRefreshing(false); }
   }, []);
 
   const loadInsights = useCallback(async () => {
@@ -139,24 +166,25 @@ export default function HomePage() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const dateStr = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
-
   const criticalCount = insights.filter(x => x.type === "critical").length;
-  const winCount      = insights.filter(x => x.type === "win").length;
 
-  const drillUrl = (p: Record<string, string>) =>
-    "/api/drill?" + new URLSearchParams({ ...p, from: range.from, to: range.to }).toString();
+  const drillUrl = (params: Record<string, string>) =>
+    "/api/drill?" + new URLSearchParams({ ...params, from: range.from, to: range.to }).toString();
 
-  const fmtMoney = (v: { egp: number; usd: number }) =>
-    currency === "USD" ? `$${Math.round(v.usd).toLocaleString()}` : `EGP ${Math.round(v.egp).toLocaleString()}`;
-  const secondaryCcy = (v: { egp: number; usd: number }) =>
-    currency === "USD" ? `EGP ${Math.round(v.egp).toLocaleString()}` : `$${Math.round(v.usd).toLocaleString()}`;
+  const fmtEgp = (n: number) => `EGP ${n.toLocaleString()}`;
+  const fmtUsd = (n: number) => `$${n.toLocaleString()}`;
+  const fmtMoney = (egp: number, usd: number) => currency === "USD" ? fmtUsd(usd) : fmtEgp(egp);
+  const fmtKpi   = (v: { egp: number; usd: number }) => fmtMoney(v.egp, v.usd);
+  const altKpi   = (v: { egp: number; usd: number }) => currency === "USD" ? fmtEgp(v.egp) : fmtUsd(v.usd);
+
+  const topStore = home?.stores[0];
+  const maxRev   = topStore?.egp ?? 1;
 
   return (
     <div style={{ minHeight: "100%", background: "var(--bg)", paddingBottom: 80 }}>
 
-      {/* ── HERO HEADER ─────────────────────────────────────── */}
+      {/* ── HERO ─────────────────────────────────────────────── */}
       <div style={{ background: "linear-gradient(160deg, #050D1A 0%, #0D1B2A 50%, #0f2d4a 100%)", paddingBottom: 28, position: "relative", overflow: "hidden" }}>
-        {/* bg glow */}
         <div style={{ position: "absolute", top: -100, right: -60, width: 350, height: 350, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
 
         {/* Top bar */}
@@ -172,30 +200,31 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Alert */}
+        {/* Alert banner */}
         {!insightsLoading && criticalCount > 0 && (
           <div style={{ margin: "12px 24px 0", display: "flex", alignItems: "center", gap: 10, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 12, padding: "8px 14px" }}>
             <span style={{ fontSize: "0.75rem" }}>🚨</span>
-            <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#FCA5A5" }}>{criticalCount} urgent item{criticalCount > 1 ? "s" : ""} need your attention — scroll the feed</span>
+            <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#FCA5A5" }}>{criticalCount} urgent item{criticalCount > 1 ? "s" : ""} need your attention</span>
+            <Link href="/dashboard/stock?tab=low" style={{ marginLeft: "auto", fontSize: "0.62rem", color: "#FCA5A5", textDecoration: "none", fontWeight: 700 }}>View →</Link>
           </div>
         )}
 
-        {/* HERO revenue */}
+        {/* Revenue hero */}
         <div style={{ padding: "24px 24px 0", cursor: "pointer" }} onClick={() => openDrill({ title: `Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })}>
           <p style={{ fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>
             Total Revenue · {range.label}
           </p>
           {loading ? (
-            <div style={{ height: 68, width: 280, borderRadius: 12, background: "rgba(255,255,255,0.07)", animation: "shimmer 1.6s ease-in-out infinite", backgroundSize: "200% 100%", backgroundImage: "linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%)" }} />
+            <div style={{ height: 68, width: 280, borderRadius: 12, background: "rgba(255,255,255,0.07)" }} className="skeleton" />
           ) : (
             <div className="fade-up">
               <p style={{ fontSize: "clamp(38px,8vw,58px)", fontWeight: 900, letterSpacing: "-0.05em", lineHeight: 1, color: "white" }}>
-                {kpi ? fmtMoney(kpi.revenue) : "—"}
+                {kpi ? fmtKpi(kpi.revenue) : "—"}
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-                <Delta v={kpi?.revChange ?? null} large />
+                <Delta v={kpi?.revChange ?? null} large dark />
                 <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.3)" }}>vs previous period</span>
-                {kpi && <><span style={{ color: "rgba(255,255,255,0.2)" }}>·</span><span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.3)" }}>{secondaryCcy(kpi.revenue)}</span></>}
+                {kpi && <><span style={{ color: "rgba(255,255,255,0.2)" }}>·</span><span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.3)" }}>{altKpi(kpi.revenue)}</span></>}
               </div>
             </div>
           )}
@@ -203,16 +232,14 @@ export default function HomePage() {
 
         {/* Sub KPIs */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "18px 24px 0" }} className="kpi-sub-grid">
-          <MiniKpi label="Units Sold"    value={loading ? "—" : kpi!.units.toLocaleString()} delta={kpi?.unitsChange ?? null} dark onClick={() => openDrill({ title: `Units · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })} />
-          <MiniKpi label="Avg Ticket"    value={loading ? "—" : fmtMoney(kpi!.avgTicket)} sub={loading ? "" : secondaryCcy(kpi!.avgTicket)} dark onClick={() => openDrill({ title: `Top Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) })} />
-          <MiniKpi label="Active Stores" value={loading ? "—" : String(kpi?.activeStores ?? "—")} sub={loading ? "" : `1 EGP = $${kpi!.fx.toFixed(2)}`} dark onClick={() => openDrill({ title: `All Channels · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "all" }) })} />
+          <MiniKpi label="Units Sold"    value={loading ? "—" : kpi!.units.toLocaleString()} delta={kpi?.unitsChange ?? null} dark onClick={() => openDrill({ title: `Daily Units · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })} />
+          <MiniKpi label="Avg Ticket"    value={loading ? "—" : fmtKpi(kpi!.avgTicket)} sub={loading ? "" : altKpi(kpi!.avgTicket)} dark onClick={() => openDrill({ title: `Top Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) })} />
+          <MiniKpi label="Active Stores" value={loading ? "—" : String(kpi?.activeStores ?? "—")} sub={loading ? "" : `1 EGP = $${(kpi?.fx ?? 52).toFixed(2)}`} dark onClick={() => openDrill({ title: `All Channels · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "all" }) })} />
         </div>
 
         {/* Sparkline */}
         <div style={{ padding: "18px 24px 0", cursor: "pointer" }} onClick={() => openDrill({ title: `Daily Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })}>
-          {loading ? (
-            <div style={{ height: 66, borderRadius: 10, background: "rgba(255,255,255,0.05)" }} />
-          ) : (
+          {loading ? <div style={{ height: 66, borderRadius: 10, background: "rgba(255,255,255,0.05)" }} className="skeleton" /> : (
             <ResponsiveContainer width="100%" height={66}>
               <AreaChart data={chart} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                 <defs>
@@ -226,7 +253,7 @@ export default function HomePage() {
                   if (!active || !payload?.length) return null;
                   const d = payload[0].payload as ChartPoint;
                   return (
-                    <div style={{ background: "rgba(5,13,26,0.95)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 12px", backdropFilter: "blur(8px)" }}>
+                    <div style={{ background: "rgba(5,13,26,0.95)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 12px" }}>
                       <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.6rem" }}>{d.date}</p>
                       <p style={{ color: "white", fontSize: "0.85rem", fontWeight: 700, marginTop: 2 }}>{fmt(d.egp, d.usd, currency)}</p>
                       <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.6rem" }}>{d.units.toLocaleString()} units</p>
@@ -237,36 +264,227 @@ export default function HomePage() {
               </AreaChart>
             </ResponsiveContainer>
           )}
-          <p style={{ fontSize: "0.56rem", color: "rgba(255,255,255,0.18)", textAlign: "right", marginTop: 4, paddingRight: 2 }}>tap chart for daily breakdown</p>
+          <p style={{ fontSize: "0.56rem", color: "rgba(255,255,255,0.18)", textAlign: "right", marginTop: 4, paddingRight: 2 }}>tap for daily breakdown</p>
         </div>
       </div>
 
-      {/* ── Body ────────────────────────────────────────────── */}
+      {/* ── BODY ─────────────────────────────────────────────── */}
       <div style={{ padding: "0 20px", maxWidth: 1400, margin: "0 auto" }}>
         <div className="home-grid">
 
           {/* LEFT COLUMN */}
           <div className="home-col-left">
 
-            {/* Channels */}
+            {/* ── CHANNEL SUMMARY ────────────────────────── */}
             <div style={{ marginTop: 20 }}>
-              <p style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text3)", marginBottom: 10 }}>By Channel</p>
-              <div style={{ display: "flex", gap: 10 }}>
-                <ChannelPill label="Retail" icon="🏪" color="#0D9488" onClick={() => openDrill({ title: `Retail Stores · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "Retail" }) })} />
-                <ChannelPill label="Online" icon="🌐" color="#7C3AED" onClick={() => openDrill({ title: `Online Channels · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "Online" }) })} />
-                <ChannelPill label="B2B"    icon="🤝" color="#EA580C" onClick={() => openDrill({ title: `B2B Accounts · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "B2B" }) })} />
+              <SectionHeader title="By Channel" sub="click to drill into stores" />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {homeLoading ? [1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 88, borderRadius: 16 }} />) :
+                  home?.channelTotals.map(ch => {
+                    const color = CHANNEL_COLORS[ch.group] ?? "#94A3B8";
+                    return (
+                      <div key={ch.group}
+                        onClick={() => openDrill({ title: `${ch.group} · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: ch.group }) })}
+                        style={{ background: `${color}08`, border: `1.5px solid ${color}25`, borderRadius: 16, padding: "14px 12px", cursor: "pointer", transition: "all 0.15s", textAlign: "center" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = `${color}15`; e.currentTarget.style.borderColor = `${color}50`; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = `${color}08`; e.currentTarget.style.borderColor = `${color}25`; e.currentTarget.style.transform = ""; }}
+                      >
+                        <p style={{ fontSize: "0.72rem", fontWeight: 700, color }}>{ch.group}</p>
+                        <p style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--text)", marginTop: 6, letterSpacing: "-0.02em" }}>
+                          {currency === "USD" ? fmtUsd(ch.usd) : fmtEgp(ch.egp)}
+                        </p>
+                        <p style={{ fontSize: "0.58rem", color: "var(--text4)", marginTop: 3 }}>{ch.units.toLocaleString()} units · {ch.pct}%</p>
+                        <p style={{ fontSize: "0.56rem", color, marginTop: 4, fontWeight: 600 }}>{ch.storeCount} store{ch.storeCount > 1 ? "s" : ""} →</p>
+                      </div>
+                    );
+                  })
+                }
               </div>
             </div>
 
-            {/* Quick actions */}
-            <div style={{ marginTop: 20 }}>
-              <p style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text3)", marginBottom: 10 }}>Quick Actions</p>
+            {/* ── STORE PERFORMANCE ──────────────────────── */}
+            <div className="card" style={{ overflow: "hidden", marginTop: 20 }}>
+              <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <SectionHeader title="Store Performance" sub={`${range.label} · click for top products`} />
+                <Store size={14} style={{ color: "var(--text4)" }} />
+              </div>
+              {homeLoading ? (
+                <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {[1,2,3,4,5].map(i => <div key={i} className="skeleton" style={{ height: 44 }} />)}
+                </div>
+              ) : home?.stores.slice(0, 10).map((s, idx) => {
+                const color = sColor(s.code);
+                const barW  = Math.round((s.egp / maxRev) * 100);
+                return (
+                  <div key={s.code}
+                    onClick={() => openDrill({ title: `${s.name} · Top Products · ${range.label}`, endpoint: drillUrl({ type: "store", store: s.code }) })}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: idx < (home.stores.length - 1) ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background 0.1s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface3)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    {/* Rank */}
+                    <span style={{ fontSize: "0.58rem", fontWeight: 700, color: "var(--text4)", width: 16, textAlign: "center", flexShrink: 0 }}>#{idx + 1}</span>
+
+                    {/* Avatar */}
+                    <div style={{ width: 30, height: 30, borderRadius: 8, background: `${color}18`, border: `1.5px solid ${color}35`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: "0.58rem", fontWeight: 800, color }}>{s.code.slice(0,2)}</span>
+                    </div>
+
+                    {/* Name + bar */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)" }}>{s.name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {s.wow !== null && <Delta v={s.wow} />}
+                          <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--text)" }}>
+                            {currency === "USD" ? fmtUsd(s.usd) : fmtEgp(s.egp)}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ flex: 1, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${barW}%`, background: `linear-gradient(90deg, ${color}, ${color}80)`, borderRadius: 2, transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
+                        </div>
+                        <span style={{ fontSize: "0.56rem", color: "var(--text4)", flexShrink: 0, width: 28, textAlign: "right" }}>{s.units}u</span>
+                      </div>
+                    </div>
+                    <ChevronRight size={12} style={{ color: "var(--text4)", flexShrink: 0 }} />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── TOP PRODUCTS ───────────────────────────── */}
+            <div className="card" style={{ overflow: "hidden", marginTop: 14 }}>
+              <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <SectionHeader title="Top Products" sub={`by revenue · ${range.label}`} />
+                <button onClick={() => openDrill({ title: `All Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) })} style={{ fontSize: "0.6rem", color: "var(--action)", background: "var(--action-light)", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontWeight: 700 }}>See all</button>
+              </div>
+              {homeLoading ? (
+                <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {[1,2,3,4,5].map(i => <div key={i} className="skeleton" style={{ height: 44 }} />)}
+                </div>
+              ) : home?.products.map((p, idx) => {
+                const catColors: Record<string,string> = { Luggage: "#2563EB", Backpacks: "#0D9488", Bags: "#7C3AED", Accessories: "#EA580C", "Travel Accessories": "#F59E0B" };
+                const color = catColors[p.category] ?? "#94A3B8";
+                const pBarW = home.totalRev > 0 ? Math.round((p.egp / home.totalRev) * 100 * 3) : 0;
+                return (
+                  <div key={p.item_no}
+                    onClick={() => openDrill({ title: `${p.description} · All Stores`, endpoint: drillUrl({ type: "item", item: p.item_no }) })}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: idx < (home.products.length - 1) ? "1px solid var(--border)" : "none", cursor: "pointer", transition: "background 0.1s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface3)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    {/* Rank badge */}
+                    <div style={{ width: 24, height: 24, borderRadius: 6, background: idx < 3 ? `${color}20` : "var(--surface3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <span style={{ fontSize: "0.62rem", fontWeight: 800, color: idx < 3 ? color : "var(--text4)" }}>#{idx + 1}</span>
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                        <p style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%" }}>{p.description || p.item_no}</p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: "0.58rem", color: "var(--text4)" }}>{p.units}u</span>
+                          <span style={{ fontSize: "0.78rem", fontWeight: 800, color: "var(--text)" }}>
+                            {currency === "USD" ? fmtUsd(p.usd) : fmtEgp(p.egp)}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: "0.56rem", fontWeight: 600, color, background: `${color}15`, padding: "1px 5px", borderRadius: 5, flexShrink: 0 }}>{p.category || "Other"}</span>
+                        {p.brand && <span style={{ fontSize: "0.56rem", color: "var(--text4)" }}>{p.brand}</span>}
+                        <div style={{ flex: 1, height: 3, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${Math.min(pBarW, 100)}%`, background: color, borderRadius: 2 }} />
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight size={12} style={{ color: "var(--text4)", flexShrink: 0 }} />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── BRAND SPLIT ────────────────────────────── */}
+            {!homeLoading && home && home.brands.length > 0 && (
+              <div className="card" style={{ padding: "14px 16px", marginTop: 14 }}>
+                <SectionHeader title="Brand Breakdown" sub="click to drill into products" />
+                {home.brands.map((b, idx) => {
+                  const brandColors: Record<string,string> = { "Samsonite": "#003087", "American Tourister": "#E4002B", "Tumi": "#B8860B", "Hartmann": "#4A4A4A" };
+                  const color = brandColors[b.brand] ?? ["#2563EB","#0D9488","#7C3AED","#EA580C","#EC4899","#F59E0B"][idx % 6];
+                  return (
+                    <div key={b.brand}
+                      onClick={() => openDrill({ title: `${b.brand} Products · ${range.label}`, endpoint: drillUrl({ type: "items", brand: b.brand }) })}
+                      style={{ marginBottom: 12, cursor: "pointer", borderRadius: 10, padding: "6px 8px", margin: "0 -8px 8px", transition: "background 0.1s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "var(--surface3)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>{b.brand}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: "0.6rem", color: "var(--text4)" }}>{b.units.toLocaleString()} units</span>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--text)" }}>
+                            {currency === "USD" ? fmtUsd(b.usd) : fmtEgp(b.egp)}
+                          </span>
+                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color, background: `${color}14`, padding: "2px 7px", borderRadius: 12 }}>{b.pct}%</span>
+                        </div>
+                      </div>
+                      <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${b.pct}%`, background: `linear-gradient(90deg, ${color}, ${color}80)`, borderRadius: 3, transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── CATEGORY BREAKDOWN ─────────────────────── */}
+            {!homeLoading && home && home.categories.length > 0 && (
+              <div className="card" style={{ padding: "14px 16px", marginTop: 14 }}>
+                <SectionHeader title="Category Breakdown" sub="click to see products in each category" />
+                {home.categories.slice(0, 8).map((c, idx) => {
+                  const catColors: Record<string,string> = { Luggage: "#2563EB", Backpacks: "#0D9488", Bags: "#7C3AED", Accessories: "#EA580C", "Travel Accessories": "#F59E0B", "Online Other": "#6366F1" };
+                  const color = catColors[c.category] ?? ["#06B6D4","#EC4899","#84CC16","#FB923C"][idx % 4];
+                  return (
+                    <div key={c.category}
+                      onClick={() => openDrill({ title: `${c.category} Products · ${range.label}`, endpoint: drillUrl({ type: "category", category: c.category }) })}
+                      style={{ marginBottom: 8, cursor: "pointer", borderRadius: 10, padding: "6px 8px", margin: "0 -8px 8px", transition: "background 0.1s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "var(--surface3)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>{c.category}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: "0.6rem", color: "var(--text4)" }}>{c.units.toLocaleString()} u</span>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--text)" }}>
+                            {currency === "USD" ? fmtUsd(c.usd) : fmtEgp(c.egp)}
+                          </span>
+                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color, background: `${color}14`, padding: "2px 7px", borderRadius: 12 }}>{c.pct}%</span>
+                        </div>
+                      </div>
+                      <div style={{ height: 5, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${c.pct}%`, background: `linear-gradient(90deg, ${color}, ${color}80)`, borderRadius: 3, transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── QUICK ACTIONS ──────────────────────────── */}
+            <div style={{ marginTop: 14 }}>
+              <SectionHeader title="Quick Actions" />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 {[
-                  { label: "Sales Analysis",  sub: "Channels & stores",   icon: <TrendingUp    size={17}/>, href: "/dashboard/sales",         color: "#2563EB" },
-                  { label: "Stock Alerts",    sub: "Critical & low stock", icon: <Package       size={17}/>, href: "/dashboard/stock?tab=low",  color: "#EF4444" },
-                  { label: "Fast Movers",     sub: "Top selling now",      icon: <BarChart2     size={17}/>, href: "/dashboard/stock?tab=fast", color: "#F59E0B" },
-                  { label: "Ask AI",          sub: "Get recommendations",  icon: <MessageCircle size={17}/>, href: "/dashboard/ask",            color: "#8B5CF6" },
+                  { label: "Sales Analysis",  sub: "Channels & stores",    icon: <TrendingUp    size={17}/>, href: "/dashboard/sales",         color: "#2563EB" },
+                  { label: "Stock Alerts",    sub: "Critical & low stock",  icon: <Package       size={17}/>, href: "/dashboard/stock?tab=low",  color: "#EF4444" },
+                  { label: "Fast Movers",     sub: "Top selling now",       icon: <BarChart2     size={17}/>, href: "/dashboard/stock?tab=fast", color: "#F59E0B" },
+                  { label: "Ask AI",          sub: "Get recommendations",   icon: <MessageCircle size={17}/>, href: "/dashboard/ask",            color: "#8B5CF6" },
                 ].map(q => (
                   <Link key={q.href} href={q.href} style={{ textDecoration: "none" }}>
                     <div className="card card-hover" style={{ padding: "13px 15px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -282,20 +500,9 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Win banner */}
-            {winCount > 0 && !insightsLoading && (
-              <div className="fade-up" style={{ marginTop: 14, background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(37,99,235,0.05))", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: "1.1rem" }}>🏆</span>
-                <div>
-                  <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--green)" }}>{winCount} positive signal{winCount > 1 ? "s" : ""} detected</p>
-                  <p style={{ fontSize: "0.6rem", color: "var(--text3)", marginTop: 2 }}>See intelligence feed →</p>
-                </div>
-              </div>
-            )}
-
-            {/* Mobile feed */}
+            {/* Mobile intel feed */}
             <div className="mobile-intel-feed" style={{ marginTop: 20 }}>
-              <p style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text3)", marginBottom: 10 }}>Intelligence Feed</p>
+              <SectionHeader title="Intelligence Feed" />
               {insightsLoading ? (
                 <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
                   {[1,2,3].map(i => <div key={i} className="skeleton" style={{ minWidth: 270, height: 160, borderRadius: 18, flexShrink: 0 }} />)}
@@ -313,7 +520,7 @@ export default function HomePage() {
 
           </div>
 
-          {/* RIGHT — desktop feed */}
+          {/* RIGHT — desktop intelligence feed */}
           <div className="home-col-right" style={{ marginTop: 20 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <div>
