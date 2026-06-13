@@ -1,175 +1,243 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, TrendingUp, Package, Users, BarChart2 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { Send, Sparkles, RotateCcw } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
-  chartData?: {
-    type: string;
-    title: string;
-    labels: string[];
-    datasets: { label: string; data: number[] }[];
-  };
+  chartData?: { type: string; data: Record<string, unknown>[]; xKey: string; yKey: string; label?: string };
+  loading?: boolean;
 }
 
-const QUICK_PROMPTS = [
-  { label: "Fast movers this week", icon: TrendingUp },
-  { label: "Low stock alerts", icon: Package },
-  { label: "Top customers", icon: Users },
-  { label: "Store comparison", icon: BarChart2 },
+const SUGGESTIONS = [
+  "What are my top 10 selling products this month?",
+  "Which stores are underperforming vs last month?",
+  "What's at risk of stocking out in the next 2 weeks?",
+  "Show me Samsonite revenue trend over 90 days",
+  "Which colours sell best in luggage?",
+  "Compare retail vs online sales this year",
+  "What's my slowest moving inventory by value?",
+  "Which category has the best margin?",
 ];
 
-function InlineChart({ data }: { data: NonNullable<Message["chartData"]> }) {
-  const chartData = data.labels.map((label, i) => ({
-    name: label,
-    ...Object.fromEntries(data.datasets.map((d) => [d.label, d.data[i]])),
-  }));
+const CHART_COLORS = ["#2563EB", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899"];
 
-  return (
-    <div className="mt-3 bg-white border border-gray-100 rounded-xl p-3">
-      <p className="text-xs text-gray-500 mb-2">{data.title}</p>
-      <ResponsiveContainer width="100%" height={140}>
-        {data.type === "line" ? (
-          <LineChart data={chartData}>
-            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-            <YAxis tick={{ fontSize: 10 }} />
-            <Tooltip />
-            {data.datasets.map((d) => (
-              <Line key={d.label} type="monotone" dataKey={d.label} stroke="#2563eb" dot={false} />
-            ))}
-          </LineChart>
-        ) : (
-          <BarChart data={chartData}>
-            <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-            <YAxis tick={{ fontSize: 10 }} />
-            <Tooltip />
-            {data.datasets.map((d, i) => (
-              <Bar key={d.label} dataKey={d.label} fill={["#2563eb", "#16a34a", "#d97706"][i % 3]} radius={[3, 3, 0, 0]} />
-            ))}
-          </BarChart>
-        )}
+function ChartBlock({ chart }: { chart: NonNullable<Message["chartData"]> }) {
+  if (chart.type === "bar") {
+    return (
+      <ResponsiveContainer width="100%" height={160}>
+        <BarChart data={chart.data} margin={{ top: 5, right: 5, left: -20, bottom: 20 }}>
+          <XAxis dataKey={chart.xKey} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} angle={-30} textAnchor="end" interval={0} />
+          <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+          <Tooltip contentStyle={{ fontSize: "0.65rem", borderRadius: 8, border: "1px solid var(--border)" }} />
+          <Bar dataKey={chart.yKey} fill="#2563EB" radius={[3, 3, 0, 0]}>
+            {chart.data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
-    </div>
-  );
+    );
+  }
+  if (chart.type === "line") {
+    return (
+      <ResponsiveContainer width="100%" height={140}>
+        <LineChart data={chart.data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+          <XAxis dataKey={chart.xKey} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+          <Tooltip contentStyle={{ fontSize: "0.65rem", borderRadius: 8, border: "1px solid var(--border)" }} />
+          <Line type="monotone" dataKey={chart.yKey} stroke="#2563EB" strokeWidth={2} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
+  if (chart.type === "pie") {
+    return (
+      <ResponsiveContainer width="100%" height={160}>
+        <PieChart>
+          <Pie data={chart.data} dataKey={chart.yKey} nameKey={chart.xKey} cx="50%" cy="50%" outerRadius={55} innerRadius={30} paddingAngle={2}>
+            {chart.data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+          </Pie>
+          <Tooltip contentStyle={{ fontSize: "0.65rem", borderRadius: 8, border: "1px solid var(--border)" }} />
+        </PieChart>
+      </ResponsiveContainer>
+    );
+  }
+  return null;
 }
 
 export default function AskPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "Hi Sherif! I have access to your live NAV data and Shopify stores. Ask me anything about your business — sales, stock, customers, trends.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function send(text: string) {
-    if (!text.trim() || loading) return;
-    const userMsg: Message = { role: "user", content: text };
-    setMessages((m) => [...m, userMsg]);
+  const send = async (text?: string) => {
+    const q = (text || input).trim();
+    if (!q || loading) return;
     setInput("");
+
+    const userMsg: Message = { role: "user", content: q };
+    const loadingMsg: Message = { role: "assistant", content: "", loading: true };
+    setMessages((prev) => [...prev, userMsg, loadingMsg]);
     setLoading(true);
 
     try {
-      const history = messages.slice(-6).map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: q, history: messages.filter((m) => !m.loading) }),
       });
       const data = await res.json();
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: data.text, chartData: data.chartData },
+      setMessages((prev) => [
+        ...prev.slice(0, -1),
+        { role: "assistant", content: data.content || data.error || "No response", chartData: data.chartData },
       ]);
     } catch {
-      setMessages((m) => [...m, { role: "assistant", content: "Sorry, something went wrong. Try again." }]);
+      setMessages((prev) => [...prev.slice(0, -1), { role: "assistant", content: "Something went wrong. Try again." }]);
     } finally {
       setLoading(false);
     }
-  }
+  };
+
+  const reset = () => setMessages([]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 pb-2 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center">
-            <Sparkles size={14} className="text-blue-600" />
-          </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg, #0D1B2A 0%, #1a3a5c 100%)", flexShrink: 0 }}>
+        <div className="px-4 pt-12 pb-3 flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold">AI Assistant</p>
-            <p className="text-xs text-gray-400">live data · NAV + Shopify</p>
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} style={{ color: "#60A5FA" }} />
+              <h1 style={{ color: "white", fontSize: "1.2rem", fontWeight: 700, letterSpacing: "-0.02em" }}>Ask AI</h1>
+            </div>
+            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.72rem", marginTop: 2 }}>
+              Ask anything about your sales, stock, or products
+            </p>
           </div>
+          {messages.length > 0 && (
+            <button onClick={reset} style={{ color: "rgba(255,255,255,0.5)", padding: 6, background: "rgba(255,255,255,0.08)", borderRadius: 8, border: "none", cursor: "pointer" }}>
+              <RotateCcw size={15} />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white rounded-br-sm"
-                  : "bg-gray-100 text-gray-900 rounded-bl-sm"
-              }`}
-            >
-              <p className="leading-relaxed">{msg.content}</p>
-              {msg.chartData && <InlineChart data={msg.chartData} />}
-            </div>
-          </div>
-        ))}
-
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
-              <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {messages.length === 0 && (
+          <div>
+            <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+              Suggested questions
+            </p>
+            <div className="space-y-2">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} onClick={() => send(s)}
+                  style={{
+                    width: "100%", textAlign: "left", padding: "10px 12px",
+                    borderRadius: 12, border: "1.5px solid var(--border)",
+                    background: "var(--surface)", cursor: "pointer",
+                    fontSize: "0.75rem", color: "var(--text2)", lineHeight: 1.4,
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
         )}
+
+        {messages.map((msg, i) => (
+          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start", gap: 4 }}>
+            <div style={{
+              maxWidth: "88%",
+              background: msg.role === "user" ? "var(--navy)" : "var(--surface)",
+              color: msg.role === "user" ? "white" : "var(--text)",
+              borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+              padding: "10px 14px",
+              border: msg.role === "assistant" ? "1px solid var(--border)" : "none",
+              fontSize: "0.8rem",
+              lineHeight: 1.5,
+            }}>
+              {msg.loading ? (
+                <div style={{ display: "flex", gap: 4, alignItems: "center", padding: "2px 0" }}>
+                  {[0, 1, 2].map((j) => (
+                    <div key={j} style={{
+                      width: 6, height: 6, borderRadius: "50%", background: "var(--accent)",
+                      animation: "bounce 1.2s infinite",
+                      animationDelay: `${j * 0.2}s`,
+                    }} />
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <p style={{ whiteSpace: "pre-wrap" }}>{msg.content}</p>
+                  {msg.chartData && (
+                    <div style={{ marginTop: 10, marginLeft: -2, marginRight: -2 }}>
+                      {msg.chartData.label && (
+                        <p style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--text3)", marginBottom: 4 }}>{msg.chartData.label}</p>
+                      )}
+                      <ChartBlock chart={msg.chartData} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ))}
         <div ref={bottomRef} />
       </div>
 
-      <div className="flex gap-2 px-4 pb-2 overflow-x-auto">
-        {QUICK_PROMPTS.map(({ label, icon: Icon }) => (
+      {/* Input */}
+      <div style={{
+        padding: "10px 16px 16px",
+        borderTop: "1px solid var(--border)",
+        background: "var(--surface)",
+        flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Ask about sales, stock, or any product…"
+            rows={1}
+            style={{
+              flex: 1, padding: "10px 12px", borderRadius: 12, resize: "none",
+              border: "1.5px solid var(--border)", background: "var(--surface2)",
+              fontSize: "0.8rem", outline: "none", lineHeight: 1.5,
+              maxHeight: 80, overflow: "auto",
+            }}
+          />
           <button
-            key={label}
-            onClick={() => send(label)}
-            className="flex items-center gap-1.5 whitespace-nowrap text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 bg-white shrink-0"
+            onClick={() => send()}
+            disabled={!input.trim() || loading}
+            style={{
+              width: 40, height: 40, borderRadius: 12, border: "none", cursor: "pointer",
+              background: input.trim() && !loading ? "var(--navy)" : "var(--border)",
+              color: input.trim() && !loading ? "white" : "var(--text3)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0, transition: "all 0.15s",
+            }}
           >
-            <Icon size={12} />
-            {label}
+            <Send size={16} />
           </button>
-        ))}
+        </div>
       </div>
 
-      <div className="p-3 border-t border-gray-100 flex items-center gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send(input)}
-          placeholder="Ask anything about your business..."
-          className="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-sm outline-none placeholder:text-gray-400"
-        />
-        <button
-          onClick={() => send(input)}
-          disabled={!input.trim() || loading}
-          className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center disabled:opacity-40"
-        >
-          <Send size={15} className="text-white" />
-        </button>
-      </div>
+      <style>{`
+        @keyframes bounce {
+          0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+          40% { transform: scale(1.1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
