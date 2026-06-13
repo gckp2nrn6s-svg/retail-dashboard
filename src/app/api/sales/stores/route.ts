@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   const totalRev = storeRows.reduce((s, r) => s + parseFloat(r.revenue), 0);
 
   const RETAIL = new Set(["ALMAZA","CCA","CF-HOS","CSTARS","P90"]);
-  const ONLINE = new Set(["ONLINE","AMAZON BAN","AMAZON KAM"]);
+  const ONLINE = new Set(["SHOPIFY-AMT","SHOPIFY-SAM","AMAZON BAN","AMAZON KAM"]);
 
   function groupLabel(code: string) {
     if (RETAIL.has(code)) return "Retail";

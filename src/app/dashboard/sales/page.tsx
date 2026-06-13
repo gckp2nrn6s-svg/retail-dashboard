@@ -3,12 +3,13 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, Cell, PieChart, Pie, Legend,
+  ResponsiveContainer, Cell, PieChart, Pie, Legend, ReferenceLine,
 } from "recharts";
 import { useCurrency, fmt } from "@/components/CurrencyToggle";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
+import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 
 type GroupOption = "all" | "retail" | "online" | "ho";
 
@@ -18,13 +19,52 @@ interface Channel { group: string; revenue: { egp: number; usd: number }; units:
 interface Category { category: string; revenue: { egp: number; usd: number }; units: number; pct: number }
 
 const GROUP_LABELS: Record<GroupOption, string> = { all: "All", retail: "Retail", online: "Online", ho: "B2B" };
-const CAT_COLORS = ["#2563EB", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899"];
-const STORE_COLORS: Record<string, string> = { Retail: "#2563EB", Online: "#10B981", B2B: "#F59E0B" };
+
+// Semantic channel colors — consistent with home page
+const CHANNEL_COLORS: Record<string, string> = { Retail: "#0D9488", Online: "#7C3AED", B2B: "#EA580C" };
+const CAT_COLORS = ["#2563EB","#0D9488","#7C3AED","#EA580C","#EC4899","#06B6D4","#F59E0B"];
+
+// Human-readable store names (mirrors db.ts for client-side display)
+const STORE_NAMES: Record<string,string> = {
+  "CSTARS":"City Stars","CF-HOS":"Festival of Hope","ALMAZA":"Almaza City Center",
+  "P90":"Patio 90","CCA":"Cairo Festival City","ONLINE":"Online Store",
+  "AMAZON BAN":"Amazon Banha","AMAZON KAM":"Amazon Kamal",
+  "SHOPIFY-AMT":"AT Online","SHOPIFY-SAM":"Samsonite Online",
+  "HO":"Head Office","NOON":"Noon","AMAZON":"Amazon Egypt","JUMIA":"Jumia",
+  "DUTY FREE":"Duty Free","FOUR SEASO":"Four Seasons","GO SPORT1":"Go Sport",
+  "MOA":"Mall of Arabia","MOE":"Mall of Egypt","SPINNEYS":"Spinneys",
+};
+const STORE_COLORS: Record<string,string> = {
+  "CSTARS":"#2563EB","CF-HOS":"#0D9488","ALMAZA":"#7C3AED","P90":"#EA580C",
+  "CCA":"#EC4899","ONLINE":"#0891B2","AMAZON BAN":"#F59E0B","AMAZON KAM":"#D97706",
+  "SHOPIFY-AMT":"#10B981","SHOPIFY-SAM":"#059669","NOON":"#FBBF24","AMAZON":"#F97316",
+  "JUMIA":"#EF4444","DUTY FREE":"#8B5CF6",
+};
+function sName(code: string) { return STORE_NAMES[code] ?? code; }
+function sColor(code: string) { return STORE_COLORS[code] ?? "#94A3B8"; }
 
 function formatDate(d: string, days: number) {
   const dt = new Date(d);
-  if (days > 91) return dt.toLocaleDateString("en", { month: "short" });
-  return dt.toLocaleDateString("en", { month: "short", day: "numeric" });
+  return days > 91
+    ? dt.toLocaleDateString("en", { month: "short" })
+    : dt.toLocaleDateString("en", { month: "short", day: "numeric" });
+}
+
+// Custom tooltip for charts
+function ChartTip({ active, payload, currency, fx }: { active?: boolean; payload?: { payload: ChartPoint }[]; currency: string; fx: number }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  const rev = currency === "USD" ? d.usd : d.egp;
+  const other = currency === "USD" ? `EGP ${Math.round(d.egp).toLocaleString()}` : `$${Math.round(d.usd).toLocaleString()}`;
+  return (
+    <div style={{ background: "var(--navy)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)" }}>
+      <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.62rem", marginBottom: 4 }}>{d.date}</p>
+      <p style={{ color: "white", fontSize: "1rem", fontWeight: 800, letterSpacing: "-0.02em" }}>
+        {currency === "USD" ? `$${Math.round(rev).toLocaleString()}` : `EGP ${Math.round(rev).toLocaleString()}`}
+      </p>
+      <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.62rem", marginTop: 2 }}>{other} · {d.units.toLocaleString()} units</p>
+    </div>
+  );
 }
 
 function SalesContent() {
@@ -39,6 +79,7 @@ function SalesContent() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [total, setTotal] = useState<{ egp: number; usd: number }>({ egp: 0, usd: 0 });
+  const [fx, setFx] = useState(52);
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<"area" | "bar">("area");
 
@@ -53,196 +94,207 @@ function SalesContent() {
         fetch(`/api/sales/stores?range=${chartRange}&from=${range.from}&to=${range.to}`).then(x => x.json()),
       ]);
       setChartData(chartRes.series || []);
-      const filtered = group === "all"
-        ? storesRes.stores
-        : storesRes.stores.filter((s: Store) => s.group.toLowerCase() === group);
+      const filtered = group === "all" ? storesRes.stores : storesRes.stores.filter((s: Store) => s.group.toLowerCase() === group);
       setStores(filtered || []);
       setChannels(storesRes.channelTotals || []);
       setCategories(storesRes.categories || []);
       setTotal(storesRes.total || { egp: 0, usd: 0 });
-    } finally {
-      setLoading(false);
-    }
+      setFx(storesRes.fx || 52);
+    } finally { setLoading(false); }
   }, [range.from, range.to, group, chartRange]);
 
   useEffect(() => { load(); }, [load]);
 
   const val = (v: { egp: number; usd: number }) => fmt(v.egp, v.usd, currency);
-  const drillUrl = (params: Record<string, string>) =>
-    "/api/drill?" + new URLSearchParams({ ...params, from: range.from, to: range.to }).toString();
+  const sub = (v: { egp: number; usd: number }) => currency === "USD" ? `EGP ${Math.round(v.egp).toLocaleString()}` : `$${Math.round(v.usd).toLocaleString()}`;
+  const drillUrl = (p: Record<string, string>) => "/api/drill?" + new URLSearchParams({ ...p, from: range.from, to: range.to }).toString();
+
+  // Avg daily revenue for reference line
+  const avgRev = chartData.length > 0 ? chartData.reduce((s,d) => s + (currency === "USD" ? d.usd : d.egp), 0) / chartData.length : 0;
 
   return (
-    <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-      <div style={{ background: "linear-gradient(135deg, #0D1B2A 0%, #1a3a5c 100%)" }}>
+    <div style={{ maxWidth: 1400, margin: "0 auto", paddingBottom: 80 }}>
+
+      {/* Header */}
+      <div style={{ background: "linear-gradient(160deg, #050D1A 0%, #0D1B2A 50%, #0f2d4a 100%)" }}>
         <div style={{ padding: "clamp(20px,4vw,28px) 24px 8px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div>
-            <h1 style={{ color: "white", fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.02em" }}>Sales Analytics</h1>
-            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.72rem", marginTop: 2 }}>
-              {loading ? "Loading…" : `${val(total)} · ${chartData.reduce((s,d) => s + d.units, 0).toLocaleString()} units`}
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Sales Analytics</p>
+            <h1 style={{ color: "white", fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", marginTop: 3 }}>
+              {loading ? "—" : val(total)}
+            </h1>
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.7rem", marginTop: 3 }}>
+              {loading ? "Loading…" : `${chartData.reduce((s,d) => s + d.units, 0).toLocaleString()} units · ${range.label}`}
             </p>
           </div>
           <DateRangePicker dark />
         </div>
-        <div className="scroll-x px-4 pb-3 pt-1 gap-2">
+        <div className="scroll-x" style={{ padding: "8px 24px 16px", gap: 8 }}>
           {(Object.keys(GROUP_LABELS) as GroupOption[]).map(g => (
             <button key={g} onClick={() => setGroup(g)} style={{
               padding: "5px 14px", borderRadius: 20, fontSize: "0.7rem", fontWeight: 600,
-              border: "none", cursor: "pointer", flexShrink: 0,
-              background: group === g ? "#2563EB" : "rgba(255,255,255,0.1)",
-              color: group === g ? "white" : "rgba(255,255,255,0.6)",
+              border: "none", cursor: "pointer", flexShrink: 0, transition: "all 0.15s",
+              background: group === g ? "white" : "rgba(255,255,255,0.08)",
+              color: group === g ? "#0D1B2A" : "rgba(255,255,255,0.5)",
             }}>{GROUP_LABELS[g]}</button>
           ))}
         </div>
       </div>
 
-      <div className="px-4 space-y-3 pt-3">
+      <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+
         {/* Revenue chart */}
-        <div className="card p-3">
-          <div className="flex items-center justify-between mb-3">
-            <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text2)" }}>Revenue over time</p>
-            <div className="flex gap-1">
-              {(["area", "bar"] as const).map(t => (
+        <div className="card" style={{ padding: "16px 20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text2)" }}>Revenue over time</p>
+            <div style={{ display: "flex", gap: 6 }}>
+              {(["area","bar"] as const).map(t => (
                 <button key={t} onClick={() => setChartType(t)} style={{
-                  padding: "3px 10px", borderRadius: 6, fontSize: "0.62rem", fontWeight: 600,
-                  border: "none", cursor: "pointer",
-                  background: chartType === t ? "var(--navy)" : "var(--surface2)",
+                  padding: "4px 12px", borderRadius: 8, fontSize: "0.65rem", fontWeight: 700, border: "none", cursor: "pointer",
+                  background: chartType === t ? "var(--navy)" : "var(--surface3)",
                   color: chartType === t ? "white" : "var(--text3)",
                 }}>{t === "area" ? "Line" : "Bar"}</button>
               ))}
             </div>
           </div>
-          {loading ? <div className="skeleton h-40 w-full" /> : chartType === "area" ? (
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+          {loading ? <div className="skeleton" style={{ height: 180 }} /> : chartType === "area" ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                    <stop offset="0%"   stopColor="#2563EB" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" tickFormatter={d => formatDate(d, days)} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                <Tooltip content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const d = payload[0].payload as ChartPoint;
-                  return <div className="card p-2" style={{ fontSize: "0.65rem" }}>
-                    <p style={{ color: "var(--text3)" }}>{d.date}</p>
-                    <p style={{ fontWeight: 700 }}>{fmt(d.egp, d.usd, currency)}</p>
-                    <p style={{ color: "var(--text3)" }}>{d.units} units</p>
-                  </div>;
-                }} />
-                <Area type="monotone" dataKey={currency === "USD" ? "usd" : "egp"} stroke="#2563EB" strokeWidth={2} fill="url(#sg)" dot={false} />
+                <XAxis dataKey="date" tickFormatter={d => formatDate(d, days)} tick={{ fontSize: 10, fill: "var(--text4)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10, fill: "var(--text4)" }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                <ReferenceLine y={avgRev} stroke="rgba(37,99,235,0.3)" strokeDasharray="4 4" />
+                <Tooltip content={({ active, payload }) => <ChartTip active={active} payload={payload as unknown as { payload: ChartPoint }[] | undefined} currency={currency} fx={fx} />} />
+                <Area type="monotone" dataKey={currency === "USD" ? "usd" : "egp"} stroke="#2563EB" strokeWidth={2.5} fill="url(#sg)" dot={false} activeDot={{ r: 5, fill: "#2563EB", strokeWidth: 2, stroke: "white" }} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tickFormatter={d => formatDate(d, days)} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                <Tooltip content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const d = payload[0].payload as ChartPoint;
-                  return <div className="card p-2" style={{ fontSize: "0.65rem" }}>
-                    <p style={{ fontWeight: 700 }}>{fmt(d.egp, d.usd, currency)}</p>
-                    <p style={{ color: "var(--text3)" }}>{d.units} units</p>
-                  </div>;
-                }} />
-                <Bar dataKey={currency === "USD" ? "usd" : "egp"} fill="#2563EB" radius={[3,3,0,0]} />
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                <XAxis dataKey="date" tickFormatter={d => formatDate(d, days)} tick={{ fontSize: 10, fill: "var(--text4)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10, fill: "var(--text4)" }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                <ReferenceLine y={avgRev} stroke="rgba(37,99,235,0.3)" strokeDasharray="4 4" />
+                <Tooltip content={({ active, payload }) => <ChartTip active={active} payload={payload as unknown as { payload: ChartPoint }[] | undefined} currency={currency} fx={fx} />} />
+                <Bar dataKey={currency === "USD" ? "usd" : "egp"} radius={[4,4,0,0]}>
+                  {chartData.map((_, i) => <Cell key={i} fill={`hsl(${220 + i * 2}, 80%, 55%)`} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
+          <p style={{ fontSize: "0.58rem", color: "var(--text4)", textAlign: "right", marginTop: 4 }}>dashed line = period average</p>
         </div>
 
-        {/* By channel — clickable */}
-        <div className="card p-3">
-          <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text2)", marginBottom: 10 }}>By channel</p>
-          {channels.map(ch => (
-            <div key={ch.group} className="mb-3" onClick={() => openDrill({ title: `${ch.group} Channel · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: ch.group }) })}
-              style={{ cursor: "pointer", borderRadius: 8, padding: "6px 4px", transition: "background 0.1s" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--surface2)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-              <div className="flex justify-between mb-1">
-                <span style={{ fontSize: "0.72rem", fontWeight: 600 }}>{ch.group}</span>
-                <div className="flex items-center gap-2">
-                  <span style={{ fontSize: "0.72rem", color: "var(--text2)" }}>{ch.units.toLocaleString()} units</span>
-                  <span style={{ fontSize: "0.72rem", fontWeight: 700 }}>{val(ch.revenue)}</span>
-                  <span className="badge badge-blue">{ch.pct}%</span>
+        {/* By channel */}
+        <div className="card" style={{ padding: "16px 20px" }}>
+          <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text2)", marginBottom: 14 }}>By channel</p>
+          {channels.map(ch => {
+            const color = CHANNEL_COLORS[ch.group] || "#94A3B8";
+            return (
+              <div key={ch.group} onClick={() => openDrill({ title: `${ch.group} · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: ch.group }) })}
+                style={{ marginBottom: 16, cursor: "pointer", borderRadius: 10, padding: "6px 8px", margin: "0 -8px 12px", transition: "background 0.1s" }}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--surface3)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text)" }}>{ch.group}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: "0.65rem", color: "var(--text3)" }}>{ch.units.toLocaleString()} units</span>
+                    <span style={{ fontSize: "0.65rem", color: "var(--text3)" }}>{sub(ch.revenue)}</span>
+                    <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--text)" }}>{val(ch.revenue)}</span>
+                    <span style={{ fontSize: "0.62rem", fontWeight: 700, color, background: `${color}14`, padding: "2px 7px", borderRadius: 12 }}>{ch.pct}%</span>
+                  </div>
+                </div>
+                <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${ch.pct}%`, background: `linear-gradient(90deg, ${color}, ${color}90)`, borderRadius: 3, transition: "width 0.6s cubic-bezier(0.4,0,0.2,1)" }} />
                 </div>
               </div>
-              <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${ch.pct}%`, background: STORE_COLORS[ch.group] || "#94A3B8", borderRadius: 3, transition: "width 0.5s" }} />
-              </div>
-              {/* Dual currency */}
-              <p style={{ fontSize: "0.6rem", color: "var(--text3)", marginTop: 4 }}>
-                {currency === "EGP" ? `$${Math.round(ch.revenue.usd).toLocaleString()} USD` : `EGP ${Math.round(ch.revenue.egp).toLocaleString()}`}
-                {" · tap to drill →"}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* By category — clickable */}
-        <div className="card p-3">
-          <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text2)", marginBottom: 6 }}>By product category</p>
-          {loading ? <div className="skeleton h-40 w-full" /> : (
+        {/* Category pie */}
+        <div className="card" style={{ padding: "16px 20px" }}>
+          <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text2)", marginBottom: 6 }}>By product category</p>
+          {loading ? <div className="skeleton" style={{ height: 180 }} /> : (
             <>
-              <ResponsiveContainer width="100%" height={170}>
+              <ResponsiveContainer width="100%" height={185}>
                 <PieChart>
                   <Pie data={categories} dataKey={currency === "USD" ? "revenue.usd" : "revenue.egp"} nameKey="category"
-                    cx="40%" cy="50%" outerRadius={65} innerRadius={38} paddingAngle={2}
-                    onClick={(d) => { const cat = (d as unknown as Category).category; openDrill({ title: `${cat} · ${range.label}`, endpoint: drillUrl({ type: "category", category: cat }) }); }}
+                    cx="40%" cy="50%" outerRadius={70} innerRadius={40} paddingAngle={3}
+                    onClick={d => { const cat = (d as unknown as Category).category; openDrill({ title: `${cat} · ${range.label}`, endpoint: drillUrl({ type: "category", category: cat }) }); }}
                     style={{ cursor: "pointer" }}>
                     {categories.map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
                   </Pie>
                   <Tooltip content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
                     const d = payload[0].payload as Category;
-                    return <div className="card p-2" style={{ fontSize: "0.65rem" }}>
-                      <p style={{ fontWeight: 700 }}>{d.category}</p>
-                      <p>{val(d.revenue)} · {d.pct}%</p>
-                      <p style={{ color: "var(--text3)" }}>{d.units.toLocaleString()} units</p>
-                    </div>;
+                    return (
+                      <div style={{ background: "var(--navy)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "10px 14px" }}>
+                        <p style={{ color: "white", fontWeight: 700, fontSize: "0.82rem" }}>{d.category}</p>
+                        <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.65rem", marginTop: 2 }}>{val(d.revenue)} · {d.pct}%</p>
+                        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.62rem" }}>{d.units.toLocaleString()} units</p>
+                      </div>
+                    );
                   }} />
-                  <Legend layout="vertical" align="right" verticalAlign="middle" formatter={v => <span style={{ fontSize: "0.62rem" }}>{v}</span>} />
+                  <Legend layout="vertical" align="right" verticalAlign="middle"
+                    formatter={(v, _, i) => <span style={{ fontSize: "0.65rem", color: "var(--text2)", fontWeight: 500 }}>{v}</span>} />
                 </PieChart>
               </ResponsiveContainer>
-              <p style={{ fontSize: "0.62rem", color: "var(--text3)", textAlign: "center", marginTop: 4 }}>Tap a slice to drill into products</p>
+              <p style={{ fontSize: "0.58rem", color: "var(--text4)", textAlign: "center", marginTop: 2 }}>Tap a slice to drill into products</p>
             </>
           )}
         </div>
 
-        {/* Store breakdown — clickable rows */}
-        <div className="card overflow-hidden">
-          <div className="px-3 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
-            <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text2)" }}>
-              Store breakdown · {GROUP_LABELS[group]}
-            </p>
+        {/* Store breakdown */}
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px 12px", borderBottom: "1px solid var(--border)" }}>
+            <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text2)" }}>Store breakdown · {GROUP_LABELS[group]}</p>
           </div>
           {loading ? (
-            <div className="p-3 space-y-2">{[...Array(5)].map((_,i) => <div key={i} className="skeleton h-8 w-full" />)}</div>
-          ) : stores.map(s => (
-            <div key={s.code} className="list-row px-3"
-              onClick={() => openDrill({ title: `${s.code} · ${range.label}`, endpoint: drillUrl({ type: "store", store: s.code }) })}
-              style={{ cursor: "pointer" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", marginRight: 10, flexShrink: 0, background: STORE_COLORS[s.group] || "#94A3B8" }} />
-              <div className="flex-1 min-w-0">
-                <p style={{ fontSize: "0.75rem", fontWeight: 600 }}>{s.code}</p>
-                <p style={{ fontSize: "0.62rem", color: "var(--text3)" }}>
-                  {s.group} · {s.units.toLocaleString()} units · {currency === "EGP" ? `$${Math.round(s.revenue.usd).toLocaleString()}` : `EGP ${Math.round(s.revenue.egp).toLocaleString()}`}
-                </p>
+            <div style={{ padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {[...Array(5)].map((_,i) => <div key={i} className="skeleton" style={{ height: 48 }} />)}
+            </div>
+          ) : stores.map((s, idx) => (
+            <div key={s.code}
+              onClick={() => openDrill({ title: `${sName(s.code)} · ${range.label}`, endpoint: drillUrl({ type: "store", store: s.code }) })}
+              className="fade-up"
+              style={{ display: "flex", alignItems: "center", padding: "12px 20px", borderBottom: "1px solid var(--border)", cursor: "pointer", transition: "background 0.1s", animationDelay: `${idx * 0.04}s` }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--surface3)"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+            >
+              {/* Store avatar */}
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: `${sColor(s.code)}18`, border: `1.5px solid ${sColor(s.code)}40`, display: "flex", alignItems: "center", justifyContent: "center", marginRight: 12, flexShrink: 0 }}>
+                <span style={{ fontSize: "0.65rem", fontWeight: 800, color: sColor(s.code) }}>{s.code.slice(0,2)}</span>
               </div>
-              <div className="text-right shrink-0 ml-2">
-                <p style={{ fontSize: "0.8rem", fontWeight: 700 }}>{val(s.revenue)}</p>
-                <div className="flex items-center justify-end gap-1 mt-0.5">
-                  <div style={{ width: Math.max(s.pct * 0.8, 2), height: 3, background: STORE_COLORS[s.group], borderRadius: 2 }} />
-                  <span style={{ fontSize: "0.62rem", color: "var(--text3)" }}>{s.pct}%</span>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text)" }}>{sName(s.code)}</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                  <span style={{ fontSize: "0.6rem", fontWeight: 600, color: CHANNEL_COLORS[s.group] ?? "var(--text3)", background: `${CHANNEL_COLORS[s.group] ?? "#94A3B8"}14`, padding: "1px 6px", borderRadius: 8 }}>{s.group}</span>
+                  <span style={{ fontSize: "0.6rem", color: "var(--text3)" }}>{s.units.toLocaleString()} units</span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
+                <p style={{ fontSize: "0.88rem", fontWeight: 800, color: "var(--text)" }}>{val(s.revenue)}</p>
+                <p style={{ fontSize: "0.6rem", color: "var(--text3)", marginTop: 2 }}>{sub(s.revenue)}</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 3 }}>
+                  <div style={{ width: Math.max(s.pct * 1.2, 4), height: 3, background: sColor(s.code), borderRadius: 2 }} />
+                  <span style={{ fontSize: "0.58rem", color: "var(--text4)" }}>{s.pct}%</span>
                 </div>
               </div>
             </div>
           ))}
         </div>
 
-        <div style={{ height: 8 }} />
       </div>
 
       {drill && <DrillDownSheet params={drill} onClose={closeDrill} />}
@@ -252,7 +304,7 @@ function SalesContent() {
 
 export default function SalesPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center" style={{ color: "var(--text3)" }}>Loading…</div>}>
+    <Suspense fallback={<div style={{ padding: 40, textAlign: "center", color: "var(--text3)" }}>Loading…</div>}>
       <SalesContent />
     </Suspense>
   );

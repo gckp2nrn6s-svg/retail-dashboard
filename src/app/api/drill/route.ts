@@ -11,7 +11,7 @@ import { query } from "@/lib/db";
 // &item=10101 (for type=item)
 
 const RETAIL  = ["ALMAZA","CCA","CF-HOS","CSTARS","P90"];
-const ONLINE  = ["ONLINE","AMAZON BAN","AMAZON KAM","SHOPIFY-AMT","SHOPIFY-SAM"];
+const ONLINE  = ["SHOPIFY-AMT","SHOPIFY-SAM","AMAZON BAN","AMAZON KAM"]; // ONLINE removed (was NAV duplicate of Shopify)
 const B2B     = ["HO","NOON","AMAZON","JUMIA","DUTY FREE","FOUR SEASO","GO SPORT1","MOA","MOE","SPINNEYS","ATCFC","ATMADI","HIS","EVE"];
 
 function channelFilter(ch: string) {

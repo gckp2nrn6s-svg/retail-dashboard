@@ -1,25 +1,75 @@
 @import "tailwindcss";
 
+/* ── Semantic color system ─────────────────────────────────────────────── */
 :root {
-  --bg: #F0F4F8;
-  --surface: #FFFFFF;
-  --surface2: #F8FAFC;
-  --border: #E2E8F0;
-  --text: #0F172A;
-  --text2: #475569;
-  --text3: #94A3B8;
-  --accent: #2563EB;
-  --accent-light: #EFF6FF;
-  --gold: #F59E0B;
-  --gold-light: #FFFBEB;
-  --green: #10B981;
+  /* Surfaces */
+  --bg:        #F0F4F8;
+  --surface:   #FFFFFF;
+  --surface2:  #F8FAFC;
+  --surface3:  #F1F5F9;
+  --border:    #E2E8F0;
+  --border2:   #CBD5E1;
+
+  /* Text */
+  --text:   #0F172A;
+  --text2:  #334155;
+  --text3:  #64748B;
+  --text4:  #94A3B8;
+
+  /* Brand */
+  --navy:   #0D1B2A;
+  --navy2:  #162032;
+  --navy3:  #1E3A5F;
+
+  /* Actions (blue = clickable only) */
+  --action:       #2563EB;
+  --action-light: #EFF6FF;
+  --action-hover: #1D4ED8;
+
+  /* Channels — semantic, never mixed with action */
+  --retail:       #0D9488;   /* teal  */
+  --retail-light: #F0FDFA;
+  --online:       #7C3AED;   /* purple */
+  --online-light: #F5F3FF;
+  --b2b:          #EA580C;   /* orange */
+  --b2b-light:    #FFF7ED;
+
+  /* States */
+  --green:       #10B981;
   --green-light: #ECFDF5;
-  --red: #EF4444;
-  --red-light: #FEF2F2;
-  --navy: #0D1B2A;
-  --navy2: #162032;
+  --red:         #EF4444;
+  --red-light:   #FEF2F2;
+  --amber:       #F59E0B;
+  --amber-light: #FFFBEB;
+
+  /* Chart palette — consistent across all charts */
+  --c1: #2563EB;
+  --c2: #0D9488;
+  --c3: #7C3AED;
+  --c4: #EA580C;
+  --c5: #EC4899;
+  --c6: #06B6D4;
 }
 
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:       #070D14;
+    --surface:  #0D1B2A;
+    --surface2: #111E2E;
+    --surface3: #162032;
+    --border:   #1E3A5F;
+    --border2:  #243D5F;
+    --text:     #F1F5F9;
+    --text2:    #CBD5E1;
+    --text3:    #64748B;
+    --text4:    #475569;
+    --navy:     #020810;
+    --navy2:    #0A1525;
+  }
+}
+
+/* ── Reset & base ──────────────────────────────────────────────────────── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 body {
@@ -27,54 +77,108 @@ body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Typography scale ──────────────────────────────────────────────────── */
+/*
+  hero:   56px / 800 / -0.05em   (home page revenue)
+  kpi:    28px / 800 / -0.04em   (KPI cards)
+  title:  20px / 700 / -0.02em   (page titles)
+  label:  11px / 700 / 0.06em uppercase (section labels)
+  body:   14px / 400 / 1.6       (body text)
+  caption:11px / 500             (sub-values, secondary)
+*/
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
 .card {
   background: var(--surface);
-  border-radius: 16px;
+  border-radius: 18px;
   border: 1px solid var(--border);
+  transition: box-shadow 0.15s;
+}
+.card-hover:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+.card-dark {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
 }
 
-.kpi-value { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
-.kpi-sub { font-size: 0.7rem; color: var(--text3); margin-top: 2px; }
-
+/* ── Badges ─────────────────────────────────────────────────────────────── */
 .badge {
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 0.65rem; font-weight: 600; border-radius: 6px; padding: 2px 6px;
+  font-size: 0.65rem; font-weight: 700; border-radius: 6px; padding: 2px 7px;
+  letter-spacing: 0.02em;
 }
-.badge-green { background: var(--green-light); color: #059669; }
-.badge-red { background: var(--red-light); color: #DC2626; }
-.badge-amber { background: var(--gold-light); color: #D97706; }
-.badge-blue { background: var(--accent-light); color: var(--accent); }
+.badge-green  { background: var(--green-light);  color: #059669; }
+.badge-red    { background: var(--red-light);    color: #DC2626; }
+.badge-amber  { background: var(--amber-light);  color: #D97706; }
+.badge-blue   { background: var(--action-light); color: var(--action); }
+.badge-teal   { background: var(--retail-light); color: var(--retail); }
+.badge-purple { background: var(--online-light); color: var(--online); }
 
+/* ── Filter chips ────────────────────────────────────────────────────────── */
 .filter-chip {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 5px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 500;
+  padding: 5px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
   border: 1.5px solid var(--border); background: var(--surface); cursor: pointer;
-  white-space: nowrap; transition: all 0.15s;
+  white-space: nowrap; transition: all 0.15s; color: var(--text3);
 }
+.filter-chip:hover { border-color: var(--action); color: var(--action); }
 .filter-chip-active {
-  border-color: var(--accent); background: var(--accent-light); color: var(--accent);
+  border-color: var(--action); background: var(--action-light); color: var(--action);
 }
 
+/* ── List rows ────────────────────────────────────────────────────────────── */
 .list-row {
-  display: flex; align-items: center; padding: 10px 0;
+  display: flex; align-items: center; padding: 12px 0;
   border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+  cursor: default;
 }
 .list-row:last-child { border-bottom: none; }
+.list-row-clickable { cursor: pointer; border-radius: 10px; padding: 12px 8px; margin: 0 -8px; }
+.list-row-clickable:hover { background: var(--surface3); }
 
+/* ── Horizontal scroll ────────────────────────────────────────────────────── */
 .scroll-x {
-  display: flex; overflow-x: auto; gap: 10px;
+  display: flex; overflow-x: auto; gap: 8px;
   scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 2px;
 }
 .scroll-x::-webkit-scrollbar { display: none; }
 
+/* ── Skeleton loading ─────────────────────────────────────────────────────── */
 .skeleton {
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface3) 50%, var(--border) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-  border-radius: 6px;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 8px;
 }
-@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
-.recharts-text { font-size: 11px !important; }
+/* ── Fade-in animation ────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.35s ease-out both; }
+.fade-up-1 { animation-delay: 0.05s; }
+.fade-up-2 { animation-delay: 0.1s; }
+.fade-up-3 { animation-delay: 0.15s; }
+.fade-up-4 { animation-delay: 0.2s; }
+.fade-up-5 { animation-delay: 0.25s; }
+
+/* ── Recharts overrides ───────────────────────────────────────────────────── */
+.recharts-text { font-size: 11px !important; fill: var(--text4) !important; }
+.recharts-cartesian-axis-line { display: none; }
+.recharts-cartesian-axis-tick-line { display: none; }
+
+/* ── Utility ──────────────────────────────────────────────────────────────── */
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
