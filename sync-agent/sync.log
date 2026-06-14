@@ -156,3 +156,1199 @@
 [2026-06-13T14:32:59.384Z] sync complete
 [2026-06-13T14:33:03.599Z] Shopify american-tourister-egypt: upserted 10 line items
 [2026-06-13T14:33:04.538Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T14:38:03.796Z] sales: full refresh, 34036 rows
+[2026-06-13T14:38:03.909Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T14:38:04.150Z] sync complete
+[2026-06-13T14:38:06.890Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-13T14:38:08.340Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T14:43:17.737Z] sales: full refresh, 34036 rows
+[2026-06-13T14:43:18.020Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T14:43:18.253Z] sync complete
+[2026-06-13T14:43:20.761Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-13T14:43:21.571Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T14:48:04.063Z] sales: full refresh, 34036 rows
+[2026-06-13T14:48:04.150Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T14:48:04.374Z] sync complete
+[2026-06-13T14:48:08.363Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-13T14:48:09.222Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T14:53:20.107Z] sales: full refresh, 34036 rows
+[2026-06-13T14:53:21.045Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T14:53:21.624Z] sync complete
+[2026-06-13T14:53:26.368Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-13T14:53:28.862Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T14:58:20.437Z] sales: full refresh, 34036 rows
+[2026-06-13T14:58:20.828Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T14:58:21.081Z] sync complete
+[2026-06-13T14:58:24.631Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-13T14:58:25.494Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T15:16:09.357Z] starting sync loop, every 5 min
+[2026-06-13T15:16:19.534Z] starting sync loop, every 5 min
+[2026-06-13T15:16:29.713Z] starting sync loop, every 5 min
+[2026-06-13T15:31:38.340Z] starting sync loop, every 5 min
+[2026-06-13T15:31:48.516Z] starting sync loop, every 5 min
+[2026-06-13T15:31:58.702Z] starting sync loop, every 5 min
+[2026-06-13T15:32:08.890Z] starting sync loop, every 5 min
+[2026-06-13T15:47:16.932Z] starting sync loop, every 5 min
+[2026-06-13T15:47:27.114Z] starting sync loop, every 5 min
+[2026-06-13T15:47:37.312Z] starting sync loop, every 5 min
+[2026-06-13T15:47:47.497Z] starting sync loop, every 5 min
+[2026-06-13T15:47:57.681Z] starting sync loop, every 5 min
+[2026-06-13T15:48:07.884Z] starting sync loop, every 5 min
+[2026-06-13T15:48:18.069Z] starting sync loop, every 5 min
+[2026-06-13T15:48:28.255Z] starting sync loop, every 5 min
+[2026-06-13T15:48:38.441Z] starting sync loop, every 5 min
+[2026-06-13T15:48:48.626Z] starting sync loop, every 5 min
+[2026-06-13T15:48:58.813Z] starting sync loop, every 5 min
+[2026-06-13T15:49:09.004Z] starting sync loop, every 5 min
+[2026-06-13T15:49:19.191Z] starting sync loop, every 5 min
+[2026-06-13T15:49:29.378Z] starting sync loop, every 5 min
+[2026-06-13T15:49:39.563Z] starting sync loop, every 5 min
+[2026-06-13T15:49:49.746Z] starting sync loop, every 5 min
+[2026-06-13T15:49:59.947Z] starting sync loop, every 5 min
+[2026-06-13T15:50:10.123Z] starting sync loop, every 5 min
+[2026-06-13T15:50:20.307Z] starting sync loop, every 5 min
+[2026-06-13T15:50:30.494Z] starting sync loop, every 5 min
+[2026-06-13T15:50:40.679Z] starting sync loop, every 5 min
+[2026-06-13T15:50:50.853Z] starting sync loop, every 5 min
+[2026-06-13T15:51:01.050Z] starting sync loop, every 5 min
+[2026-06-13T15:51:11.241Z] starting sync loop, every 5 min
+[2026-06-13T15:51:21.421Z] starting sync loop, every 5 min
+[2026-06-13T15:51:31.647Z] starting sync loop, every 5 min
+[2026-06-13T15:51:41.833Z] starting sync loop, every 5 min
+[2026-06-13T15:51:52.015Z] starting sync loop, every 5 min
+[2026-06-13T15:52:02.208Z] starting sync loop, every 5 min
+[2026-06-13T15:52:12.381Z] starting sync loop, every 5 min
+[2026-06-13T15:52:22.581Z] starting sync loop, every 5 min
+[2026-06-13T15:52:32.783Z] starting sync loop, every 5 min
+[2026-06-13T15:52:42.960Z] starting sync loop, every 5 min
+[2026-06-13T15:52:53.243Z] starting sync loop, every 5 min
+[2026-06-13T15:53:03.500Z] starting sync loop, every 5 min
+[2026-06-13T15:53:13.684Z] starting sync loop, every 5 min
+[2026-06-13T15:53:23.862Z] starting sync loop, every 5 min
+[2026-06-13T15:53:34.067Z] starting sync loop, every 5 min
+[2026-06-13T15:53:44.249Z] starting sync loop, every 5 min
+[2026-06-13T15:53:54.432Z] starting sync loop, every 5 min
+[2026-06-13T15:54:04.631Z] starting sync loop, every 5 min
+[2026-06-13T15:54:14.815Z] starting sync loop, every 5 min
+[2026-06-13T15:54:24.993Z] starting sync loop, every 5 min
+[2026-06-13T15:54:35.171Z] starting sync loop, every 5 min
+[2026-06-13T15:54:45.350Z] starting sync loop, every 5 min
+[2026-06-13T15:54:55.533Z] starting sync loop, every 5 min
+[2026-06-13T15:55:05.716Z] starting sync loop, every 5 min
+[2026-06-13T15:55:15.898Z] starting sync loop, every 5 min
+[2026-06-13T15:55:26.081Z] starting sync loop, every 5 min
+[2026-06-13T15:55:36.252Z] starting sync loop, every 5 min
+[2026-06-13T15:55:46.436Z] starting sync loop, every 5 min
+[2026-06-13T15:55:56.614Z] starting sync loop, every 5 min
+[2026-06-13T15:56:06.792Z] starting sync loop, every 5 min
+[2026-06-13T15:56:16.966Z] starting sync loop, every 5 min
+[2026-06-13T15:56:27.139Z] starting sync loop, every 5 min
+[2026-06-13T15:56:37.315Z] starting sync loop, every 5 min
+[2026-06-13T15:56:47.589Z] starting sync loop, every 5 min
+[2026-06-13T15:56:57.851Z] starting sync loop, every 5 min
+[2026-06-13T15:57:08.027Z] starting sync loop, every 5 min
+[2026-06-13T15:57:18.205Z] starting sync loop, every 5 min
+[2026-06-13T15:57:28.398Z] starting sync loop, every 5 min
+[2026-06-13T15:57:38.583Z] starting sync loop, every 5 min
+[2026-06-13T15:57:48.775Z] starting sync loop, every 5 min
+[2026-06-13T15:57:59.133Z] starting sync loop, every 5 min
+[2026-06-13T15:58:09.312Z] starting sync loop, every 5 min
+[2026-06-13T15:58:19.495Z] starting sync loop, every 5 min
+[2026-06-13T15:58:29.679Z] starting sync loop, every 5 min
+[2026-06-13T15:58:39.858Z] starting sync loop, every 5 min
+[2026-06-13T15:58:50.052Z] starting sync loop, every 5 min
+[2026-06-13T15:59:00.315Z] starting sync loop, every 5 min
+[2026-06-13T15:59:10.496Z] starting sync loop, every 5 min
+[2026-06-13T15:59:20.671Z] starting sync loop, every 5 min
+[2026-06-13T15:59:30.911Z] starting sync loop, every 5 min
+[2026-06-13T15:59:41.086Z] starting sync loop, every 5 min
+[2026-06-13T15:59:51.263Z] starting sync loop, every 5 min
+[2026-06-13T16:00:01.448Z] starting sync loop, every 5 min
+[2026-06-13T16:00:11.631Z] starting sync loop, every 5 min
+[2026-06-13T16:00:21.813Z] starting sync loop, every 5 min
+[2026-06-13T16:00:31.996Z] starting sync loop, every 5 min
+[2026-06-13T16:00:42.173Z] starting sync loop, every 5 min
+[2026-06-13T16:00:52.360Z] starting sync loop, every 5 min
+[2026-06-13T16:01:02.544Z] starting sync loop, every 5 min
+[2026-06-13T16:01:12.716Z] starting sync loop, every 5 min
+[2026-06-13T16:01:22.897Z] starting sync loop, every 5 min
+[2026-06-13T16:01:33.076Z] starting sync loop, every 5 min
+[2026-06-13T16:01:43.262Z] starting sync loop, every 5 min
+[2026-06-13T16:01:53.448Z] starting sync loop, every 5 min
+[2026-06-13T16:02:03.631Z] starting sync loop, every 5 min
+[2026-06-13T16:02:13.819Z] starting sync loop, every 5 min
+[2026-06-13T16:02:24.007Z] starting sync loop, every 5 min
+[2026-06-13T16:02:34.186Z] starting sync loop, every 5 min
+[2026-06-13T16:02:44.360Z] starting sync loop, every 5 min
+[2026-06-13T16:02:54.539Z] starting sync loop, every 5 min
+[2026-06-13T16:03:04.728Z] starting sync loop, every 5 min
+[2026-06-13T16:03:14.910Z] starting sync loop, every 5 min
+[2026-06-13T16:03:25.086Z] starting sync loop, every 5 min
+[2026-06-13T16:03:35.264Z] starting sync loop, every 5 min
+[2026-06-13T16:03:45.438Z] starting sync loop, every 5 min
+[2026-06-13T16:03:55.615Z] starting sync loop, every 5 min
+[2026-06-13T16:04:05.797Z] starting sync loop, every 5 min
+[2026-06-13T16:04:15.971Z] starting sync loop, every 5 min
+[2026-06-13T16:04:26.158Z] starting sync loop, every 5 min
+[2026-06-13T16:04:36.337Z] starting sync loop, every 5 min
+[2026-06-13T16:04:46.517Z] starting sync loop, every 5 min
+[2026-06-13T16:04:56.701Z] starting sync loop, every 5 min
+[2026-06-13T16:05:06.886Z] starting sync loop, every 5 min
+[2026-06-13T16:05:17.066Z] starting sync loop, every 5 min
+[2026-06-13T16:05:27.239Z] starting sync loop, every 5 min
+[2026-06-13T16:05:37.431Z] starting sync loop, every 5 min
+[2026-06-13T16:05:47.604Z] starting sync loop, every 5 min
+[2026-06-13T16:05:57.787Z] starting sync loop, every 5 min
+[2026-06-13T16:06:07.962Z] starting sync loop, every 5 min
+[2026-06-13T16:06:18.135Z] starting sync loop, every 5 min
+[2026-06-13T16:06:28.318Z] starting sync loop, every 5 min
+[2026-06-13T16:06:38.493Z] starting sync loop, every 5 min
+[2026-06-13T16:06:48.679Z] starting sync loop, every 5 min
+[2026-06-13T16:06:58.858Z] starting sync loop, every 5 min
+[2026-06-13T16:07:09.045Z] starting sync loop, every 5 min
+[2026-06-13T16:07:19.229Z] starting sync loop, every 5 min
+[2026-06-13T16:07:29.405Z] starting sync loop, every 5 min
+[2026-06-13T16:07:39.588Z] starting sync loop, every 5 min
+[2026-06-13T16:07:49.763Z] starting sync loop, every 5 min
+[2026-06-13T16:07:59.945Z] starting sync loop, every 5 min
+[2026-06-13T16:08:10.127Z] starting sync loop, every 5 min
+[2026-06-13T16:08:20.303Z] starting sync loop, every 5 min
+[2026-06-13T16:08:30.485Z] starting sync loop, every 5 min
+[2026-06-13T16:08:40.663Z] starting sync loop, every 5 min
+[2026-06-13T16:08:50.845Z] starting sync loop, every 5 min
+[2026-06-13T16:09:01.023Z] starting sync loop, every 5 min
+[2026-06-13T16:09:11.201Z] starting sync loop, every 5 min
+[2026-06-13T16:09:21.378Z] starting sync loop, every 5 min
+[2026-06-13T16:17:56.420Z] starting sync loop, every 5 min
+[2026-06-13T16:18:06.599Z] starting sync loop, every 5 min
+[2026-06-13T16:18:16.773Z] starting sync loop, every 5 min
+[2026-06-13T16:18:26.952Z] starting sync loop, every 5 min
+[2026-06-13T16:18:37.139Z] starting sync loop, every 5 min
+[2026-06-13T16:34:01.445Z] starting sync loop, every 5 min
+[2026-06-13T16:34:11.630Z] starting sync loop, every 5 min
+[2026-06-13T16:34:21.817Z] starting sync loop, every 5 min
+[2026-06-13T16:34:32.006Z] starting sync loop, every 5 min
+[2026-06-13T16:49:56.002Z] starting sync loop, every 5 min
+[2026-06-13T16:50:06.187Z] starting sync loop, every 5 min
+[2026-06-13T16:50:16.370Z] starting sync loop, every 5 min
+[2026-06-13T16:50:26.551Z] starting sync loop, every 5 min
+[2026-06-13T16:50:36.735Z] starting sync loop, every 5 min
+[2026-06-13T16:58:57.709Z] starting sync loop, every 5 min
+[2026-06-13T16:59:07.896Z] starting sync loop, every 5 min
+[2026-06-13T16:59:18.074Z] starting sync loop, every 5 min
+[2026-06-13T16:59:28.261Z] starting sync loop, every 5 min
+[2026-06-13T16:59:38.463Z] starting sync loop, every 5 min
+[2026-06-13T16:59:48.646Z] starting sync loop, every 5 min
+[2026-06-13T16:59:58.837Z] starting sync loop, every 5 min
+[2026-06-13T17:00:09.024Z] starting sync loop, every 5 min
+[2026-06-13T17:00:19.210Z] starting sync loop, every 5 min
+[2026-06-13T17:00:29.387Z] starting sync loop, every 5 min
+[2026-06-13T17:00:39.566Z] starting sync loop, every 5 min
+[2026-06-13T17:00:49.766Z] starting sync loop, every 5 min
+[2026-06-13T17:00:59.945Z] starting sync loop, every 5 min
+[2026-06-13T17:01:10.128Z] starting sync loop, every 5 min
+[2026-06-13T17:01:20.328Z] starting sync loop, every 5 min
+[2026-06-13T17:01:30.523Z] starting sync loop, every 5 min
+[2026-06-13T17:17:16.832Z] starting sync loop, every 5 min
+[2026-06-13T17:17:27.004Z] starting sync loop, every 5 min
+[2026-06-13T17:17:37.186Z] starting sync loop, every 5 min
+[2026-06-13T17:17:47.376Z] starting sync loop, every 5 min
+[2026-06-13T17:17:57.571Z] starting sync loop, every 5 min
+[2026-06-13T17:18:07.758Z] starting sync loop, every 5 min
+[2026-06-13T17:18:17.935Z] starting sync loop, every 5 min
+[2026-06-13T17:18:28.116Z] starting sync loop, every 5 min
+[2026-06-13T17:18:38.293Z] starting sync loop, every 5 min
+[2026-06-13T17:18:48.475Z] starting sync loop, every 5 min
+[2026-06-13T17:18:58.647Z] starting sync loop, every 5 min
+[2026-06-13T17:19:08.819Z] starting sync loop, every 5 min
+[2026-06-13T17:19:18.998Z] starting sync loop, every 5 min
+[2026-06-13T17:19:29.187Z] starting sync loop, every 5 min
+[2026-06-13T17:19:39.478Z] starting sync loop, every 5 min
+[2026-06-13T17:19:49.666Z] starting sync loop, every 5 min
+[2026-06-13T17:19:59.852Z] starting sync loop, every 5 min
+[2026-06-13T17:20:10.094Z] starting sync loop, every 5 min
+[2026-06-13T17:20:20.298Z] starting sync loop, every 5 min
+[2026-06-13T17:20:30.482Z] starting sync loop, every 5 min
+[2026-06-13T17:20:40.710Z] starting sync loop, every 5 min
+[2026-06-13T17:20:50.893Z] starting sync loop, every 5 min
+[2026-06-13T17:21:01.276Z] starting sync loop, every 5 min
+[2026-06-13T17:21:11.541Z] starting sync loop, every 5 min
+[2026-06-13T17:21:21.724Z] starting sync loop, every 5 min
+[2026-06-13T17:21:31.903Z] starting sync loop, every 5 min
+[2026-06-13T17:21:42.099Z] starting sync loop, every 5 min
+[2026-06-13T17:21:52.282Z] starting sync loop, every 5 min
+[2026-06-13T17:22:02.457Z] starting sync loop, every 5 min
+[2026-06-13T17:22:12.659Z] starting sync loop, every 5 min
+[2026-06-13T17:22:22.834Z] starting sync loop, every 5 min
+[2026-06-13T17:22:33.011Z] starting sync loop, every 5 min
+[2026-06-13T17:22:43.214Z] starting sync loop, every 5 min
+[2026-06-13T17:22:53.389Z] starting sync loop, every 5 min
+[2026-06-13T17:23:03.570Z] starting sync loop, every 5 min
+[2026-06-13T17:23:13.761Z] starting sync loop, every 5 min
+[2026-06-13T17:23:23.944Z] starting sync loop, every 5 min
+[2026-06-13T17:23:34.117Z] starting sync loop, every 5 min
+[2026-06-13T17:23:44.296Z] starting sync loop, every 5 min
+[2026-06-13T17:23:54.476Z] starting sync loop, every 5 min
+[2026-06-13T17:24:04.657Z] starting sync loop, every 5 min
+[2026-06-13T17:24:14.837Z] starting sync loop, every 5 min
+[2026-06-13T17:24:25.020Z] starting sync loop, every 5 min
+[2026-06-13T17:24:35.195Z] starting sync loop, every 5 min
+[2026-06-13T17:24:45.379Z] starting sync loop, every 5 min
+[2026-06-13T17:24:55.551Z] starting sync loop, every 5 min
+[2026-06-13T17:25:05.727Z] starting sync loop, every 5 min
+[2026-06-13T17:25:15.923Z] starting sync loop, every 5 min
+[2026-06-13T17:25:26.108Z] starting sync loop, every 5 min
+[2026-06-13T17:25:36.289Z] starting sync loop, every 5 min
+[2026-06-13T17:25:46.464Z] starting sync loop, every 5 min
+[2026-06-13T17:25:56.638Z] starting sync loop, every 5 min
+[2026-06-13T17:26:06.812Z] starting sync loop, every 5 min
+[2026-06-13T17:26:16.990Z] starting sync loop, every 5 min
+[2026-06-13T17:26:27.163Z] starting sync loop, every 5 min
+[2026-06-13T17:26:37.343Z] starting sync loop, every 5 min
+[2026-06-13T17:26:47.525Z] starting sync loop, every 5 min
+[2026-06-13T17:26:57.706Z] starting sync loop, every 5 min
+[2026-06-13T17:27:07.889Z] starting sync loop, every 5 min
+[2026-06-13T17:27:18.074Z] starting sync loop, every 5 min
+[2026-06-13T17:27:28.253Z] starting sync loop, every 5 min
+[2026-06-13T17:27:38.453Z] starting sync loop, every 5 min
+[2026-06-13T17:27:48.628Z] starting sync loop, every 5 min
+[2026-06-13T17:27:58.807Z] starting sync loop, every 5 min
+[2026-06-13T17:28:08.988Z] starting sync loop, every 5 min
+[2026-06-13T17:28:19.177Z] starting sync loop, every 5 min
+[2026-06-13T17:28:29.349Z] starting sync loop, every 5 min
+[2026-06-13T17:28:39.521Z] starting sync loop, every 5 min
+[2026-06-13T17:28:49.702Z] starting sync loop, every 5 min
+[2026-06-13T17:28:59.874Z] starting sync loop, every 5 min
+[2026-06-13T17:29:10.053Z] starting sync loop, every 5 min
+[2026-06-13T17:29:20.231Z] starting sync loop, every 5 min
+[2026-06-13T17:29:30.407Z] starting sync loop, every 5 min
+[2026-06-13T17:29:40.590Z] starting sync loop, every 5 min
+[2026-06-13T17:29:50.767Z] starting sync loop, every 5 min
+[2026-06-13T17:30:00.941Z] starting sync loop, every 5 min
+[2026-06-13T17:30:11.121Z] starting sync loop, every 5 min
+[2026-06-13T17:30:21.299Z] starting sync loop, every 5 min
+[2026-06-13T17:30:31.475Z] starting sync loop, every 5 min
+[2026-06-13T17:30:41.650Z] starting sync loop, every 5 min
+[2026-06-13T17:30:51.821Z] starting sync loop, every 5 min
+[2026-06-13T17:31:01.999Z] starting sync loop, every 5 min
+[2026-06-13T17:31:12.177Z] starting sync loop, every 5 min
+[2026-06-13T17:31:22.358Z] starting sync loop, every 5 min
+[2026-06-13T17:31:32.535Z] starting sync loop, every 5 min
+[2026-06-13T17:31:42.710Z] starting sync loop, every 5 min
+[2026-06-13T17:31:52.886Z] starting sync loop, every 5 min
+[2026-06-13T17:32:03.082Z] starting sync loop, every 5 min
+[2026-06-13T17:32:13.267Z] starting sync loop, every 5 min
+[2026-06-13T17:32:23.451Z] starting sync loop, every 5 min
+[2026-06-13T17:32:33.631Z] starting sync loop, every 5 min
+[2026-06-13T17:32:43.821Z] starting sync loop, every 5 min
+[2026-06-13T17:32:54.001Z] starting sync loop, every 5 min
+[2026-06-13T17:33:04.181Z] starting sync loop, every 5 min
+[2026-06-13T17:33:14.367Z] starting sync loop, every 5 min
+[2026-06-13T17:33:24.547Z] starting sync loop, every 5 min
+[2026-06-13T17:33:34.723Z] starting sync loop, every 5 min
+[2026-06-13T17:33:44.905Z] starting sync loop, every 5 min
+[2026-06-13T17:33:55.085Z] starting sync loop, every 5 min
+[2026-06-13T17:34:05.266Z] starting sync loop, every 5 min
+[2026-06-13T17:34:15.445Z] starting sync loop, every 5 min
+[2026-06-13T17:34:25.620Z] starting sync loop, every 5 min
+[2026-06-13T17:34:35.800Z] starting sync loop, every 5 min
+[2026-06-13T17:34:45.976Z] starting sync loop, every 5 min
+[2026-06-13T17:34:56.159Z] starting sync loop, every 5 min
+[2026-06-13T17:35:06.348Z] starting sync loop, every 5 min
+[2026-06-13T17:35:16.526Z] starting sync loop, every 5 min
+[2026-06-13T17:35:26.709Z] starting sync loop, every 5 min
+[2026-06-13T17:35:36.882Z] starting sync loop, every 5 min
+[2026-06-13T17:35:47.065Z] starting sync loop, every 5 min
+[2026-06-13T17:35:57.243Z] starting sync loop, every 5 min
+[2026-06-13T17:36:07.421Z] starting sync loop, every 5 min
+[2026-06-13T17:36:17.594Z] starting sync loop, every 5 min
+[2026-06-13T17:36:27.776Z] starting sync loop, every 5 min
+[2026-06-13T17:36:37.956Z] starting sync loop, every 5 min
+[2026-06-13T17:36:48.126Z] starting sync loop, every 5 min
+[2026-06-13T17:36:58.304Z] starting sync loop, every 5 min
+[2026-06-13T17:37:08.475Z] starting sync loop, every 5 min
+[2026-06-13T17:37:18.680Z] starting sync loop, every 5 min
+[2026-06-13T17:37:28.859Z] starting sync loop, every 5 min
+[2026-06-13T17:37:39.033Z] starting sync loop, every 5 min
+[2026-06-13T17:37:49.207Z] starting sync loop, every 5 min
+[2026-06-13T17:37:59.388Z] starting sync loop, every 5 min
+[2026-06-13T17:38:09.581Z] starting sync loop, every 5 min
+[2026-06-13T17:38:19.755Z] starting sync loop, every 5 min
+[2026-06-13T17:38:29.928Z] starting sync loop, every 5 min
+[2026-06-13T17:38:40.112Z] starting sync loop, every 5 min
+[2026-06-13T17:38:50.307Z] starting sync loop, every 5 min
+[2026-06-13T17:39:00.480Z] starting sync loop, every 5 min
+[2026-06-13T17:39:10.660Z] starting sync loop, every 5 min
+[2026-06-13T17:39:20.832Z] starting sync loop, every 5 min
+[2026-06-13T17:39:31.011Z] starting sync loop, every 5 min
+[2026-06-13T17:39:41.193Z] starting sync loop, every 5 min
+[2026-06-13T17:39:51.372Z] starting sync loop, every 5 min
+[2026-06-13T17:40:01.549Z] starting sync loop, every 5 min
+[2026-06-13T17:40:11.725Z] starting sync loop, every 5 min
+[2026-06-13T17:40:21.906Z] starting sync loop, every 5 min
+[2026-06-13T17:40:32.084Z] starting sync loop, every 5 min
+[2026-06-13T17:40:42.255Z] starting sync loop, every 5 min
+[2026-06-13T17:40:52.432Z] starting sync loop, every 5 min
+[2026-06-13T17:41:02.614Z] starting sync loop, every 5 min
+[2026-06-13T17:41:12.796Z] starting sync loop, every 5 min
+[2026-06-13T17:41:22.973Z] starting sync loop, every 5 min
+[2026-06-13T17:41:33.154Z] starting sync loop, every 5 min
+[2026-06-13T17:41:43.325Z] starting sync loop, every 5 min
+[2026-06-13T17:41:53.501Z] starting sync loop, every 5 min
+[2026-06-13T17:42:03.678Z] starting sync loop, every 5 min
+[2026-06-13T17:42:13.884Z] starting sync loop, every 5 min
+[2026-06-13T17:42:24.062Z] starting sync loop, every 5 min
+[2026-06-13T17:42:34.237Z] starting sync loop, every 5 min
+[2026-06-13T17:42:44.416Z] starting sync loop, every 5 min
+[2026-06-13T17:42:54.597Z] starting sync loop, every 5 min
+[2026-06-13T17:43:04.768Z] starting sync loop, every 5 min
+[2026-06-13T17:43:14.970Z] starting sync loop, every 5 min
+[2026-06-13T17:43:25.190Z] starting sync loop, every 5 min
+[2026-06-13T17:43:35.372Z] starting sync loop, every 5 min
+[2026-06-13T17:43:45.561Z] starting sync loop, every 5 min
+[2026-06-13T17:43:55.734Z] starting sync loop, every 5 min
+[2026-06-13T17:44:05.911Z] starting sync loop, every 5 min
+[2026-06-13T17:44:16.112Z] starting sync loop, every 5 min
+[2026-06-13T17:44:26.282Z] starting sync loop, every 5 min
+[2026-06-13T17:44:36.457Z] starting sync loop, every 5 min
+[2026-06-13T17:44:46.636Z] starting sync loop, every 5 min
+[2026-06-13T17:44:56.819Z] starting sync loop, every 5 min
+[2026-06-13T17:45:06.997Z] starting sync loop, every 5 min
+[2026-06-13T17:45:17.179Z] starting sync loop, every 5 min
+[2026-06-13T17:45:27.355Z] starting sync loop, every 5 min
+[2026-06-13T17:45:37.533Z] starting sync loop, every 5 min
+[2026-06-13T17:45:47.710Z] starting sync loop, every 5 min
+[2026-06-13T17:45:57.884Z] starting sync loop, every 5 min
+[2026-06-13T17:46:08.061Z] starting sync loop, every 5 min
+[2026-06-13T17:46:18.231Z] starting sync loop, every 5 min
+[2026-06-13T17:46:28.406Z] starting sync loop, every 5 min
+[2026-06-13T17:46:38.579Z] starting sync loop, every 5 min
+[2026-06-13T17:46:48.783Z] starting sync loop, every 5 min
+[2026-06-13T17:46:58.963Z] starting sync loop, every 5 min
+[2026-06-13T17:47:09.133Z] starting sync loop, every 5 min
+[2026-06-13T17:47:19.308Z] starting sync loop, every 5 min
+[2026-06-13T17:47:29.480Z] starting sync loop, every 5 min
+[2026-06-13T17:47:39.662Z] starting sync loop, every 5 min
+[2026-06-13T17:47:49.832Z] starting sync loop, every 5 min
+[2026-06-13T17:48:00.020Z] starting sync loop, every 5 min
+[2026-06-13T17:48:10.201Z] starting sync loop, every 5 min
+[2026-06-13T17:48:20.382Z] starting sync loop, every 5 min
+[2026-06-13T17:48:30.553Z] starting sync loop, every 5 min
+[2026-06-13T17:48:40.731Z] starting sync loop, every 5 min
+[2026-06-13T17:48:50.910Z] starting sync loop, every 5 min
+[2026-06-13T17:49:01.088Z] starting sync loop, every 5 min
+[2026-06-13T17:49:11.268Z] starting sync loop, every 5 min
+[2026-06-13T17:49:21.450Z] starting sync loop, every 5 min
+[2026-06-13T17:49:31.631Z] starting sync loop, every 5 min
+[2026-06-13T17:49:41.804Z] starting sync loop, every 5 min
+[2026-06-13T17:49:51.984Z] starting sync loop, every 5 min
+[2026-06-13T17:50:02.159Z] starting sync loop, every 5 min
+[2026-06-13T17:50:12.330Z] starting sync loop, every 5 min
+[2026-06-13T17:50:22.504Z] starting sync loop, every 5 min
+[2026-06-13T17:50:32.677Z] starting sync loop, every 5 min
+[2026-06-13T17:50:42.851Z] starting sync loop, every 5 min
+[2026-06-13T17:50:53.032Z] starting sync loop, every 5 min
+[2026-06-13T17:51:03.214Z] starting sync loop, every 5 min
+[2026-06-13T17:51:13.391Z] starting sync loop, every 5 min
+[2026-06-13T17:51:23.572Z] starting sync loop, every 5 min
+[2026-06-13T17:51:33.751Z] starting sync loop, every 5 min
+[2026-06-13T17:51:43.932Z] starting sync loop, every 5 min
+[2026-06-13T17:51:54.104Z] starting sync loop, every 5 min
+[2026-06-13T17:52:04.280Z] starting sync loop, every 5 min
+[2026-06-13T17:52:14.468Z] starting sync loop, every 5 min
+[2026-06-13T17:52:24.643Z] starting sync loop, every 5 min
+[2026-06-13T17:52:34.821Z] starting sync loop, every 5 min
+[2026-06-13T17:52:45.002Z] starting sync loop, every 5 min
+[2026-06-13T17:52:55.176Z] starting sync loop, every 5 min
+[2026-06-13T17:53:05.347Z] starting sync loop, every 5 min
+[2026-06-13T17:53:15.526Z] starting sync loop, every 5 min
+[2026-06-13T17:53:25.700Z] starting sync loop, every 5 min
+[2026-06-13T17:53:35.873Z] starting sync loop, every 5 min
+[2026-06-13T17:53:46.055Z] starting sync loop, every 5 min
+[2026-06-13T17:53:56.230Z] starting sync loop, every 5 min
+[2026-06-13T17:54:06.405Z] starting sync loop, every 5 min
+[2026-06-13T17:54:16.602Z] starting sync loop, every 5 min
+[2026-06-13T17:54:26.782Z] starting sync loop, every 5 min
+[2026-06-13T17:54:36.962Z] starting sync loop, every 5 min
+[2026-06-13T17:54:47.160Z] starting sync loop, every 5 min
+[2026-06-13T17:54:57.344Z] starting sync loop, every 5 min
+[2026-06-13T17:55:07.527Z] starting sync loop, every 5 min
+[2026-06-13T17:55:17.701Z] starting sync loop, every 5 min
+[2026-06-13T17:55:27.882Z] starting sync loop, every 5 min
+[2026-06-13T17:55:38.060Z] starting sync loop, every 5 min
+[2026-06-13T17:55:48.244Z] starting sync loop, every 5 min
+[2026-06-13T17:55:58.419Z] starting sync loop, every 5 min
+[2026-06-13T17:56:08.598Z] starting sync loop, every 5 min
+[2026-06-13T17:56:18.779Z] starting sync loop, every 5 min
+[2026-06-13T17:56:28.953Z] starting sync loop, every 5 min
+[2026-06-13T17:56:39.124Z] starting sync loop, every 5 min
+[2026-06-13T17:56:49.304Z] starting sync loop, every 5 min
+[2026-06-13T17:56:59.483Z] starting sync loop, every 5 min
+[2026-06-13T17:57:09.662Z] starting sync loop, every 5 min
+[2026-06-13T17:57:19.835Z] starting sync loop, every 5 min
+[2026-06-13T17:57:30.023Z] starting sync loop, every 5 min
+[2026-06-13T17:57:40.203Z] starting sync loop, every 5 min
+[2026-06-13T17:57:50.372Z] starting sync loop, every 5 min
+[2026-06-13T17:58:00.551Z] starting sync loop, every 5 min
+[2026-06-13T17:58:10.725Z] starting sync loop, every 5 min
+[2026-06-13T17:58:20.900Z] starting sync loop, every 5 min
+[2026-06-13T17:58:31.078Z] starting sync loop, every 5 min
+[2026-06-13T17:58:41.251Z] starting sync loop, every 5 min
+[2026-06-13T17:58:51.424Z] starting sync loop, every 5 min
+[2026-06-13T17:59:01.596Z] starting sync loop, every 5 min
+[2026-06-13T17:59:11.790Z] starting sync loop, every 5 min
+[2026-06-13T17:59:21.971Z] starting sync loop, every 5 min
+[2026-06-13T17:59:32.143Z] starting sync loop, every 5 min
+[2026-06-13T17:59:42.339Z] starting sync loop, every 5 min
+[2026-06-13T17:59:52.520Z] starting sync loop, every 5 min
+[2026-06-13T18:00:02.715Z] starting sync loop, every 5 min
+[2026-06-13T18:00:12.900Z] starting sync loop, every 5 min
+[2026-06-13T18:00:23.075Z] starting sync loop, every 5 min
+[2026-06-13T18:00:33.257Z] starting sync loop, every 5 min
+[2026-06-13T18:00:43.433Z] starting sync loop, every 5 min
+[2026-06-13T18:00:53.615Z] starting sync loop, every 5 min
+[2026-06-13T18:01:03.791Z] starting sync loop, every 5 min
+[2026-06-13T18:01:13.964Z] starting sync loop, every 5 min
+[2026-06-13T18:01:24.146Z] starting sync loop, every 5 min
+[2026-06-13T18:01:34.322Z] starting sync loop, every 5 min
+[2026-06-13T18:01:44.497Z] starting sync loop, every 5 min
+[2026-06-13T18:01:54.677Z] starting sync loop, every 5 min
+[2026-06-13T18:02:04.857Z] starting sync loop, every 5 min
+[2026-06-13T18:02:15.031Z] starting sync loop, every 5 min
+[2026-06-13T18:02:25.212Z] starting sync loop, every 5 min
+[2026-06-13T18:02:35.388Z] starting sync loop, every 5 min
+[2026-06-13T18:02:45.561Z] starting sync loop, every 5 min
+[2026-06-13T18:02:55.729Z] starting sync loop, every 5 min
+[2026-06-13T18:03:05.904Z] starting sync loop, every 5 min
+[2026-06-13T18:03:16.100Z] starting sync loop, every 5 min
+[2026-06-13T18:03:26.274Z] starting sync loop, every 5 min
+[2026-06-13T18:03:36.455Z] starting sync loop, every 5 min
+[2026-06-13T18:03:46.624Z] starting sync loop, every 5 min
+[2026-06-13T18:03:56.805Z] starting sync loop, every 5 min
+[2026-06-13T18:04:06.981Z] starting sync loop, every 5 min
+[2026-06-13T18:04:17.156Z] starting sync loop, every 5 min
+[2026-06-13T18:04:27.338Z] starting sync loop, every 5 min
+[2026-06-13T18:04:37.517Z] starting sync loop, every 5 min
+[2026-06-13T18:04:47.708Z] starting sync loop, every 5 min
+[2026-06-13T18:04:57.886Z] starting sync loop, every 5 min
+[2026-06-13T18:05:08.170Z] starting sync loop, every 5 min
+[2026-06-13T18:05:18.342Z] starting sync loop, every 5 min
+[2026-06-13T18:05:28.517Z] starting sync loop, every 5 min
+[2026-06-13T18:05:38.693Z] starting sync loop, every 5 min
+[2026-06-13T18:05:48.873Z] starting sync loop, every 5 min
+[2026-06-13T18:05:59.054Z] starting sync loop, every 5 min
+[2026-06-13T18:06:09.231Z] starting sync loop, every 5 min
+[2026-06-13T18:06:19.408Z] starting sync loop, every 5 min
+[2026-06-13T18:06:29.580Z] starting sync loop, every 5 min
+[2026-06-13T18:06:39.759Z] starting sync loop, every 5 min
+[2026-06-13T18:06:49.935Z] starting sync loop, every 5 min
+[2026-06-13T18:07:00.110Z] starting sync loop, every 5 min
+[2026-06-13T18:07:10.288Z] starting sync loop, every 5 min
+[2026-06-13T18:07:20.468Z] starting sync loop, every 5 min
+[2026-06-13T18:07:30.644Z] starting sync loop, every 5 min
+[2026-06-13T18:07:40.814Z] starting sync loop, every 5 min
+[2026-06-13T18:07:50.994Z] starting sync loop, every 5 min
+[2026-06-13T18:08:01.169Z] starting sync loop, every 5 min
+[2026-06-13T18:08:11.345Z] starting sync loop, every 5 min
+[2026-06-13T18:08:21.524Z] starting sync loop, every 5 min
+[2026-06-13T18:08:31.699Z] starting sync loop, every 5 min
+[2026-06-13T18:08:41.880Z] starting sync loop, every 5 min
+[2026-06-13T18:08:52.054Z] starting sync loop, every 5 min
+[2026-06-13T18:09:02.233Z] starting sync loop, every 5 min
+[2026-06-13T18:09:12.414Z] starting sync loop, every 5 min
+[2026-06-13T18:09:22.593Z] starting sync loop, every 5 min
+[2026-06-13T18:09:32.766Z] starting sync loop, every 5 min
+[2026-06-13T18:09:42.938Z] starting sync loop, every 5 min
+[2026-06-13T18:09:53.116Z] starting sync loop, every 5 min
+[2026-06-13T18:10:03.289Z] starting sync loop, every 5 min
+[2026-06-13T18:10:13.484Z] starting sync loop, every 5 min
+[2026-06-13T18:10:23.668Z] starting sync loop, every 5 min
+[2026-06-13T18:10:33.843Z] starting sync loop, every 5 min
+[2026-06-13T18:10:44.013Z] starting sync loop, every 5 min
+[2026-06-13T18:10:54.195Z] starting sync loop, every 5 min
+[2026-06-13T18:11:04.374Z] starting sync loop, every 5 min
+[2026-06-13T18:11:14.554Z] starting sync loop, every 5 min
+[2026-06-13T18:11:24.731Z] starting sync loop, every 5 min
+[2026-06-13T18:11:34.906Z] starting sync loop, every 5 min
+[2026-06-13T18:11:45.086Z] starting sync loop, every 5 min
+[2026-06-13T18:11:55.267Z] starting sync loop, every 5 min
+[2026-06-13T18:12:05.443Z] starting sync loop, every 5 min
+[2026-06-13T18:12:15.617Z] starting sync loop, every 5 min
+[2026-06-13T18:12:25.798Z] starting sync loop, every 5 min
+[2026-06-13T18:12:35.971Z] starting sync loop, every 5 min
+[2026-06-13T18:12:46.151Z] starting sync loop, every 5 min
+[2026-06-13T18:12:56.332Z] starting sync loop, every 5 min
+[2026-06-13T18:13:06.510Z] starting sync loop, every 5 min
+[2026-06-13T18:13:16.683Z] starting sync loop, every 5 min
+[2026-06-13T18:13:26.862Z] starting sync loop, every 5 min
+[2026-06-13T18:13:37.041Z] starting sync loop, every 5 min
+[2026-06-13T18:13:47.226Z] starting sync loop, every 5 min
+[2026-06-13T18:13:57.411Z] starting sync loop, every 5 min
+[2026-06-13T18:14:07.589Z] starting sync loop, every 5 min
+[2026-06-13T18:14:17.764Z] starting sync loop, every 5 min
+[2026-06-13T18:14:27.940Z] starting sync loop, every 5 min
+[2026-06-13T18:14:38.121Z] starting sync loop, every 5 min
+[2026-06-13T18:14:48.304Z] starting sync loop, every 5 min
+[2026-06-13T18:14:58.483Z] starting sync loop, every 5 min
+[2026-06-13T18:15:08.833Z] starting sync loop, every 5 min
+[2026-06-13T18:15:19.014Z] starting sync loop, every 5 min
+[2026-06-13T18:15:29.187Z] starting sync loop, every 5 min
+[2026-06-13T18:15:39.358Z] starting sync loop, every 5 min
+[2026-06-13T18:15:49.535Z] starting sync loop, every 5 min
+[2026-06-13T18:15:59.707Z] starting sync loop, every 5 min
+[2026-06-13T18:16:09.950Z] starting sync loop, every 5 min
+[2026-06-13T18:16:20.133Z] starting sync loop, every 5 min
+[2026-06-13T18:16:30.308Z] starting sync loop, every 5 min
+[2026-06-13T18:16:40.485Z] starting sync loop, every 5 min
+[2026-06-13T18:16:50.657Z] starting sync loop, every 5 min
+[2026-06-13T18:17:00.830Z] starting sync loop, every 5 min
+[2026-06-13T18:17:11.009Z] starting sync loop, every 5 min
+[2026-06-13T18:26:34.986Z] starting sync loop, every 5 min
+[2026-06-13T18:26:45.187Z] starting sync loop, every 5 min
+[2026-06-13T18:26:55.378Z] starting sync loop, every 5 min
+[2026-06-13T18:27:05.579Z] starting sync loop, every 5 min
+[2026-06-13T18:27:16.141Z] starting sync loop, every 5 min
+[2026-06-13T18:29:54.729Z] sales: full refresh, 34036 rows
+[2026-06-13T18:29:57.192Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T18:29:58.110Z] sync complete
+[2026-06-13T18:30:29.467Z] Shopify american-tourister-egypt: upserted 33 line items
+[2026-06-13T18:30:30.976Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T18:41:30.687Z] starting sync loop, every 5 min
+[2026-06-13T18:49:56.926Z] starting sync loop, every 5 min
+[2026-06-13T18:50:07.250Z] starting sync loop, every 5 min
+[2026-06-13T18:50:17.441Z] starting sync loop, every 5 min
+[2026-06-13T18:50:49.117Z] sales: full refresh, 34036 rows
+[2026-06-13T18:50:49.209Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T18:50:49.676Z] sync complete
+[2026-06-13T18:50:55.034Z] Shopify american-tourister-egypt: upserted 13 line items
+[2026-06-13T18:50:56.263Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T18:55:57.947Z] sales: full refresh, 34036 rows
+[2026-06-13T18:55:58.511Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T18:55:58.854Z] sync complete
+[2026-06-13T18:56:02.817Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-13T18:56:03.596Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T19:35:24.677Z] starting sync loop, every 5 min
+[2026-06-13T20:06:37.265Z] starting sync loop, every 5 min
+[2026-06-13T20:28:34.711Z] starting sync loop, every 5 min
+[2026-06-13T20:28:45.003Z] starting sync loop, every 5 min
+[2026-06-13T20:28:55.186Z] starting sync loop, every 5 min
+[2026-06-13T20:29:34.930Z] sales: full refresh, 34036 rows
+[2026-06-13T20:29:35.258Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T20:29:35.865Z] sync complete
+[2026-06-13T20:29:40.070Z] Shopify american-tourister-egypt: upserted 11 line items
+[2026-06-13T20:29:41.989Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T20:34:31.417Z] sales: full refresh, 34036 rows
+[2026-06-13T20:34:31.516Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T20:34:31.992Z] sync complete
+[2026-06-13T20:34:34.742Z] Shopify american-tourister-egypt: upserted 3 line items
+[2026-06-13T20:34:35.978Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T20:39:36.125Z] sales: full refresh, 34036 rows
+[2026-06-13T20:39:36.365Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T20:39:36.731Z] sync complete
+[2026-06-13T20:39:39.803Z] Shopify american-tourister-egypt: upserted 3 line items
+[2026-06-13T20:39:41.030Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T20:44:33.176Z] sales: full refresh, 34036 rows
+[2026-06-13T20:44:33.442Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T20:44:34.097Z] sync complete
+[2026-06-13T20:44:35.949Z] Shopify american-tourister-egypt: upserted 3 line items
+[2026-06-13T20:44:36.875Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T20:49:25.286Z] sales: full refresh, 34036 rows
+[2026-06-13T20:49:25.383Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T20:49:25.604Z] sync complete
+[2026-06-13T20:49:27.091Z] Shopify american-tourister-egypt: upserted 3 line items
+[2026-06-13T20:49:28.001Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T20:54:31.684Z] sales: full refresh, 34036 rows
+[2026-06-13T20:54:31.794Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T20:54:32.093Z] sync complete
+[2026-06-13T20:54:35.265Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-13T20:54:36.789Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T20:59:30.788Z] sales: full refresh, 34036 rows
+[2026-06-13T20:59:30.913Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T20:59:31.401Z] sync complete
+[2026-06-13T20:59:34.101Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-13T20:59:35.037Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T21:04:24.911Z] sales: full refresh, 34046 rows
+[2026-06-13T21:04:24.991Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T21:04:25.226Z] sync complete
+[2026-06-13T21:04:27.396Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-13T21:04:28.423Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T21:09:25.973Z] sales: full refresh, 34046 rows
+[2026-06-13T21:09:26.088Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T21:09:26.336Z] sync complete
+[2026-06-13T21:09:28.512Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-13T21:09:29.284Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T21:14:34.880Z] sales: full refresh, 34046 rows
+[2026-06-13T21:14:35.185Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T21:14:35.505Z] sync complete
+[2026-06-13T21:14:41.005Z] Shopify american-tourister-egypt: upserted 11 line items
+[2026-06-13T21:14:42.081Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T21:19:45.629Z] sales: full refresh, 34046 rows
+[2026-06-13T21:19:46.209Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-13T21:19:46.554Z] sync complete
+[2026-06-13T21:19:50.853Z] Shopify american-tourister-egypt: upserted 11 line items
+[2026-06-13T21:19:52.030Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-13T21:37:14.428Z] starting sync loop, every 5 min
+[2026-06-13T22:12:04.999Z] starting sync loop, every 5 min
+[2026-06-13T22:45:26.578Z] starting sync loop, every 5 min
+[2026-06-13T23:16:29.177Z] starting sync loop, every 5 min
+[2026-06-13T23:37:04.928Z] starting sync loop, every 5 min
+[2026-06-13T23:51:05.808Z] starting sync loop, every 5 min
+[2026-06-14T00:21:51.933Z] starting sync loop, every 5 min
+[2026-06-14T00:46:58.692Z] starting sync loop, every 5 min
+[2026-06-14T01:21:42.489Z] starting sync loop, every 5 min
+[2026-06-14T01:54:17.401Z] starting sync loop, every 5 min
+[2026-06-14T02:25:49.618Z] starting sync loop, every 5 min
+[2026-06-14T02:59:53.682Z] starting sync loop, every 5 min
+[2026-06-14T03:32:23.603Z] starting sync loop, every 5 min
+[2026-06-14T04:06:25.676Z] starting sync loop, every 5 min
+[2026-06-14T04:12:09.597Z] starting sync loop, every 5 min
+[2026-06-14T04:46:33.272Z] starting sync loop, every 5 min
+[2026-06-14T05:18:51.883Z] starting sync loop, every 5 min
+[2026-06-14T05:50:17.480Z] starting sync loop, every 5 min
+[2026-06-14T06:13:05.079Z] starting sync loop, every 5 min
+[2026-06-14T06:28:30.948Z] starting sync loop, every 5 min
+[2026-06-14T07:00:49.488Z] starting sync loop, every 5 min
+[2026-06-14T07:14:20.486Z] starting sync loop, every 5 min
+[2026-06-14T07:14:30.674Z] starting sync loop, every 5 min
+[2026-06-14T07:31:13.887Z] starting sync loop, every 5 min
+[2026-06-14T07:46:16.669Z] starting sync loop, every 5 min
+[2026-06-14T07:46:26.878Z] starting sync loop, every 5 min
+[2026-06-14T07:46:37.056Z] starting sync loop, every 5 min
+[2026-06-14T07:46:47.447Z] starting sync loop, every 5 min
+[2026-06-14T07:46:57.627Z] starting sync loop, every 5 min
+[2026-06-14T07:47:07.820Z] starting sync loop, every 5 min
+[2026-06-14T07:47:18.264Z] starting sync loop, every 5 min
+[2026-06-14T07:47:45.716Z] sales: full refresh, 34046 rows
+[2026-06-14T07:47:45.873Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T07:47:46.339Z] sync complete
+[2026-06-14T07:47:56.571Z] Shopify american-tourister-egypt: upserted 28 line items
+[2026-06-14T07:47:58.050Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T07:52:49.049Z] sales: full refresh, 34046 rows
+[2026-06-14T07:52:49.198Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T07:52:49.442Z] sync complete
+[2026-06-14T07:52:51.471Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T07:52:52.320Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T07:57:52.552Z] sales: full refresh, 34046 rows
+[2026-06-14T07:57:52.852Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T07:57:53.168Z] sync complete
+[2026-06-14T07:57:56.559Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T07:57:57.484Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:02:42.253Z] sales: full refresh, 34046 rows
+[2026-06-14T08:02:42.354Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:02:42.849Z] sync complete
+[2026-06-14T08:02:45.616Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T08:02:46.529Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:07:49.880Z] sales: full refresh, 34046 rows
+[2026-06-14T08:07:50.178Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:07:50.413Z] sync complete
+[2026-06-14T08:07:52.940Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:07:53.808Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:12:47.568Z] sales: full refresh, 34046 rows
+[2026-06-14T08:12:48.171Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:12:48.481Z] sync complete
+[2026-06-14T08:12:51.405Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:12:52.570Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:17:54.749Z] sales: full refresh, 34046 rows
+[2026-06-14T08:17:54.901Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:17:55.583Z] sync complete
+[2026-06-14T08:18:00.150Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:18:01.739Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:22:54.795Z] sales: full refresh, 34046 rows
+[2026-06-14T08:22:55.505Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:22:56.024Z] sync complete
+[2026-06-14T08:22:59.058Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:23:00.260Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:27:54.010Z] sales: full refresh, 34046 rows
+[2026-06-14T08:27:54.465Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:27:54.927Z] sync complete
+[2026-06-14T08:27:59.739Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-14T08:28:00.972Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:32:47.991Z] sales: full refresh, 34046 rows
+[2026-06-14T08:32:48.135Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:32:48.568Z] sync complete
+[2026-06-14T08:32:51.314Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:32:52.250Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:37:49.640Z] sales: full refresh, 34046 rows
+[2026-06-14T08:37:49.864Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:37:50.129Z] sync complete
+[2026-06-14T08:37:53.705Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:37:54.653Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:42:52.327Z] sales: full refresh, 34046 rows
+[2026-06-14T08:42:52.511Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:42:52.917Z] sync complete
+[2026-06-14T08:42:56.952Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:42:58.446Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T08:48:20.343Z] starting sync loop, every 5 min
+[2026-06-14T08:48:30.531Z] starting sync loop, every 5 min
+[2026-06-14T08:56:22.641Z] starting sync loop, every 5 min
+[2026-06-14T08:56:32.822Z] starting sync loop, every 5 min
+[2026-06-14T08:56:43.163Z] starting sync loop, every 5 min
+[2026-06-14T08:56:53.347Z] starting sync loop, every 5 min
+[2026-06-14T08:57:03.705Z] starting sync loop, every 5 min
+[2026-06-14T08:57:32.929Z] sales: full refresh, 34046 rows
+[2026-06-14T08:57:33.533Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T08:57:34.265Z] sync complete
+[2026-06-14T08:57:38.750Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T08:57:40.619Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:02:37.103Z] sales: full refresh, 34046 rows
+[2026-06-14T09:02:37.447Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:02:37.715Z] sync complete
+[2026-06-14T09:02:40.779Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T09:02:41.977Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:07:43.996Z] sales: full refresh, 34046 rows
+[2026-06-14T09:07:44.192Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:07:44.529Z] sync complete
+[2026-06-14T09:07:47.279Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T09:07:48.559Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:12:39.767Z] sales: full refresh, 34046 rows
+[2026-06-14T09:12:39.957Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:12:40.400Z] sync complete
+[2026-06-14T09:12:43.167Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T09:12:44.088Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:18:08.069Z] starting sync loop, every 5 min
+[2026-06-14T09:18:36.954Z] sales: full refresh, 34046 rows
+[2026-06-14T09:18:37.112Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:18:37.692Z] sync complete
+[2026-06-14T09:18:41.053Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T09:18:42.567Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:23:41.762Z] sales: full refresh, 34046 rows
+[2026-06-14T09:23:41.924Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:23:42.684Z] sync complete
+[2026-06-14T09:23:47.004Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T09:23:47.883Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:28:46.518Z] sales: full refresh, 34046 rows
+[2026-06-14T09:28:47.301Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:28:47.647Z] sync complete
+[2026-06-14T09:28:51.741Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T09:28:53.014Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:33:37.425Z] sales: full refresh, 34046 rows
+[2026-06-14T09:33:38.041Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:33:38.365Z] sync complete
+[2026-06-14T09:33:41.110Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T09:33:42.645Z] Shopify samsonite-eg-globosoft: upserted 2 line items
+[2026-06-14T09:38:43.687Z] sales: full refresh, 34046 rows
+[2026-06-14T09:38:43.855Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:38:44.297Z] sync complete
+[2026-06-14T09:38:47.965Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-14T09:38:49.199Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:43:39.209Z] sales: full refresh, 34046 rows
+[2026-06-14T09:43:39.368Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:43:40.129Z] sync complete
+[2026-06-14T09:43:41.668Z] Shopify american-tourister-egypt: upserted 1 line items
+[2026-06-14T09:43:42.716Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:48:43.630Z] sales: full refresh, 34046 rows
+[2026-06-14T09:48:43.891Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:48:44.259Z] sync complete
+[2026-06-14T09:48:46.213Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T09:48:47.326Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T09:53:37.051Z] sales: full refresh, 34046 rows
+[2026-06-14T09:53:37.249Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:53:37.556Z] sync complete
+[2026-06-14T09:53:38.874Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T09:58:44.664Z] sales: full refresh, 34046 rows
+[2026-06-14T09:58:44.849Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T09:58:45.121Z] sync complete
+[2026-06-14T09:58:46.643Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T10:03:44.984Z] sales: full refresh, 34046 rows
+[2026-06-14T10:03:45.240Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:03:45.582Z] sync complete
+[2026-06-14T10:03:47.698Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T10:08:42.034Z] sales: full refresh, 34046 rows
+[2026-06-14T10:08:42.382Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:08:42.674Z] sync complete
+[2026-06-14T10:08:44.756Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T10:13:46.788Z] sales: full refresh, 34046 rows
+[2026-06-14T10:13:48.081Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:13:48.939Z] sync complete
+[2026-06-14T10:13:51.091Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T10:18:46.004Z] sales: full refresh, 34046 rows
+[2026-06-14T10:18:46.747Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:18:47.090Z] sync complete
+[2026-06-14T10:18:48.515Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T10:23:44.397Z] sales: full refresh, 34046 rows
+[2026-06-14T10:23:44.542Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:23:44.887Z] sync complete
+[2026-06-14T10:23:46.494Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T10:28:38.660Z] sales: full refresh, 34046 rows
+[2026-06-14T10:28:38.938Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:28:39.244Z] sync complete
+[2026-06-14T10:28:41.145Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T10:33:39.409Z] sales: full refresh, 34046 rows
+[2026-06-14T10:33:40.022Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:33:40.323Z] sync complete
+[2026-06-14T10:33:43.135Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T10:38:50.913Z] sales: full refresh, 34046 rows
+[2026-06-14T10:38:51.834Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:38:52.169Z] sync complete
+[2026-06-14T10:38:56.746Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T10:43:46.143Z] sales: full refresh, 34046 rows
+[2026-06-14T10:43:46.764Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:43:47.081Z] sync complete
+[2026-06-14T10:43:52.289Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T10:48:39.020Z] sales: full refresh, 34046 rows
+[2026-06-14T10:48:39.148Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:48:39.526Z] sync complete
+[2026-06-14T10:48:43.213Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T10:53:49.650Z] sales: full refresh, 34046 rows
+[2026-06-14T10:53:49.787Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:53:50.129Z] sync complete
+[2026-06-14T10:53:53.917Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T10:58:39.189Z] sales: full refresh, 34046 rows
+[2026-06-14T10:58:39.477Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T10:58:40.107Z] sync complete
+[2026-06-14T10:58:44.101Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T11:04:14.476Z] starting sync loop, every 5 min
+[2026-06-14T11:04:24.668Z] starting sync loop, every 5 min
+[2026-06-14T11:04:35.258Z] starting sync loop, every 5 min
+[2026-06-14T11:05:07.657Z] sales: full refresh, 34046 rows
+[2026-06-14T11:05:07.792Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:05:08.371Z] sync complete
+[2026-06-14T11:05:11.920Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-14T11:10:13.425Z] sales: full refresh, 34046 rows
+[2026-06-14T11:10:14.344Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:10:14.961Z] sync complete
+[2026-06-14T11:10:18.947Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T11:15:07.045Z] sales: full refresh, 34046 rows
+[2026-06-14T11:15:07.417Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:15:07.729Z] sync complete
+[2026-06-14T11:15:11.286Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T11:20:00.757Z] sales: full refresh, 34046 rows
+[2026-06-14T11:20:00.883Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:20:01.369Z] sync complete
+[2026-06-14T11:20:04.378Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T11:25:15.263Z] sales: full refresh, 34046 rows
+[2026-06-14T11:25:16.493Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:25:17.174Z] sync complete
+[2026-06-14T11:25:20.557Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T11:30:06.870Z] sales: full refresh, 34046 rows
+[2026-06-14T11:30:07.114Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:30:07.391Z] sync complete
+[2026-06-14T11:30:10.553Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-14T11:48:49.394Z] starting sync loop, every 5 min
+[2026-06-14T11:48:59.583Z] starting sync loop, every 5 min
+[2026-06-14T11:49:35.091Z] sales: full refresh, 34046 rows
+[2026-06-14T11:49:35.244Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:49:36.060Z] sync complete
+[2026-06-14T11:49:40.887Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T11:54:30.334Z] sales: full refresh, 34046 rows
+[2026-06-14T11:54:30.632Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:54:31.087Z] sync complete
+[2026-06-14T11:54:34.192Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T11:59:37.684Z] sales: full refresh, 34046 rows
+[2026-06-14T11:59:38.450Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T11:59:38.763Z] sync complete
+[2026-06-14T11:59:40.973Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:04:33.054Z] sales: full refresh, 34046 rows
+[2026-06-14T12:04:33.234Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:04:33.516Z] sync complete
+[2026-06-14T12:04:36.435Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T12:09:29.464Z] sales: full refresh, 34046 rows
+[2026-06-14T12:09:29.593Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:09:29.864Z] sync complete
+[2026-06-14T12:09:31.921Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:14:42.808Z] sales: full refresh, 34046 rows
+[2026-06-14T12:14:43.549Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:14:43.884Z] sync complete
+[2026-06-14T12:14:46.186Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:19:31.578Z] sales: full refresh, 34046 rows
+[2026-06-14T12:19:31.690Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:19:32.004Z] sync complete
+[2026-06-14T12:19:34.339Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:24:27.101Z] sales: full refresh, 34046 rows
+[2026-06-14T12:24:27.230Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:24:27.714Z] sync complete
+[2026-06-14T12:24:30.088Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:29:29.112Z] sales: full refresh, 34046 rows
+[2026-06-14T12:29:29.272Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:29:29.509Z] sync complete
+[2026-06-14T12:29:32.003Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:34:33.527Z] sales: full refresh, 34046 rows
+[2026-06-14T12:34:33.725Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:34:34.127Z] sync complete
+[2026-06-14T12:34:37.059Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:39:31.702Z] sales: full refresh, 34046 rows
+[2026-06-14T12:39:31.891Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:39:32.171Z] sync complete
+[2026-06-14T12:39:34.774Z] Shopify american-tourister-egypt: upserted 4 line items
+[2026-06-14T12:44:30.364Z] sales: full refresh, 34046 rows
+[2026-06-14T12:44:30.648Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:44:30.914Z] sync complete
+[2026-06-14T12:44:34.097Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T12:49:45.274Z] sales: full refresh, 34046 rows
+[2026-06-14T12:49:45.946Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:49:46.231Z] sync complete
+[2026-06-14T12:49:48.937Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T12:54:29.095Z] sales: full refresh, 34046 rows
+[2026-06-14T12:54:29.233Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T12:54:29.721Z] sync complete
+[2026-06-14T12:54:31.584Z] Shopify american-tourister-egypt: upserted 3 line items
+[2026-06-14T13:14:12.299Z] starting sync loop, every 5 min
+[2026-06-14T13:48:27.942Z] starting sync loop, every 5 min
+[2026-06-14T14:19:37.634Z] starting sync loop, every 5 min
+[2026-06-14T14:51:54.327Z] starting sync loop, every 5 min
+[2026-06-14T14:52:13.533Z] starting sync loop, every 5 min
+[2026-06-14T14:58:27.254Z] starting sync loop, every 5 min
+[2026-06-14T15:31:22.596Z] starting sync loop, every 5 min
+[2026-06-14T15:59:20.164Z] starting sync loop, every 5 min
+[2026-06-14T16:15:26.102Z] starting sync loop, every 5 min
+[2026-06-14T16:46:49.804Z] starting sync loop, every 5 min
+[2026-06-14T17:00:20.448Z] starting sync loop, every 5 min
+[2026-06-14T17:31:27.451Z] starting sync loop, every 5 min
+[2026-06-14T18:01:18.716Z] starting sync loop, every 5 min
+[2026-06-14T18:18:21.199Z] starting sync loop, every 5 min
+[2026-06-14T18:22:39.119Z] starting sync loop, every 5 min
+[2026-06-14T18:22:49.555Z] starting sync loop, every 5 min
+[2026-06-14T18:22:59.791Z] starting sync loop, every 5 min
+[2026-06-14T18:23:10.018Z] starting sync loop, every 5 min
+[2026-06-14T18:23:20.235Z] starting sync loop, every 5 min
+[2026-06-14T18:23:31.026Z] starting sync loop, every 5 min
+[2026-06-14T18:23:56.639Z] sales: full refresh, 34049 rows
+[2026-06-14T18:23:56.741Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:23:57.190Z] sync complete
+[2026-06-14T18:24:07.787Z] Shopify american-tourister-egypt: upserted 32 line items
+[2026-06-14T18:24:09.068Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T18:29:09.168Z] sales: full refresh, 34049 rows
+[2026-06-14T18:29:09.447Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:29:09.677Z] sync complete
+[2026-06-14T18:29:13.184Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T18:29:14.746Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T18:34:02.832Z] sales: full refresh, 34049 rows
+[2026-06-14T18:34:02.988Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:34:03.448Z] sync complete
+[2026-06-14T18:34:06.431Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-14T18:34:07.691Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T18:39:06.385Z] sales: full refresh, 34049 rows
+[2026-06-14T18:39:06.670Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:39:06.986Z] sync complete
+[2026-06-14T18:39:10.343Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T18:39:11.540Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T18:43:56.301Z] sales: full refresh, 34049 rows
+[2026-06-14T18:43:56.394Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:43:56.913Z] sync complete
+[2026-06-14T18:44:00.198Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-14T18:44:00.972Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T18:49:03.506Z] sales: full refresh, 34049 rows
+[2026-06-14T18:49:03.595Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:49:03.830Z] sync complete
+[2026-06-14T18:49:06.262Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T18:49:07.506Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T18:54:05.232Z] sales: full refresh, 34049 rows
+[2026-06-14T18:54:05.327Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:54:05.644Z] sync complete
+[2026-06-14T18:54:08.698Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T18:54:10.402Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T18:59:05.960Z] sales: full refresh, 34049 rows
+[2026-06-14T18:59:06.039Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T18:59:06.271Z] sync complete
+[2026-06-14T18:59:10.037Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T18:59:12.365Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:03:58.350Z] sales: full refresh, 34049 rows
+[2026-06-14T19:03:58.446Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:03:58.715Z] sync complete
+[2026-06-14T19:04:01.592Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T19:04:02.597Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:09:04.994Z] sales: full refresh, 34049 rows
+[2026-06-14T19:09:05.110Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:09:05.387Z] sync complete
+[2026-06-14T19:09:09.593Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T19:09:10.769Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:14:04.430Z] sales: full refresh, 34049 rows
+[2026-06-14T19:14:04.519Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:14:04.821Z] sync complete
+[2026-06-14T19:14:08.542Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-14T19:14:09.462Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:19:01.293Z] sales: full refresh, 34049 rows
+[2026-06-14T19:19:01.493Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:19:01.739Z] sync complete
+[2026-06-14T19:19:04.901Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-14T19:19:05.868Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:23:57.633Z] sales: full refresh, 34049 rows
+[2026-06-14T19:23:57.735Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:23:57.969Z] sync complete
+[2026-06-14T19:24:02.857Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T19:24:03.818Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:29:05.123Z] sales: full refresh, 34049 rows
+[2026-06-14T19:29:05.238Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:29:05.827Z] sync complete
+[2026-06-14T19:29:09.368Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T19:29:10.437Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:34:06.882Z] sales: full refresh, 34049 rows
+[2026-06-14T19:34:07.203Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:34:07.514Z] sync complete
+[2026-06-14T19:34:10.604Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T19:34:11.434Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:38:58.066Z] sales: full refresh, 34049 rows
+[2026-06-14T19:38:58.162Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:38:58.390Z] sync complete
+[2026-06-14T19:39:02.089Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T19:39:04.181Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:43:31.498Z] starting sync loop, every 5 min
+[2026-06-14T19:43:41.678Z] starting sync loop, every 5 min
+[2026-06-14T19:43:51.860Z] starting sync loop, every 5 min
+[2026-06-14T19:44:02.042Z] starting sync loop, every 5 min
+[2026-06-14T19:44:12.231Z] starting sync loop, every 5 min
+[2026-06-14T19:44:22.410Z] starting sync loop, every 5 min
+[2026-06-14T19:44:32.593Z] starting sync loop, every 5 min
+[2026-06-14T19:44:42.774Z] starting sync loop, every 5 min
+[2026-06-14T19:44:52.955Z] starting sync loop, every 5 min
+[2026-06-14T19:45:03.213Z] starting sync loop, every 5 min
+[2026-06-14T19:45:13.391Z] starting sync loop, every 5 min
+[2026-06-14T19:45:23.570Z] starting sync loop, every 5 min
+[2026-06-14T19:45:33.747Z] starting sync loop, every 5 min
+[2026-06-14T19:45:43.927Z] starting sync loop, every 5 min
+[2026-06-14T19:45:54.108Z] starting sync loop, every 5 min
+[2026-06-14T19:46:04.288Z] starting sync loop, every 5 min
+[2026-06-14T19:46:14.465Z] starting sync loop, every 5 min
+[2026-06-14T19:46:51.505Z] sales: full refresh, 34049 rows
+[2026-06-14T19:46:51.801Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:46:52.427Z] sync complete
+[2026-06-14T19:46:59.301Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T19:47:01.951Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:51:41.417Z] sales: full refresh, 34049 rows
+[2026-06-14T19:51:41.509Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:51:41.735Z] sync complete
+[2026-06-14T19:51:45.026Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-14T19:51:45.774Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T19:57:06.824Z] sales: full refresh, 34049 rows
+[2026-06-14T19:57:07.237Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T19:57:07.466Z] sync complete
+[2026-06-14T19:57:11.376Z] Shopify american-tourister-egypt: upserted 9 line items
+[2026-06-14T19:57:12.622Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:01:44.851Z] sales: full refresh, 34049 rows
+[2026-06-14T20:01:44.950Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:01:45.770Z] sync complete
+[2026-06-14T20:01:48.229Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T20:01:49.032Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:06:54.812Z] sales: full refresh, 34049 rows
+[2026-06-14T20:06:55.123Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:06:55.431Z] sync complete
+[2026-06-14T20:06:58.498Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T20:07:00.034Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:11:46.750Z] sales: full refresh, 34049 rows
+[2026-06-14T20:11:46.858Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:11:47.270Z] sync complete
+[2026-06-14T20:11:50.340Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T20:11:51.874Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:16:46.492Z] sales: full refresh, 34049 rows
+[2026-06-14T20:16:46.595Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:16:47.413Z] sync complete
+[2026-06-14T20:16:49.873Z] Shopify american-tourister-egypt: upserted 5 line items
+[2026-06-14T20:16:50.891Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:21:54.678Z] sales: full refresh, 34049 rows
+[2026-06-14T20:21:55.119Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:21:55.538Z] sync complete
+[2026-06-14T20:22:01.472Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-14T20:22:02.497Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:26:48.528Z] sales: full refresh, 34049 rows
+[2026-06-14T20:26:48.639Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:26:48.909Z] sync complete
+[2026-06-14T20:26:50.091Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T20:26:50.917Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:31:51.452Z] sales: full refresh, 34049 rows
+[2026-06-14T20:31:51.712Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:31:52.103Z] sync complete
+[2026-06-14T20:31:53.783Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T20:31:54.730Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:37:03.353Z] sales: full refresh, 34049 rows
+[2026-06-14T20:37:03.625Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:37:03.855Z] sync complete
+[2026-06-14T20:37:05.193Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T20:37:06.114Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:43:41.781Z] sales: full refresh, 34049 rows
+[2026-06-14T20:43:42.229Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:43:42.480Z] sync complete
+[2026-06-14T20:43:44.289Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T20:43:45.869Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:46:44.915Z] starting sync loop, every 5 min
+[2026-06-14T20:47:00.139Z] starting sync loop, every 5 min
+[2026-06-14T20:48:00.084Z] sales: full refresh, 34049 rows
+[2026-06-14T20:48:00.504Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:48:01.030Z] sync complete
+[2026-06-14T20:48:03.056Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T20:48:04.334Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:53:32.523Z] sales: full refresh, 34049 rows
+[2026-06-14T20:53:32.864Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T20:53:33.229Z] sync complete
+[2026-06-14T20:53:34.798Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T20:53:35.821Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T20:58:04.727Z] SYNC ERROR: operation timed out for an unknown reason
+[2026-06-14T21:03:36.236Z] sales: full refresh, 34049 rows
+[2026-06-14T21:03:37.065Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:03:37.400Z] sync complete
+[2026-06-14T21:03:51.348Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:04:00.397Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:10:53.456Z] sales: full refresh, 34049 rows
+[2026-06-14T21:10:55.414Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:10:55.667Z] sync complete
+[2026-06-14T21:10:57.370Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:10:59.250Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:13:28.537Z] sales: full refresh, 34049 rows
+[2026-06-14T21:13:39.107Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:13:39.521Z] sync complete
+[2026-06-14T21:13:41.021Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:13:42.249Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:19:33.453Z] sales: full refresh, 34049 rows
+[2026-06-14T21:19:33.805Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:19:34.125Z] sync complete
+[2026-06-14T21:19:37.935Z] Shopify american-tourister-egypt: upserted 3 line items
+[2026-06-14T21:19:38.781Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:22:45.718Z] sales: full refresh, 34049 rows
+[2026-06-14T21:22:46.506Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:22:46.843Z] sync complete
+[2026-06-14T21:22:48.951Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:22:49.875Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:27:33.839Z] sales: full refresh, 34049 rows
+[2026-06-14T21:27:34.055Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:27:34.644Z] sync complete
+[2026-06-14T21:27:36.054Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:27:37.268Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:32:28.802Z] sales: full refresh, 34049 rows
+[2026-06-14T21:32:28.908Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:32:29.132Z] sync complete
+[2026-06-14T21:32:30.645Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:32:31.481Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:37:28.087Z] sales: full refresh, 34049 rows
+[2026-06-14T21:37:28.200Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:37:28.433Z] sync complete
+[2026-06-14T21:37:29.652Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:37:30.686Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:42:32.030Z] sales: full refresh, 34049 rows
+[2026-06-14T21:42:32.324Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:42:32.621Z] sync complete
+[2026-06-14T21:42:34.754Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:42:35.588Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:47:30.625Z] sales: full refresh, 34049 rows
+[2026-06-14T21:47:30.715Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:47:30.954Z] sync complete
+[2026-06-14T21:47:32.721Z] Shopify american-tourister-egypt: upserted 3 line items
+[2026-06-14T21:47:33.620Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:52:39.373Z] sales: full refresh, 34049 rows
+[2026-06-14T21:52:39.684Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:52:39.988Z] sync complete
+[2026-06-14T21:52:41.509Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:52:42.697Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T21:57:29.628Z] sales: full refresh, 34049 rows
+[2026-06-14T21:57:29.870Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T21:57:30.126Z] sync complete
+[2026-06-14T21:57:31.683Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T21:57:32.877Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T22:02:35.539Z] sales: full refresh, 34049 rows
+[2026-06-14T22:02:35.633Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T22:02:36.139Z] sync complete
+[2026-06-14T22:02:37.398Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T22:02:38.238Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T22:07:27.668Z] sales: full refresh, 34049 rows
+[2026-06-14T22:07:27.753Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T22:07:28.144Z] sync complete
+[2026-06-14T22:07:29.560Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T22:07:30.945Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T22:12:33.177Z] sales: full refresh, 34049 rows
+[2026-06-14T22:12:33.282Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T22:12:33.540Z] sync complete
+[2026-06-14T22:12:34.893Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T22:12:36.838Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-14T22:17:36.408Z] sales: full refresh, 34049 rows
+[2026-06-14T22:17:36.587Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-14T22:17:36.885Z] sync complete
+[2026-06-14T22:17:38.983Z] Shopify american-tourister-egypt: upserted 2 line items
+[2026-06-14T22:17:40.532Z] Shopify samsonite-eg-globosoft: upserted 2 line items

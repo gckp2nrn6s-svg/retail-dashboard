@@ -91,16 +91,31 @@ export default function CataloguePage() {
   };
   const hasFilters = !!(category || brand || colour || size || stock || search);
 
-  const exportCsv = () => {
-    const rows = [
-      ["Item No", "Description", "Brand", "Category", "Colour", "Size", "In Stock", "Price EGP", "Sold 30d"],
-      ...products.map((p) => [p.item_no, p.description, p.brand, p.category, p.colour_exact, p.size, p.in_stock, p.unit_price.egp, p.units_sold_30d]),
-    ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    a.download = "catalogue.csv";
-    a.click();
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ sort, page: "1", limit: "9999" });
+      if (search) params.set("q", search);
+      if (category) params.set("category", category);
+      if (brand) params.set("brand", brand);
+      if (colour) params.set("colour", colour);
+      if (size) params.set("size", size);
+      if (stock) params.set("stock", stock);
+      const res = await fetch(`/api/catalogue?${params}`).then(x => x.json());
+      const all: Product[] = res.items || [];
+      const rows = [
+        ["Item No", "Description", "Brand", "Category", "Colour", "Size", "In Stock", "Price EGP", "Sold 30d"],
+        ...all.map((p) => [p.item_no, `"${p.description}"`, p.brand, p.category, p.colour_exact, p.size, p.in_stock, p.unit_price.egp, p.units_sold_30d]),
+      ];
+      const csv = rows.map((r) => r.join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      a.download = "catalogue.csv";
+      a.click();
+    } finally {
+      setExporting(false);
+    }
   };
 
   const val = (v: { egp: number; usd: number }) => fmt(v.egp, v.usd, currency);
@@ -117,7 +132,7 @@ export default function CataloguePage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button onClick={exportCsv} style={{ color: "rgba(255,255,255,0.6)", padding: 6, background: "rgba(255,255,255,0.08)", borderRadius: 8, border: "none", cursor: "pointer" }}>
+              <button onClick={exportCsv} disabled={exporting} style={{ color: "rgba(255,255,255,0.6)", padding: 6, background: "rgba(255,255,255,0.08)", borderRadius: 8, border: "none", cursor: "pointer", opacity: exporting ? 0.5 : 1 }}>
                 <Download size={16} />
               </button>
               <button onClick={() => setShowFilters((v) => !v)} style={{

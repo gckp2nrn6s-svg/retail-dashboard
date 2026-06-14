@@ -1,121 +1,96 @@
 import { NextRequest, NextResponse } from "next/server";
+import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
+
+function groupOf(code: string) {
+  if (["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"].includes(code)) return "Retail";
+  if (["ONLINE","NOON","JUMIA"].includes(code)) return "Ecom";
+  return "B2B";
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const range = searchParams.get("range") || "30d";
   const fromParam = searchParams.get("from");
   const toParam   = searchParams.get("to");
 
-  let days = 30;
-  if (range === "7d") days = 7;
-  else if (range === "90d") days = 90;
-  else if (range === "12m") days = 365;
-
-  const dateFilter = fromParam && toParam
-    ? `sale_date BETWEEN '${fromParam}' AND '${toParam}'`
-    : `sale_date >= CURRENT_DATE - interval '${days} days'`;
-  const aliasedFilter = dateFilter.replace(/sale_date/g, "a.sale_date");
+  const from = fromParam || new Date().toISOString().slice(0, 8) + "01";
+  const to   = toParam   || new Date().toISOString().slice(0, 10);
 
   const [storeRows, fxRow, categoryRows] = await Promise.all([
-    query<{ store_code: string; revenue: string; units: string }>(`
+    navQuery<{ store: string; revenue: number; units: number }>(`
       SELECT
-        store_code,
-        SUM(revenue)::numeric AS revenue,
-        SUM(units)::numeric   AS units
-      FROM all_sales
-      WHERE ${dateFilter}
-      GROUP BY store_code
+        [Store No_]        AS store,
+        -SUM([Net Amount] + [VAT Amount]) AS revenue,
+        -SUM([Quantity])   AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      GROUP BY [Store No_]
       ORDER BY revenue DESC
-    `),
+    `, { from, to }),
+
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
     ),
-    query<{ category: string; revenue: string; units: string }>(`
+
+    navQuery<{ category: string; revenue: number; units: number }>(`
       SELECT
         CASE
-          WHEN ic.category IS NOT NULL THEN ic.category
-          WHEN a.source = 'shopify' THEN
-            CASE
-              WHEN LOWER(pt.product_title) LIKE '%spinner%'     THEN 'Luggage'
-              WHEN LOWER(pt.product_title) LIKE '%trolley%'     THEN 'Luggage'
-              WHEN LOWER(pt.product_title) LIKE '%suitcase%'    THEN 'Luggage'
-              WHEN LOWER(pt.product_title) LIKE '%carry%on%'    THEN 'Luggage'
-              WHEN LOWER(pt.product_title) LIKE '%hardcase%'    THEN 'Luggage'
-              WHEN LOWER(pt.product_title) LIKE '%backpack%'    THEN 'Backpacks'
-              WHEN LOWER(pt.product_title) LIKE '%laptop%'      THEN 'Backpacks'
-              WHEN LOWER(pt.product_title) LIKE '%handbag%'     THEN 'Bags'
-              WHEN LOWER(pt.product_title) LIKE '%tote%'        THEN 'Bags'
-              WHEN LOWER(pt.product_title) LIKE '%bag%'         THEN 'Bags'
-              WHEN LOWER(pt.product_title) LIKE '%wallet%'      THEN 'Accessories'
-              WHEN LOWER(pt.product_title) LIKE '%belt%'        THEN 'Accessories'
-              WHEN LOWER(pt.product_title) LIKE '%accessori%'   THEN 'Accessories'
-              WHEN LOWER(pt.product_title) LIKE '%travel%'      THEN 'Travel Accessories'
-              WHEN LOWER(pt.product_title) LIKE '%pillow%'      THEN 'Travel Accessories'
-              WHEN LOWER(pt.product_title) LIKE '%lock%'        THEN 'Travel Accessories'
-              WHEN pt.product_title IS NOT NULL                  THEN 'Online Other'
-              ELSE CONCAT('Line ', UPPER(LEFT(a.item_no, 3)))
-            END
-          ELSE 'Uncategorised'
+          WHEN [Item Category Code] = 'SAMSONITE' THEN 'Samsonite'
+          WHEN [Item Category Code] = 'AM-TOUR'   THEN 'American Tourister'
+          WHEN [Item Category Code] != ''          THEN [Item Category Code]
+          ELSE 'Other'
         END AS category,
-        SUM(a.revenue)::numeric AS revenue,
-        SUM(a.units)::numeric   AS units
-      FROM all_sales a
-      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
-      LEFT JOIN LATERAL (
-        SELECT product_title FROM shopify_sales WHERE sku = a.item_no LIMIT 1
-      ) pt ON true
-      WHERE ${aliasedFilter}
-      GROUP BY 1
+        -SUM([Net Amount] + [VAT Amount]) AS revenue,
+        -SUM([Quantity])   AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      GROUP BY [Item Category Code]
       ORDER BY revenue DESC
-    `),
+    `, { from, to }),
   ]);
 
-  const fx = parseFloat(fxRow[0]?.egp_per_usd || "50");
-  const totalRev = storeRows.reduce((s, r) => s + parseFloat(r.revenue), 0);
-
-  const RETAIL = new Set(["ALMAZA","CCA","CF-HOS","CSTARS","P90"]);
-  const ONLINE = new Set(["SHOPIFY-AMT","SHOPIFY-SAM","AMAZON BAN","AMAZON KAM"]);
-
-  function groupLabel(code: string) {
-    if (RETAIL.has(code)) return "Retail";
-    if (ONLINE.has(code)) return "Online";
-    return "B2B";
-  }
+  const fx       = parseFloat(fxRow[0]?.egp_per_usd || "50");
+  const totalRev = storeRows.reduce((s, r) => s + Number(r.revenue), 0);
 
   const stores = storeRows.map((r) => {
-    const rev = parseFloat(r.revenue);
+    const rev = Number(r.revenue);
     return {
-      code: r.store_code,
-      group: groupLabel(r.store_code),
+      code:    r.store,
+      group:   groupOf(r.store),
       revenue: { egp: Math.round(rev), usd: Math.round(rev / fx) },
-      units: parseFloat(r.units),
-      pct: totalRev > 0 ? Math.round((rev / totalRev) * 100) : 0,
+      units:   Math.round(Number(r.units)),
+      pct:     totalRev > 0 ? Math.round((rev / totalRev) * 100) : 0,
     };
   });
 
-  const channelTotals = ["Retail", "Online", "B2B"].map((grp) => {
+  const channelTotals = ["Retail", "Ecom", "B2B"].map((grp) => {
     const filtered = stores.filter((s) => s.group === grp);
-    const rev = filtered.reduce((s, r) => s + r.revenue.egp, 0);
-    const units = filtered.reduce((s, r) => s + r.units, 0);
+    const rev      = filtered.reduce((s, r) => s + r.revenue.egp, 0);
+    const units    = filtered.reduce((s, r) => s + r.units, 0);
     return {
-      group: grp,
+      group:   grp,
       revenue: { egp: Math.round(rev), usd: Math.round(rev / fx) },
       units,
-      pct: totalRev > 0 ? Math.round((rev / totalRev) * 100) : 0,
+      pct:     totalRev > 0 ? Math.round((rev / totalRev) * 100) : 0,
     };
   });
 
+  const totalCat = categoryRows.reduce((s, r) => s + Number(r.revenue), 0);
   const categories = categoryRows.map((r) => {
-    const rev = parseFloat(r.revenue);
-    const totalCat = categoryRows.reduce((s, c) => s + parseFloat(c.revenue), 0);
+    const rev = Number(r.revenue);
     return {
       category: r.category,
-      revenue: { egp: Math.round(rev), usd: Math.round(rev / fx) },
-      units: parseFloat(r.units),
-      pct: totalCat > 0 ? Math.round((rev / totalCat) * 100) : 0,
+      revenue:  { egp: Math.round(rev), usd: Math.round(rev / fx) },
+      units:    Math.round(Number(r.units)),
+      pct:      totalCat > 0 ? Math.round((rev / totalCat) * 100) : 0,
     };
   });
 
-  return NextResponse.json({ stores, channelTotals, categories, total: { egp: Math.round(totalRev), usd: Math.round(totalRev / fx) }, fx, range });
+  return NextResponse.json({
+    stores,
+    channelTotals,
+    categories,
+    total: { egp: Math.round(totalRev), usd: Math.round(totalRev / fx) },
+    fx,
+  });
 }

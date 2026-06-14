@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { fetchNavVelocity } from "@/lib/navVelocity";
 
 export async function GET() {
   const [summary, byCategory, byBrand, byColour, bySize, fxRow] = await Promise.all([
@@ -68,11 +69,10 @@ export async function GET() {
   `);
   const stockValue = parseFloat(valueRow[0]?.value || "0");
 
-  // 30-day velocity
-  const velocityRow = await query<{ units_sold: string; revenue: string }>(`
-    SELECT SUM(units)::numeric AS units_sold, SUM(revenue)::numeric AS revenue
-    FROM all_sales WHERE sale_date >= CURRENT_DATE - 30
-  `);
+  // 30-day velocity from NAV (live, VAT-inclusive)
+  const vel30 = await fetchNavVelocity(30);
+  let totalUnits30 = 0, totalRev30 = 0;
+  for (const v of vel30.values()) { totalUnits30 += v.units; totalRev30 += v.revenue; }
 
   return NextResponse.json({
     summary: {
@@ -84,8 +84,8 @@ export async function GET() {
       stockValue: { egp: Math.round(stockValue), usd: Math.round(stockValue / fx) },
     },
     velocity30d: {
-      units: parseFloat(velocityRow[0]?.units_sold || "0"),
-      revenue: { egp: Math.round(parseFloat(velocityRow[0]?.revenue || "0")), usd: Math.round(parseFloat(velocityRow[0]?.revenue || "0") / fx) },
+      units: totalUnits30,
+      revenue: { egp: Math.round(totalRev30), usd: Math.round(totalRev30 / fx) },
     },
     byCategory: byCategory.map((r) => ({ ...r, skus: parseInt(r.skus), units: parseFloat(r.units) })),
     byBrand: byBrand.map((r) => ({ ...r, skus: parseInt(r.skus), units: parseFloat(r.units) })),

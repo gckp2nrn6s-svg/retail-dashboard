@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { navQuery } from "@/lib/navdb";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -41,15 +42,18 @@ export async function GET(req: NextRequest) {
   };
   const orderBy = orderMap[sort] || orderMap.stock_desc;
 
+  // Fetch 30d sales from NAV (live, VAT-inclusive) then join in JS
+  const navSales30 = await navQuery<{ item_no: string; units_sold: number; revenue: number }>(`
+    SELECT [Item No_] AS item_no, -SUM([Quantity]) AS units_sold, -SUM([Net Amount]+[VAT Amount]) AS revenue
+    FROM TransSalesEntry
+    WHERE CAST([Date] AS DATE) >= CAST(DATEADD(day,-30,GETDATE()) AS DATE)
+    GROUP BY [Item No_]
+  `);
+  const navSalesMap = Object.fromEntries(navSales30.map(r => [r.item_no, { units_sold: Number(r.units_sold), revenue: Number(r.revenue) }]));
+
   const baseSql = `
     FROM item_categorisation ic
     LEFT JOIN warehouse_stock ws ON ic.item_no = ws.item_no
-    LEFT JOIN (
-      SELECT item_no, SUM(units) AS units_sold, SUM(revenue) AS revenue
-      FROM all_sales
-      WHERE sale_date >= CURRENT_DATE - 30
-      GROUP BY item_no
-    ) recent ON ic.item_no = recent.item_no
     ${whereClause}
   `;
 
@@ -58,15 +62,13 @@ export async function GET(req: NextRequest) {
     query<{
       item_no: string; description: string; brand: string; category: string; subcategory: string;
       colour_exact: string; colour_group: string; size: string; size_detail: string; line_name: string;
-      usage: string; in_stock: string; unit_price: string; units_sold_30d: string; revenue_30d: string;
+      usage: string; in_stock: string; unit_price: string;
     }>(`
       SELECT
         ic.item_no, ic.description, ic.brand, ic.category, ic.subcategory,
         ic.colour_exact, ic.colour_group, ic.size, ic.size_detail, ic.line_name, ic.usage,
         COALESCE(ws.in_stock, 0)::numeric AS in_stock,
-        COALESCE(ws.unit_price, 0)::numeric AS unit_price,
-        COALESCE(recent.units_sold, 0)::numeric AS units_sold_30d,
-        COALESCE(recent.revenue, 0)::numeric AS revenue_30d
+        COALESCE(ws.unit_price, 0)::numeric AS unit_price
       ${baseSql}
       ORDER BY ${orderBy}
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -80,13 +82,16 @@ export async function GET(req: NextRequest) {
   const total = parseInt(countRows[0]?.count || "0");
 
   return NextResponse.json({
-    items: rows.map((r) => ({
-      ...r,
-      in_stock: parseFloat(r.in_stock),
-      unit_price: { egp: parseFloat(r.unit_price), usd: parseFloat(r.unit_price) / fx },
-      units_sold_30d: parseFloat(r.units_sold_30d),
-      revenue_30d: { egp: Math.round(parseFloat(r.revenue_30d)), usd: Math.round(parseFloat(r.revenue_30d) / fx) },
-    })),
+    items: rows.map((r) => {
+      const nav = navSalesMap[r.item_no] ?? { units_sold: 0, revenue: 0 };
+      return {
+        ...r,
+        in_stock: parseFloat(r.in_stock),
+        unit_price: { egp: parseFloat(r.unit_price), usd: parseFloat(r.unit_price) / fx },
+        units_sold_30d: nav.units_sold,
+        revenue_30d: { egp: Math.round(nav.revenue), usd: Math.round(nav.revenue / fx) },
+      };
+    }),
     total,
     page,
     pages: Math.ceil(total / limit),

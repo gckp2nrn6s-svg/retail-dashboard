@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useState, ReactNode } from "react";
 
-export type DatePreset = "mtd" | "7d" | "30d" | "90d" | "ytd" | "custom";
+export type DatePreset = "today" | "mtd" | "7d" | "30d" | "90d" | "ytd" | "custom";
 
 export interface DateRange {
   from: string; // YYYY-MM-DD
@@ -25,6 +25,7 @@ function mtdLabel() {
 }
 
 export const PRESETS: { key: DatePreset; label: string; from: () => string; to: () => string }[] = [
+  { key: "today",  label: "Today",                from: today,               to: today },
   { key: "mtd",    label: `MTD · ${mtdLabel()}`, from: startOfMonth,        to: today },
   { key: "7d",     label: "Last 7 days",          from: () => daysAgo(7),    to: today },
   { key: "30d",    label: "Last 30 days",          from: () => daysAgo(30),   to: today },
@@ -50,20 +51,37 @@ interface DateRangeCtx {
 }
 
 const Ctx = createContext<DateRangeCtx>({
-  range: makeRange("30d"),
+  range: makeRange("mtd"),
   setPreset: () => {},
   setCustom: () => {},
 });
 
 export function DateRangeProvider({ children }: { children: ReactNode }) {
-  const [range, setRange] = useState<DateRange>(makeRange("30d"));
+  const [range, setRange] = useState<DateRange>(() => {
+    if (typeof window === "undefined") return makeRange("mtd");
+    try {
+      const saved = localStorage.getItem("ls_date_range");
+      if (saved) {
+        const p = JSON.parse(saved) as { preset: DatePreset; from: string; to: string };
+        if (p.preset === "custom") return { ...p, label: `${p.from} → ${p.to}` };
+        const found = PRESETS.find(x => x.key === p.preset);
+        if (found) return makeRange(p.preset);
+      }
+    } catch {}
+    return makeRange("mtd");
+  });
 
   const setPreset = (p: DatePreset) => {
-    if (p !== "custom") setRange(makeRange(p));
+    if (p !== "custom") {
+      const r = makeRange(p);
+      setRange(r);
+      try { localStorage.setItem("ls_date_range", JSON.stringify({ preset: p, from: r.from, to: r.to })); } catch {}
+    }
   };
 
   const setCustom = (from: string, to: string) => {
     setRange({ from, to, preset: "custom", label: `${from} → ${to}` });
+    try { localStorage.setItem("ls_date_range", JSON.stringify({ preset: "custom", from, to })); } catch {}
   };
 
   return <Ctx.Provider value={{ range, setPreset, setCustom }}>{children}</Ctx.Provider>;

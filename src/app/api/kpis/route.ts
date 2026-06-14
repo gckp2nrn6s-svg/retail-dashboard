@@ -1,69 +1,134 @@
 import { NextRequest, NextResponse } from "next/server";
+import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
+
+function safeDate(val: string | null, fallback: string): string {
+  if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  return fallback;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from");
-  const to   = searchParams.get("to");
+  const today = new Date().toISOString().slice(0, 10);
+  const thisMonthStart = today.slice(0, 8) + "01";
 
-  // Derive comparison period of equal length
-  let fromExpr: string;
-  let toExpr: string;
-  let prevFromExpr: string;
-  let prevToExpr: string;
+  const from = safeDate(searchParams.get("from"), thisMonthStart);
+  const to   = safeDate(searchParams.get("to"),   today);
 
-  if (from && to) {
-    fromExpr = `'${from}'::date`;
-    toExpr   = `'${to}'::date`;
-    prevFromExpr = `'${from}'::date - ('${to}'::date - '${from}'::date + 1)`;
-    prevToExpr   = `'${from}'::date - interval '1 day'`;
-  } else {
-    // legacy: default to last 30 days
-    fromExpr = "CURRENT_DATE - interval '29 days'";
-    toExpr   = "CURRENT_DATE";
-    prevFromExpr = "CURRENT_DATE - interval '59 days'";
-    prevToExpr   = "CURRENT_DATE - interval '30 days'";
-  }
+  const fromDate = new Date(from);
+  const toDate   = new Date(to);
+  const spanDays = Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1;
 
-  const [current, previous, fxRow, storeCount] = await Promise.all([
-    query<{ revenue: string; units: string }>(`
-      SELECT
-        COALESCE(SUM(revenue), 0)::numeric AS revenue,
-        COALESCE(SUM(units), 0)::numeric   AS units
-      FROM all_sales
-      WHERE sale_date BETWEEN ${fromExpr} AND ${toExpr}
-    `),
-    query<{ revenue: string; units: string }>(`
-      SELECT
-        COALESCE(SUM(revenue), 0)::numeric AS revenue,
-        COALESCE(SUM(units), 0)::numeric   AS units
-      FROM all_sales
-      WHERE sale_date BETWEEN ${prevFromExpr} AND ${prevToExpr}
-    `),
+  // Comparison periods
+  const prevTo   = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
+  const prevFrom = new Date(fromDate.getTime() - spanDays * 86400000).toISOString().slice(0, 10);
+
+  // Yesterday (same-time-of-day proxy: same calendar day last period)
+  const yest      = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const d7from    = new Date(Date.now() - 7  * 86400000).toISOString().slice(0, 10);
+  const d30from   = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const yoy_from  = new Date(fromDate.getFullYear() - 1, fromDate.getMonth(), fromDate.getDate()).toISOString().slice(0, 10);
+  const yoy_to    = new Date(toDate.getFullYear()   - 1, toDate.getMonth(),   toDate.getDate()).toISOString().slice(0, 10);
+
+  // Sparkline: daily revenue for last 30 days
+  const sparkStart = d30from;
+
+  const [current, previous, yest_row, d7_row, d30_row, yoy_row, fxRow, storeCount, sparkRows] = await Promise.all([
+    navQuery<{ revenue: number; units: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units
+      FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+    `, { from, to }),
+
+    navQuery<{ revenue: number; units: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units
+      FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @prevFrom AND @prevTo
+    `, { prevFrom, prevTo }),
+
+    navQuery<{ revenue: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue
+      FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @yest
+    `, { yest }),
+
+    navQuery<{ revenue: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount])/7.0 AS revenue
+      FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @d7from AND @today
+    `, { d7from, today }),
+
+    navQuery<{ revenue: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount])/30.0 AS revenue
+      FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @d30from AND @today
+    `, { d30from, today }),
+
+    navQuery<{ revenue: number; units: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units
+      FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @yoy_from AND @yoy_to
+    `, { yoy_from, yoy_to }),
+
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
     ),
-    query<{ n: string }>(
-      `SELECT COUNT(DISTINCT store_code) n FROM all_sales WHERE sale_date BETWEEN ${fromExpr} AND ${toExpr}`
-    ),
+
+    navQuery<{ n: number }>(`
+      SELECT COUNT(DISTINCT [Store No_]) AS n FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+    `, { from, to }),
+
+    navQuery<{ day: string; revenue: number }>(`
+      SELECT CAST([Date] AS DATE) AS day, -SUM([Net Amount]+[VAT Amount]) AS revenue
+      FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @sparkStart AND @today
+      GROUP BY CAST([Date] AS DATE) ORDER BY day
+    `, { sparkStart, today }),
   ]);
 
-  const rev = parseFloat(current[0]?.revenue || "0");
-  const units = parseFloat(current[0]?.units || "0");
-  const prevRev = parseFloat(previous[0]?.revenue || "0");
-  const prevUnits = parseFloat(previous[0]?.units || "0");
-  const fx = parseFloat(fxRow[0]?.egp_per_usd || "50");
+  const rev       = Number(current[0]?.revenue  ?? 0);
+  const units     = Number(current[0]?.units    ?? 0);
+  const prevRev   = Number(previous[0]?.revenue ?? 0);
+  const prevUnits = Number(previous[0]?.units   ?? 0);
+  const yestRev   = Number(yest_row[0]?.revenue ?? 0);
+  const d7Rev     = Number(d7_row[0]?.revenue   ?? 0); // daily avg
+  const d30Rev    = Number(d30_row[0]?.revenue  ?? 0); // daily avg
+  const yoyRev    = Number(yoy_row[0]?.revenue  ?? 0);
+  const fx        = parseFloat(fxRow[0]?.egp_per_usd || "50");
 
-  const revChange = prevRev > 0 ? ((rev - prevRev) / prevRev) * 100 : null;
-  const unitsChange = prevUnits > 0 ? ((units - prevUnits) / prevUnits) * 100 : null;
+  function pct(a: number, b: number) { return b > 0 ? ((a - b) / b) * 100 : 0; }
+
+  // Pace: daily run-rate vs estimated daily target (30d avg * 1.1 as proxy)
+  const dailyTarget = d30Rev * 1.1;
+  const todayRev    = Number((await navQuery<{ revenue: number }>(`
+    SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry
+    WHERE CAST([Date] AS DATE) = @today
+  `, { today }))[0]?.revenue ?? 0);
+  const paceToTarget = dailyTarget > 0 ? (todayRev / dailyTarget) * 100 : null;
+
+  const sparkline = sparkRows.map(r => Number(r.revenue));
 
   return NextResponse.json({
-    revenue: { egp: rev, usd: rev / fx },
-    units,
-    avgTicket: { egp: units > 0 ? rev / units : 0, usd: units > 0 ? rev / units / fx : 0 },
-    activeStores: parseInt(storeCount[0]?.n || "0"),
-    revChange,
-    unitsChange,
+    revenue: {
+      egp: rev, usd: rev / fx,
+      comparisons: [
+        { label: "vs Yesterday",  pct: pct(rev, yestRev * spanDays) },
+        { label: "vs 7d avg",     pct: pct(rev / spanDays, d7Rev) },
+        { label: "vs 30d avg",    pct: pct(rev / spanDays, d30Rev) },
+        { label: "YoY",           pct: pct(rev, yoyRev) },
+        { label: "vs prev period",pct: pct(rev, prevRev) },
+      ],
+    },
+    units: {
+      value: units,
+      comparisons: [
+        { label: "vs prev period", pct: pct(units, prevUnits) },
+        { label: "YoY", pct: pct(units, Number(yoy_row[0]?.units ?? 0)) },
+      ],
+    },
+    avgTicket: {
+      egp: units > 0 ? rev / units : 0,
+      usd: units > 0 ? rev / units / fx : 0,
+    },
+    activeStores: Number(storeCount[0]?.n ?? 0),
     fx,
+    sparkline,
+    todayRevenue: todayRev,
+    pace: paceToTarget !== null ? { pct: paceToTarget, dailyTarget } : null,
+    lastUpdated: new Date().toISOString(),
   });
 }

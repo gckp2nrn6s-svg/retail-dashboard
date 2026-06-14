@@ -24,6 +24,9 @@ export const config = {
     "/api/drill/:path*",
     "/api/insights/:path*",
     "/api/stock/:path*",
+    "/api/catalogue/:path*",
     "/api/ai/:path*",
+    "/api/egypt/:path*",
+    "/api/marketing/:path*",
   ],
 };

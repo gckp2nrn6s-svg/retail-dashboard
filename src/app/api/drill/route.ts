@@ -1,357 +1,574 @@
 import { NextRequest, NextResponse } from "next/server";
+import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 
-const RETAIL = ["ALMAZA","CCA","CF-HOS","CSTARS","P90"];
-const ONLINE = ["SHOPIFY-AMT","SHOPIFY-SAM","AMAZON BAN","AMAZON KAM"];
-const B2B    = ["HO","NOON","AMAZON","JUMIA","DUTY FREE","FOUR SEASO","GO SPORT1","MOA","MOE","SPINNEYS","ATCFC","ATMADI","HIS","EVE"];
+const RETAIL_STORES = ["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"];
+const ECOM_STORES   = ["ONLINE","NOON","JUMIA"];
+// B2B = everything else (HO, GO SPORT1, ATCFC, EVENT, ...)
 
-// Human names used in drill table cells
 const STORE_NAMES: Record<string,string> = {
-  "CSTARS":"City Stars","CF-HOS":"Festival of Hope","ALMAZA":"Almaza City Center",
-  "P90":"Patio 90","CCA":"Cairo Festival City","ONLINE":"Online Store",
-  "SHOPIFY-AMT":"AT Online","SHOPIFY-SAM":"Samsonite Online",
-  "HO":"Head Office","NOON":"Noon","AMAZON":"Amazon Egypt","JUMIA":"Jumia",
-  "DUTY FREE":"Duty Free","FOUR SEASO":"Four Seasons","GO SPORT1":"Go Sport",
-  "MOA":"Mall of Arabia","MOE":"Mall of Egypt","SPINNEYS":"Spinneys",
-  "AMAZON BAN":"Amazon Banha","AMAZON KAM":"Amazon Kamal",
+  ALMAZA:      "Almaza City Center",
+  CCA:         "Alexandria",
+  "CF-HOS":    "Cairo Festival City",
+  CSTARS:      "City Stars",
+  P90:         "Point 90",
+  MOA:         "Mall of Arabia",
+  MOE:         "Mall of Egypt",
+  HIS:         "His Store",
+  MC:          "Maadi City Centre",
+  ONLINE:      "Own Website",
+  NOON:        "Noon",
+  JUMIA:       "Jumia",
+  HO:          "HO / Wholesale",
+  "GO SPORT1": "Go Sport",
+  ATCFC:       "AT Cairo Festival",
+  EVENT:       "Events",
 };
+function sn(code: string) { return STORE_NAMES[code] ?? code; }
 
-function channelFilter(ch: string) {
-  if (ch === "Retail") return `AND store_code = ANY(ARRAY[${RETAIL.map(s=>`'${s}'`).join(",")}])`;
-  if (ch === "Online") return `AND store_code = ANY(ARRAY[${ONLINE.map(s=>`'${s}'`).join(",")}])`;
-  if (ch === "B2B")    return `AND store_code = ANY(ARRAY[${B2B.map(s=>`'${s}'`).join(",")}])`;
+function groupOf(code: string) {
+  if (RETAIL_STORES.includes(code)) return "Retail";
+  if (ECOM_STORES.includes(code))   return "Ecom";
+  return "B2B";
+}
+
+function inList(codes: string[]) {
+  return codes.map(c => `'${c}'`).join(",");
+}
+
+function channelInClause(ch: string): string {
+  if (ch === "Retail") return `AND [Store No_] IN (${inList(RETAIL_STORES)})`;
+  if (ch === "Ecom")   return `AND [Store No_] IN (${inList(ECOM_STORES)})`;
+  if (ch === "B2B")    return `AND [Store No_] NOT IN (${inList([...RETAIL_STORES,...ECOM_STORES])})`;
   return "";
 }
 
-// Best description: NAV catalogue → Shopify product title → raw item_no
-const ITEM_DESC_SQL = `
-  COALESCE(
-    ic.description,
-    (SELECT product_title FROM shopify_sales WHERE sku = a.item_no LIMIT 1),
-    a.item_no
-  )`.trim();
+function brandLabel(code: string) {
+  if (code === "SAMSONITE") return "Samsonite";
+  if (code === "AM-TOUR")   return "American Tourister";
+  return code || "Other";
+}
 
-const ITEM_BRAND_SQL = `
-  COALESCE(
-    ic.brand,
-    (SELECT shopify_store FROM shopify_sales WHERE sku = a.item_no LIMIT 1)
-  )`.trim();
+function dUrl(params: Record<string,string>, from: string, to: string) {
+  return "/api/drill?" + new URLSearchParams({...params, from, to}).toString();
+}
+
+function safeDate(val: string | null, fallback: string): string {
+  if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  return fallback;
+}
+function safeStr(val: string | null): string {
+  if (!val) return "";
+  return val.replace(/[';]/g, "").slice(0, 100);
+}
+const ALLOWED_TYPES = new Set([
+  "daily","kpi","store","store-daily","channel","category","brand",
+  "item","item-store","items","daily-detail",
+]);
 
 export async function GET(req: NextRequest) {
-  const p = new URL(req.url).searchParams;
-  const type     = p.get("type") || "daily";
-  const from     = p.get("from") || "2026-01-01";
-  const to       = p.get("to")   || new Date().toISOString().slice(0,10);
-  const store    = p.get("store")    || "";
-  const channel  = p.get("channel")  || "";
-  const category = p.get("category") || "";
-  const brand    = p.get("brand")    || "";
-  const itemNo   = p.get("item")     || "";
+  const p       = new URL(req.url).searchParams;
+  const typeRaw = p.get("type") || "daily";
+  const type    = ALLOWED_TYPES.has(typeRaw) ? typeRaw : "daily";
+  const today   = new Date().toISOString().slice(0,10);
+  const from    = safeDate(p.get("from"), "2026-01-01");
+  const to      = safeDate(p.get("to"),   today);
+  const store   = safeStr(p.get("store"));
+  const channel = safeStr(p.get("channel"));
+  const category= safeStr(p.get("category"));
+  const brand   = safeStr(p.get("brand"));
+  const itemNo  = safeStr(p.get("item"));
+  const datePm  = safeDate(p.get("date"), today);
 
-  const fxRow = await query<{ egp_per_usd: string }>(
-    "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
-  );
+  const [fxRow, descRows] = await Promise.all([
+    query<{egp_per_usd:string}>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"),
+    query<{item_no:string;description:string}>("SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"),
+  ]);
   const fx = parseFloat(fxRow[0]?.egp_per_usd || "52");
+  const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
 
-  // ── Daily revenue trend ──────────────────────────────────────────────────────
+  // ── Daily trend ──────────────────────────────────────────────────────────────
   if (type === "daily" || type === "kpi") {
-    const storeF = store ? `AND store_code = '${store.replace(/'/g,"''")}'`
-                 : channel ? channelFilter(channel) : "";
-    const rows = await query<{ date: string; egp: string; units: string; stores: string }>(`
-      SELECT sale_date::text AS date,
-             SUM(revenue)::numeric AS egp,
-             SUM(units)::numeric   AS units,
-             COUNT(DISTINCT store_code)::int AS stores
-      FROM all_sales
-      WHERE sale_date BETWEEN '${from}' AND '${to}' ${storeF}
-      GROUP BY sale_date ORDER BY sale_date DESC
-    `);
-    const totalRev   = rows.reduce((s,r) => s + parseFloat(r.egp), 0);
-    const totalUnits = rows.reduce((s,r) => s + parseFloat(r.units), 0);
-    const avgDay     = rows.length > 0 ? Math.round(totalRev / rows.length) : 0;
-    return NextResponse.json({
-      columns: [
-        { key: "date",   label: "Date",          type: "date" },
-        { key: "egp",    label: "Revenue",        type: "currency" },
-        { key: "units",  label: "Units Sold",     type: "units" },
-        { key: "stores", label: "Active Stores",  type: "number" },
-      ],
-      rows,
-      summary: [
-        { label: "days",        value: String(rows.length) },
-        { label: "total",       value: `EGP ${Math.round(totalRev).toLocaleString()}` },
-        { label: "daily avg",   value: `EGP ${avgDay.toLocaleString()}` },
-        { label: "units",       value: totalUnits.toLocaleString() },
-      ],
-      fx,
-    });
-  }
-
-  // ── Store → top products sold in that store ──────────────────────────────────
-  // (More actionable than a daily table: tells you WHAT is selling where)
-  if (type === "store") {
-    const safeStore = store.replace(/'/g,"''");
-    const rows = await query<{ description: string; brand: string; category: string; size: string; colour: string; egp: string; units: string; pct: string }>(`
-      WITH total AS (
-        SELECT SUM(revenue) AS t FROM all_sales
-        WHERE sale_date BETWEEN '${from}' AND '${to}' AND store_code = '${safeStore}'
-      )
+    const storeF = store   ? `AND [Store No_] = '${store}'`
+                 : channel ? channelInClause(channel) : "";
+    const rows = await navQuery<{date:string;egp:number;units:number;stores:number}>(`
       SELECT
-        ${ITEM_DESC_SQL.replace(/\ba\./g, "a.")} AS description,
-        COALESCE(ic.brand, '') AS brand,
-        COALESCE(ic.category, '') AS category,
-        COALESCE(ic.size, '') AS size,
-        COALESCE(ic.colour_exact, '') AS colour,
-        SUM(a.revenue)::numeric AS egp,
-        SUM(a.units)::numeric   AS units,
-        ROUND(SUM(a.revenue) * 100.0 / NULLIF((SELECT t FROM total),0), 1)::numeric AS pct
-      FROM all_sales a
-      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
-      WHERE a.sale_date BETWEEN '${from}' AND '${to}'
-        AND a.store_code = '${safeStore}'
-      GROUP BY a.item_no, ic.description, ic.brand, ic.category, ic.size, ic.colour_exact
-      ORDER BY egp DESC LIMIT 100
-    `);
-    const totalRev   = rows.reduce((s,r) => s + parseFloat(r.egp), 0);
-    const totalUnits = rows.reduce((s,r) => s + parseFloat(r.units), 0);
-    return NextResponse.json({
-      columns: [
-        { key: "description", label: "Product",   type: "text" },
-        { key: "brand",       label: "Brand",     type: "text" },
-        { key: "size",        label: "Size",      type: "text" },
-        { key: "colour",      label: "Colour",    type: "text" },
-        { key: "egp",         label: "Revenue",   type: "currency" },
-        { key: "units",       label: "Units",     type: "units" },
-        { key: "pct",         label: "% of store",type: "number" },
-      ],
-      rows,
-      summary: [
-        { label: "SKUs",    value: String(rows.length) },
-        { label: "revenue", value: `EGP ${Math.round(totalRev).toLocaleString()}` },
-        { label: "units",   value: totalUnits.toLocaleString() },
-      ],
-      fx,
-    });
-  }
+        CONVERT(varchar(10), CAST([Date] AS DATE), 23) AS date,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])                AS units,
+        COUNT(DISTINCT [Store No_])     AS stores
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF}
+      GROUP BY CAST([Date] AS DATE)
+      ORDER BY CAST([Date] AS DATE) DESC
+    `, { from, to });
 
-  // ── Store daily trend (separate type for when you want the day-by-day) ────────
-  if (type === "store-daily") {
-    const safeStore = store.replace(/'/g,"''");
-    const rows = await query<{ date: string; egp: string; units: string }>(`
-      SELECT sale_date::text AS date,
-             SUM(revenue)::numeric AS egp,
-             SUM(units)::numeric   AS units
-      FROM all_sales
-      WHERE sale_date BETWEEN '${from}' AND '${to}'
-        AND store_code = '${safeStore}'
-      GROUP BY sale_date ORDER BY sale_date DESC
-    `);
-    return NextResponse.json({
-      columns: [
-        { key: "date",  label: "Date",    type: "date" },
-        { key: "egp",   label: "Revenue", type: "currency" },
-        { key: "units", label: "Units",   type: "units" },
-      ],
-      rows,
-      summary: [
-        { label: "days",    value: String(rows.length) },
-        { label: "revenue", value: `EGP ${Math.round(rows.reduce((s,r)=>s+parseFloat(r.egp),0)).toLocaleString()}` },
-      ],
-      fx,
-    });
-  }
-
-  // ── Channel → ranked stores ──────────────────────────────────────────────────
-  if (type === "channel") {
-    const rows = await query<{ store_code: string; egp: string; units: string; days: string; pct: string }>(`
-      WITH total AS (
-        SELECT SUM(revenue) AS t FROM all_sales
-        WHERE sale_date BETWEEN '${from}' AND '${to}' ${channelFilter(channel)}
-      )
-      SELECT store_code,
-             SUM(revenue)::numeric AS egp,
-             SUM(units)::numeric   AS units,
-             COUNT(DISTINCT sale_date)::int AS days,
-             ROUND(SUM(revenue)*100.0/NULLIF((SELECT t FROM total),0),1)::numeric AS pct
-      FROM all_sales
-      WHERE sale_date BETWEEN '${from}' AND '${to}' ${channelFilter(channel)}
-      GROUP BY store_code ORDER BY egp DESC
-    `);
-    // Translate store codes to human names
-    const namedRows = rows.map(r => ({
+    const totalRev = rows.reduce((s,r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => ({
       ...r,
-      store_display: STORE_NAMES[r.store_code] ?? r.store_code,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      _drill_url:   dUrl({type:"daily-detail", date:r.date, ...(store?{store}:{})}, r.date, r.date),
+      _drill_title: `${r.date} · All Items`,
     }));
     return NextResponse.json({
-      columns: [
-        { key: "store_display", label: "Store",       type: "text" },
-        { key: "egp",           label: "Revenue",     type: "currency" },
-        { key: "units",         label: "Units",       type: "units" },
-        { key: "days",          label: "Active Days", type: "number" },
-        { key: "pct",           label: "% of channel",type: "number" },
+      columns:[
+        {key:"date",  label:"Date",         type:"date"},
+        {key:"egp",   label:"Revenue",      type:"currency"},
+        {key:"units", label:"Units Sold",   type:"units"},
+        {key:"stores",label:"Active Stores",type:"number"},
       ],
-      rows: namedRows,
-      summary: [
-        { label: "stores",  value: String(rows.length) },
-        { label: "revenue", value: `EGP ${Math.round(rows.reduce((s,r)=>s+parseFloat(r.egp),0)).toLocaleString()}` },
-        { label: "units",   value: rows.reduce((s,r)=>s+parseFloat(r.units),0).toLocaleString() },
+      rows: drillRows,
+      summary:[
+        {label:"days",     value:String(rows.length)},
+        {label:"total",    value:`EGP ${Math.round(totalRev).toLocaleString()}`},
+        {label:"daily avg",value:`EGP ${rows.length>0 ? Math.round(totalRev/rows.length).toLocaleString() : 0}`},
       ],
       fx,
     });
   }
 
-  // ── Category → top products in that category ─────────────────────────────────
+  // ── Daily detail: all items sold on one day ──────────────────────────────────
+  if (type === "daily-detail") {
+    const d = datePm || from;
+    const storeF = store ? `AND [Store No_] = '${store}'` : "";
+    const rows = await navQuery<{item_no:string;description:string;brand:string;category:string;store:string;egp:number;units:number}>(`
+      SELECT TOP 150
+        [Item No_]                     AS item_no,
+        [Item No_] AS description,
+        MAX([Item Category Code])      AS brand,
+        MAX([Product Group Code])      AS category,
+        [Store No_]                    AS store,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])               AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) = @d ${storeF}
+      GROUP BY [Item No_], [Store No_]
+      ORDER BY egp DESC
+    `, { d });
+
+    const drillRows = rows.map(r => ({
+      ...r,
+      egp:         Math.round(Number(r.egp)),
+      usd:         Math.round(Number(r.egp) / fx),
+      units:       Math.round(Number(r.units)),
+      store:       sn(r.store),
+      brand:       brandLabel(r.brand),
+      _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
+      _drill_title: descMap[r.item_no] || r.item_no,
+    }));
+    const totalRev = drillRows.reduce((s,r) => s + r.egp, 0);
+    return NextResponse.json({
+      columns:[
+        {key:"description",label:"Product",  type:"text"},
+        {key:"brand",      label:"Brand",    type:"text"},
+        {key:"store",      label:"Store",    type:"text"},
+        {key:"egp",        label:"Revenue",  type:"currency"},
+        {key:"units",      label:"Units",    type:"units"},
+      ],
+      rows: drillRows,
+      summary:[
+        {label:"date",   value:d},
+        {label:"SKUs",   value:String(rows.length)},
+        {label:"revenue",value:`EGP ${totalRev.toLocaleString()}`},
+        {label:"units",  value:drillRows.reduce((s,r)=>s+r.units,0).toLocaleString()},
+      ],
+      fx,
+    });
+  }
+
+  // ── Channel=all → all stores ranked ─────────────────────────────────────────
+  if (type === "channel" && (!channel || channel === "all")) {
+    const rows = await navQuery<{store_code:string;egp:number;units:number;days:number}>(`
+      SELECT
+        [Store No_]                     AS store_code,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])                AS units,
+        COUNT(DISTINCT CAST([Date] AS DATE)) AS days
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      GROUP BY [Store No_]
+      ORDER BY egp DESC
+    `, { from, to });
+
+    const total = rows.reduce((s,r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => ({
+      store_code:    r.store_code,
+      store_display: sn(r.store_code),
+      group:         groupOf(r.store_code),
+      egp:           Math.round(Number(r.egp)),
+      usd:           Math.round(Number(r.egp) / fx),
+      units:         Math.round(Number(r.units)),
+      days:          Number(r.days),
+      pct:           total > 0 ? Math.round(Number(r.egp)*100/total) : 0,
+      _drill_url:    dUrl({type:"store", store:r.store_code}, from, to),
+      _drill_title:  `${sn(r.store_code)} · Top Products`,
+    }));
+    return NextResponse.json({
+      columns:[
+        {key:"store_display",label:"Store",        type:"text"},
+        {key:"group",        label:"Channel",      type:"text"},
+        {key:"egp",          label:"Revenue",      type:"currency"},
+        {key:"units",        label:"Units",        type:"units"},
+        {key:"pct",          label:"% of total",   type:"number"},
+        {key:"days",         label:"Active Days",  type:"number"},
+      ],
+      rows: drillRows,
+      summary:[
+        {label:"stores", value:String(rows.length)},
+        {label:"revenue",value:`EGP ${Math.round(total).toLocaleString()}`},
+      ],
+      fx,
+    });
+  }
+
+  // ── Channel → stores breakdown ───────────────────────────────────────────────
+  if (type === "channel") {
+    const cf = channelInClause(channel);
+    const rows = await navQuery<{store_code:string;egp:number;units:number;days:number}>(`
+      SELECT
+        [Store No_]                     AS store_code,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])                AS units,
+        COUNT(DISTINCT CAST([Date] AS DATE)) AS days
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${cf}
+      GROUP BY [Store No_]
+      ORDER BY egp DESC
+    `, { from, to });
+
+    const total = rows.reduce((s,r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => ({
+      store_display: sn(r.store_code),
+      egp:           Math.round(Number(r.egp)),
+      usd:           Math.round(Number(r.egp) / fx),
+      units:         Math.round(Number(r.units)),
+      days:          Number(r.days),
+      pct:           total > 0 ? Math.round(Number(r.egp)*100/total) : 0,
+      _drill_url:    dUrl({type:"store", store:r.store_code}, from, to),
+      _drill_title:  `${sn(r.store_code)} · Top Products`,
+    }));
+    return NextResponse.json({
+      columns:[
+        {key:"store_display",label:"Store",        type:"text"},
+        {key:"egp",          label:"Revenue",      type:"currency"},
+        {key:"units",        label:"Units",        type:"units"},
+        {key:"days",         label:"Active Days",  type:"number"},
+        {key:"pct",          label:"% of channel", type:"number"},
+      ],
+      rows: drillRows,
+      summary:[
+        {label:"stores", value:String(rows.length)},
+        {label:"revenue",value:`EGP ${Math.round(total).toLocaleString()}`},
+      ],
+      fx,
+    });
+  }
+
+  // ── Store → top products ─────────────────────────────────────────────────────
+  if (type === "store") {
+    const rows = await navQuery<{item_no:string;description:string;brand:string;category:string;egp:number;units:number}>(`
+      SELECT TOP 100
+        [Item No_]                     AS item_no,
+        [Item No_] AS description,
+        MAX([Item Category Code])      AS brand,
+        MAX([Product Group Code])      AS category,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])               AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        AND [Store No_] = @store
+      GROUP BY [Item No_]
+      ORDER BY egp DESC
+    `, { from, to, store });
+
+    const totalRev = rows.reduce((s,r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => ({
+      ...r,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      brand: brandLabel(r.brand),
+      pct:   totalRev > 0 ? Number((Number(r.egp)*100/totalRev).toFixed(1)) : 0,
+      _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
+      _drill_title: descMap[r.item_no] || r.item_no,
+    }));
+    return NextResponse.json({
+      columns:[
+        {key:"description",label:"Product",    type:"text"},
+        {key:"brand",      label:"Brand",      type:"text"},
+        {key:"category",   label:"Category",   type:"text"},
+        {key:"egp",        label:"Revenue",    type:"currency"},
+        {key:"units",      label:"Units",      type:"units"},
+        {key:"pct",        label:"% of store", type:"number"},
+      ],
+      rows: drillRows,
+      summary:[
+        {label:"SKUs",   value:String(rows.length)},
+        {label:"revenue",value:`EGP ${Math.round(totalRev).toLocaleString()}`},
+        {label:"units",  value:drillRows.reduce((s,r)=>s+r.units,0).toLocaleString()},
+      ],
+      fx,
+    });
+  }
+
+  // ── Store daily breakdown ────────────────────────────────────────────────────
+  if (type === "store-daily") {
+    const rows = await navQuery<{date:string;egp:number;units:number}>(`
+      SELECT
+        CONVERT(varchar(10), CAST([Date] AS DATE), 23) AS date,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])               AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        AND [Store No_] = @store
+      GROUP BY CAST([Date] AS DATE)
+      ORDER BY CAST([Date] AS DATE) DESC
+    `, { from, to, store });
+
+    const drillRows = rows.map(r => ({
+      ...r,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      _drill_url:   dUrl({type:"daily-detail", date:r.date, store}, r.date, r.date),
+      _drill_title: `${sn(store)} · ${r.date}`,
+    }));
+    return NextResponse.json({
+      columns:[
+        {key:"date", label:"Date",    type:"date"},
+        {key:"egp",  label:"Revenue", type:"currency"},
+        {key:"units",label:"Units",   type:"units"},
+      ],
+      rows: drillRows,
+      summary:[
+        {label:"days",   value:String(rows.length)},
+        {label:"revenue",value:`EGP ${Math.round(drillRows.reduce((s,r)=>s+r.egp,0)).toLocaleString()}`},
+      ],
+      fx,
+    });
+  }
+
+  // ── Category → products ──────────────────────────────────────────────────────
   if (type === "category") {
-    const catF   = category ? `AND ic.category = '${category.replace(/'/g,"''")}'` : "";
-    const brandF = brand    ? `AND ic.brand    = '${brand.replace(/'/g,"''")}'`    : "";
-    const rows = await query<{ description: string; brand: string; size: string; colour: string; egp: string; units: string }>(`
-      SELECT
-        ${ITEM_DESC_SQL} AS description,
-        COALESCE(ic.brand, '') AS brand,
-        COALESCE(ic.size, '') AS size,
-        COALESCE(ic.colour_exact, '') AS colour,
-        SUM(a.revenue)::numeric AS egp,
-        SUM(a.units)::numeric   AS units
-      FROM all_sales a
-      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
-      WHERE a.sale_date BETWEEN '${from}' AND '${to}' ${catF} ${brandF}
-      GROUP BY a.item_no, ic.description, ic.brand, ic.size, ic.colour_exact
-      ORDER BY egp DESC LIMIT 200
-    `);
+    const catF   = category ? `AND [Product Group Code] = '${category}'` : "";
+    const brandF = brand    ? `AND [Item Category Code] = '${brand}'`    : "";
+    const rows = await navQuery<{item_no:string;description:string;brand:string;category:string;egp:number;units:number}>(`
+      SELECT TOP 200
+        [Item No_]                     AS item_no,
+        [Item No_] AS description,
+        MAX([Item Category Code])      AS brand,
+        MAX([Product Group Code])      AS category,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])               AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${catF} ${brandF}
+      GROUP BY [Item No_]
+      ORDER BY egp DESC
+    `, { from, to });
+
+    const drillRows = rows.map(r => ({
+      ...r,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      brand: brandLabel(r.brand),
+      _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
+      _drill_title: descMap[r.item_no] || r.item_no,
+    }));
     return NextResponse.json({
-      columns: [
-        { key: "description", label: "Product",  type: "text" },
-        { key: "brand",       label: "Brand",    type: "text" },
-        { key: "size",        label: "Size",     type: "text" },
-        { key: "colour",      label: "Colour",   type: "text" },
-        { key: "egp",         label: "Revenue",  type: "currency" },
-        { key: "units",       label: "Units",    type: "units" },
+      columns:[
+        {key:"description",label:"Product",  type:"text"},
+        {key:"brand",      label:"Brand",    type:"text"},
+        {key:"egp",        label:"Revenue",  type:"currency"},
+        {key:"units",      label:"Units",    type:"units"},
       ],
-      rows,
-      summary: [
-        { label: "SKUs",    value: String(rows.length) },
-        { label: "revenue", value: `EGP ${Math.round(rows.reduce((s,r)=>s+parseFloat(r.egp),0)).toLocaleString()}` },
-        { label: "units",   value: rows.reduce((s,r)=>s+parseFloat(r.units),0).toLocaleString() },
-      ],
+      rows: drillRows,
+      summary:[{label:"SKUs",value:String(rows.length)}],
       fx,
     });
   }
 
-  // ── Brand breakdown ──────────────────────────────────────────────────────────
+  // ── Brand → products ─────────────────────────────────────────────────────────
   if (type === "brand") {
-    const rows = await query<{ brand: string; egp: string; units: string; skus: string }>(`
-      SELECT COALESCE(ic.brand,'Unknown') AS brand,
-             SUM(a.revenue)::numeric AS egp,
-             SUM(a.units)::numeric   AS units,
-             COUNT(DISTINCT a.item_no)::int AS skus
-      FROM all_sales a
-      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
-      WHERE a.sale_date BETWEEN '${from}' AND '${to}'
-      GROUP BY ic.brand ORDER BY egp DESC
-    `);
+    const rows = await navQuery<{brand:string;egp:number;units:number;skus:number}>(`
+      SELECT
+        MAX([Item Category Code])       AS brand,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])                AS units,
+        COUNT(DISTINCT [Item No_])      AS skus
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      GROUP BY [Item Category Code]
+      ORDER BY egp DESC
+    `, { from, to });
+
+    const drillRows = rows.map(r => ({
+      brand:        brandLabel(r.brand),
+      brand_code:   r.brand,
+      egp:          Math.round(Number(r.egp)),
+      usd:          Math.round(Number(r.egp) / fx),
+      units:        Math.round(Number(r.units)),
+      skus:         Number(r.skus),
+      _drill_url:   dUrl({type:"items", brand:r.brand}, from, to),
+      _drill_title: `${brandLabel(r.brand)} · Products`,
+    }));
     return NextResponse.json({
-      columns: [
-        { key: "brand", label: "Brand",  type: "text" },
-        { key: "egp",   label: "Revenue",type: "currency" },
-        { key: "units", label: "Units",  type: "units" },
-        { key: "skus",  label: "SKUs",   type: "number" },
+      columns:[
+        {key:"brand",label:"Brand",   type:"text"},
+        {key:"egp",  label:"Revenue", type:"currency"},
+        {key:"units",label:"Units",   type:"units"},
+        {key:"skus", label:"SKUs",    type:"number"},
       ],
-      rows,
-      summary: [{ label: "brands", value: String(rows.length) }],
+      rows: drillRows,
+      summary:[{label:"brands",value:String(rows.length)}],
       fx,
     });
   }
 
-  // ── Item detail: which stores sold this item, day by day ─────────────────────
+  // ── Item → which stores sold it ──────────────────────────────────────────────
   if (type === "item") {
-    const safeItem = itemNo.replace(/'/g,"''");
-    // Get the best name for this item first
-    const nameRow = await query<{ description: string; brand: string; category: string; size: string; colour: string }>(`
-      SELECT
-        COALESCE(ic.description, ss.product_title, '${safeItem}') AS description,
-        COALESCE(ic.brand, '') AS brand,
-        COALESCE(ic.category, '') AS category,
-        COALESCE(ic.size, '') AS size,
-        COALESCE(ic.colour_exact, '') AS colour
-      FROM (SELECT '${safeItem}'::text AS item_no) x
-      LEFT JOIN item_categorisation ic ON ic.item_no = x.item_no
-      LEFT JOIN (SELECT DISTINCT sku, product_title FROM shopify_sales WHERE sku = '${safeItem}') ss ON true
-      LIMIT 1
-    `);
-    const meta = nameRow[0] ?? { description: safeItem, brand: "", category: "", size: "", colour: "" };
+    const [metaRows, storeRows] = await Promise.all([
+      navQuery<{description:string;brand:string;category:string}>(`
+        SELECT TOP 1
+          [Item No_] AS description,
+          MAX([Item Category Code]) AS brand,
+          MAX([Product Group Code]) AS category
+        FROM TransSalesEntry WHERE [Item No_] = @itemNo
+      `, { itemNo }),
 
-    const rows = await query<{ date: string; store: string; egp: string; units: string; source: string }>(`
-      SELECT sale_date::text AS date,
-             store_code      AS store,
-             SUM(revenue)::numeric AS egp,
-             SUM(units)::numeric   AS units,
-             source
-      FROM all_sales
-      WHERE sale_date BETWEEN '${from}' AND '${to}'
-        AND item_no = '${safeItem}'
-      GROUP BY sale_date, store_code, source
-      ORDER BY sale_date DESC
-    `);
+      navQuery<{store_code:string;egp:number;units:number;days:number}>(`
+        SELECT
+          [Store No_]                     AS store_code,
+          -SUM([Net Amount]+[VAT Amount]) AS egp,
+          -SUM([Quantity])                AS units,
+          COUNT(DISTINCT CAST([Date] AS DATE)) AS days
+        FROM TransSalesEntry
+        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Item No_] = @itemNo
+        GROUP BY [Store No_]
+        ORDER BY egp DESC
+      `, { from, to, itemNo }),
+    ]);
 
-    const namedRows = rows.map(r => ({ ...r, store: STORE_NAMES[r.store] ?? r.store }));
+    const meta = metaRows[0] ?? {description:itemNo, brand:"", category:""};
+    const totalRev = storeRows.reduce((s,r) => s + Number(r.egp), 0);
 
+    const drillRows = storeRows.map(r => ({
+      store_display: sn(r.store_code),
+      egp:           Math.round(Number(r.egp)),
+      usd:           Math.round(Number(r.egp) / fx),
+      units:         Math.round(Number(r.units)),
+      days:          Number(r.days),
+      _drill_url:    dUrl({type:"item-store", item:itemNo, store:r.store_code}, from, to),
+      _drill_title:  `${sn(r.store_code)} · ${meta.description || itemNo} · Daily`,
+    }));
     return NextResponse.json({
-      columns: [
-        { key: "date",   label: "Date",   type: "date" },
-        { key: "store",  label: "Store",  type: "text" },
-        { key: "egp",    label: "Revenue",type: "currency" },
-        { key: "units",  label: "Units",  type: "units" },
-        { key: "source", label: "Source", type: "text" },
+      columns:[
+        {key:"store_display",label:"Store",       type:"text"},
+        {key:"egp",          label:"Revenue",     type:"currency"},
+        {key:"units",        label:"Units",       type:"units"},
+        {key:"days",         label:"Active Days", type:"number"},
       ],
-      rows: namedRows,
-      summary: [
-        { label: "item",    value: meta.description },
-        { label: "brand",   value: meta.brand },
-        { label: "revenue", value: `EGP ${Math.round(rows.reduce((s,r)=>s+parseFloat(r.egp),0)).toLocaleString()}` },
-        { label: "units",   value: rows.reduce((s,r)=>s+parseFloat(r.units),0).toLocaleString() },
+      rows: drillRows,
+      summary:[
+        {label:"product", value:meta.description || itemNo},
+        {label:"brand",   value:brandLabel(meta.brand) || "—"},
+        {label:"category",value:meta.category || "—"},
+        {label:"revenue", value:`EGP ${Math.round(totalRev).toLocaleString()}`},
+        {label:"units",   value:drillRows.reduce((s,r)=>s+r.units,0).toLocaleString()},
+        {label:"stores",  value:String(storeRows.length)},
       ],
       fx,
     });
   }
 
-  // ── Top items in period (Avg Ticket click, category drill, store products) ────
+  // ── Item-Store: daily history of one item at one store ───────────────────────
+  if (type === "item-store") {
+    const rows = await navQuery<{date:string;egp:number;units:number}>(`
+      SELECT
+        CONVERT(varchar(10), CAST([Date] AS DATE), 23) AS date,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])               AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        AND [Item No_] = @itemNo AND [Store No_] = @store
+      GROUP BY CAST([Date] AS DATE)
+      ORDER BY CAST([Date] AS DATE) DESC
+    `, { from, to, itemNo, store });
+
+    const drillRows = rows.map(r => ({
+      ...r,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+    }));
+    const totalUnits = drillRows.reduce((s,r) => s + r.units, 0);
+    const totalRev   = drillRows.reduce((s,r) => s + r.egp,   0);
+    return NextResponse.json({
+      columns:[
+        {key:"date",  label:"Date",    type:"date"},
+        {key:"egp",   label:"Revenue", type:"currency"},
+        {key:"units", label:"Units",   type:"units"},
+      ],
+      rows: drillRows,
+      summary:[
+        {label:"store",   value:sn(store)},
+        {label:"days",    value:String(rows.length)},
+        {label:"revenue", value:`EGP ${totalRev.toLocaleString()}`},
+        {label:"units",   value:totalUnits.toLocaleString()},
+        {label:"avg/day", value:rows.length>0 ? (totalUnits/rows.length).toFixed(1)+" u/day" : "—"},
+      ],
+      fx,
+    });
+  }
+
+  // ── Items: top products with optional filters ────────────────────────────────
   if (type === "items") {
-    const storeF   = store    ? `AND a.store_code  = '${store.replace(/'/g,"''")}'`    : channel ? channelFilter(channel) : "";
-    const catF     = category ? `AND ic.category   = '${category.replace(/'/g,"''")}'` : "";
-    const brandF   = brand    ? `AND ic.brand      = '${brand.replace(/'/g,"''")}'`    : "";
+    const storeF = store    ? `AND [Store No_] = '${store}'`           : channel ? channelInClause(channel) : "";
+    const catF   = category ? `AND [Product Group Code] = '${category}'` : "";
+    const brandF = brand    ? `AND [Item Category Code] = '${brand}'`    : "";
 
-    const rows = await query<{ description: string; brand: string; category: string; size: string; egp: string; units: string }>(`
-      SELECT
-        ${ITEM_DESC_SQL} AS description,
-        COALESCE(ic.brand,'') AS brand,
-        COALESCE(ic.category,'') AS category,
-        COALESCE(ic.size,'') AS size,
-        SUM(a.revenue)::numeric AS egp,
-        SUM(a.units)::numeric   AS units
-      FROM all_sales a
-      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
-      WHERE a.sale_date BETWEEN '${from}' AND '${to}' ${storeF} ${catF} ${brandF}
-      GROUP BY a.item_no, ic.description, ic.brand, ic.category, ic.size
-      ORDER BY egp DESC LIMIT 200
-    `);
+    const rows = await navQuery<{item_no:string;description:string;brand:string;category:string;egp:number;units:number}>(`
+      SELECT TOP 200
+        [Item No_]                     AS item_no,
+        [Item No_] AS description,
+        MAX([Item Category Code])      AS brand,
+        MAX([Product Group Code])      AS category,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])               AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF} ${catF} ${brandF}
+      GROUP BY [Item No_]
+      ORDER BY egp DESC
+    `, { from, to });
+
+    const drillRows = rows.map(r => ({
+      ...r,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      brand: brandLabel(r.brand),
+      _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
+      _drill_title: descMap[r.item_no] || r.item_no,
+    }));
     return NextResponse.json({
-      columns: [
-        { key: "description", label: "Product",  type: "text" },
-        { key: "brand",       label: "Brand",    type: "text" },
-        { key: "category",    label: "Category", type: "text" },
-        { key: "size",        label: "Size",     type: "text" },
-        { key: "egp",         label: "Revenue",  type: "currency" },
-        { key: "units",       label: "Units",    type: "units" },
+      columns:[
+        {key:"description",label:"Product",  type:"text"},
+        {key:"brand",      label:"Brand",    type:"text"},
+        {key:"category",   label:"Category", type:"text"},
+        {key:"egp",        label:"Revenue",  type:"currency"},
+        {key:"units",      label:"Units",    type:"units"},
       ],
-      rows,
-      summary: [
-        { label: "SKUs",    value: String(rows.length) },
-        { label: "revenue", value: `EGP ${Math.round(rows.reduce((s,r)=>s+parseFloat(r.egp),0)).toLocaleString()}` },
-        { label: "units",   value: rows.reduce((s,r)=>s+parseFloat(r.units),0).toLocaleString() },
+      rows: drillRows,
+      summary:[
+        {label:"SKUs",   value:String(rows.length)},
+        {label:"revenue",value:`EGP ${Math.round(drillRows.reduce((s,r)=>s+r.egp,0)).toLocaleString()}`},
+        {label:"units",  value:drillRows.reduce((s,r)=>s+r.units,0).toLocaleString()},
       ],
       fx,
     });
   }
 
-  return NextResponse.json({ columns: [], rows: [], fx });
+  return NextResponse.json({columns:[], rows:[], fx});
 }

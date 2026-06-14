@@ -1,81 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query, STORE_GROUPS } from "@/lib/db";
+import { navQuery } from "@/lib/navdb";
+import { query } from "@/lib/db";
+
+const RETAIL = new Set(["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"]);
+const ONLINE = new Set(["ONLINE","NOON","JUMIA"]);
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const range = searchParams.get("range") || "30d";
-  const store = searchParams.get("store") || "all";
-  const group = searchParams.get("group") || "all"; // all | retail | online | ho(b2b)
-  const fromParam = searchParams.get("from");
-  const toParam   = searchParams.get("to");
+  const fromParam  = searchParams.get("from");
+  const toParam    = searchParams.get("to");
+  const store      = searchParams.get("store") || "all";
+  const group      = searchParams.get("group") || "all";
 
-  let days = 30;
-  if (range === "7d") days = 7;
-  else if (range === "90d") days = 90;
-  else if (range === "12m") days = 365;
+  const from = fromParam || new Date().toISOString().slice(0, 8) + "01";
+  const to   = toParam   || new Date().toISOString().slice(0, 10);
 
-  const retailArr = STORE_GROUPS.physical.map(s => `'${s}'`).join(",");
-  const onlineArr = STORE_GROUPS.online.map(s => `'${s}'`).join(",");
-  const b2bArr    = STORE_GROUPS.b2b.map(s => `'${s}'`).join(",");
-
-  const storeFilter =
-    store !== "all"
-      ? `AND store_code = '${store.replace(/'/g, "''")}'`
-      : group === "retail"
-      ? `AND store_code = ANY(ARRAY[${retailArr}])`
-      : group === "online"
-      ? `AND store_code = ANY(ARRAY[${onlineArr}])`
-      : group === "ho"
-      ? `AND store_code = ANY(ARRAY[${b2bArr}])`
-      : "";
-
-  const groupBy = (fromParam && toParam)
-    ? (Math.ceil((new Date(toParam).getTime() - new Date(fromParam).getTime()) / 86400000) > 91 ? "week" : "day")
-    : (range === "12m" ? "week" : "day");
-
-  const dateFilter = fromParam && toParam
-    ? `sale_date BETWEEN '${fromParam}' AND '${toParam}'`
-    : `sale_date >= CURRENT_DATE - interval '${days} days'`;
-
-  const rows = await query<{ period: string; revenue: string; units: string }>(`
-    SELECT
-      date_trunc('${groupBy}', sale_date)::date AS period,
-      SUM(revenue)::numeric AS revenue,
-      SUM(units)::numeric   AS units
-    FROM all_sales
-    WHERE ${dateFilter}
-      ${storeFilter}
-    GROUP BY 1
-    ORDER BY 1
-  `);
-
-  const fxRows = await query<{ week_start: string; egp_per_usd: string }>(
-    `SELECT week_start::date as week_start, egp_per_usd FROM fx_rates ORDER BY week_start`
+  const spanDays = Math.round(
+    (new Date(to).getTime() - new Date(from).getTime()) / 86400000
   );
+  const groupBy = spanDays > 91 ? "week" : "day";
+
+  // Build store filter
+  let storeWhere = "";
+  if (store !== "all") {
+    storeWhere = `AND [Store No_] = '${store.replace(/'/g, "''")}'`;
+  } else if (group === "retail") {
+    storeWhere = `AND [Store No_] IN ('ALMAZA','CCA','CF-HOS','CSTARS','P90','MOA','MOE','HIS','MC')`;
+  } else if (group === "online") {
+    storeWhere = `AND [Store No_] IN ('ONLINE','NOON','JUMIA')`;
+  } else if (group === "ho") {
+    storeWhere = `AND [Store No_] IN ('ATCFC','EVENT','HO','GO SPORT1')`;
+  }
+
+  const truncExpr = groupBy === "week"
+    ? "DATEADD(day, 1 - DATEPART(weekday, [Date]), CAST([Date] AS DATE))"
+    : "CAST([Date] AS DATE)";
+
+  const [rows, fxRows] = await Promise.all([
+    navQuery<{ period: string; revenue: number; units: number }>(`
+      SELECT
+        ${truncExpr} AS period,
+        -SUM([Net Amount] + [VAT Amount]) AS revenue,
+        -SUM([Quantity])   AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        ${storeWhere}
+      GROUP BY ${truncExpr}
+      ORDER BY ${truncExpr}
+    `, { from, to }),
+
+    query<{ week_start: string; egp_per_usd: string }>(
+      "SELECT week_start::date AS week_start, egp_per_usd FROM fx_rates ORDER BY week_start"
+    ),
+  ]);
+
   const fxMap: Record<string, number> = {};
   for (const r of fxRows) fxMap[r.week_start] = parseFloat(r.egp_per_usd);
 
   function getFx(date: string): number {
-    const d = new Date(date);
-    let closest = 50;
-    let closestDiff = Infinity;
+    const d = new Date(date).getTime();
+    let closest = 50, closestDiff = Infinity;
     for (const [ws, rate] of Object.entries(fxMap)) {
-      const diff = Math.abs(new Date(ws).getTime() - d.getTime());
+      const diff = Math.abs(new Date(ws).getTime() - d);
       if (diff < closestDiff) { closestDiff = diff; closest = rate; }
     }
     return closest;
   }
 
   const series = rows.map((r) => {
-    const rev = parseFloat(r.revenue);
-    const fx = getFx(r.period);
+    const rev     = Number(r.revenue);
+    const dateStr = r.period ? String(r.period).slice(0, 10) : "";
+    const fx      = getFx(dateStr);
     return {
-      date: r.period,
-      egp: Math.round(rev),
-      usd: Math.round(rev / fx),
-      units: parseFloat(r.units),
+      date:  dateStr,
+      egp:   Math.round(rev),
+      usd:   Math.round(rev / fx),
+      units: Math.round(Number(r.units)),
     };
   });
 
-  return NextResponse.json({ series, range, store, group });
+  return NextResponse.json({ series, store, group });
 }

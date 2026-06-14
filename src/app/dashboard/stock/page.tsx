@@ -6,9 +6,9 @@ import { useCurrency, fmt } from "@/components/CurrencyToggle";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
-import { AlertTriangle, Zap, TrendingDown, Package, RefreshCw } from "lucide-react";
+import { AlertTriangle, Zap, TrendingDown, Package, RefreshCw, ShoppingCart, Download } from "lucide-react";
 
-type StockTab = "fast" | "low" | "slow" | "overview";
+type StockTab = "fast" | "low" | "slow" | "overview" | "reorder";
 
 interface OverviewData {
   summary: { totalSkus: number; inStock: number; zeroStock: number; lowStock: number; totalUnits: number; stockValue: { egp: number; usd: number } };
@@ -51,12 +51,13 @@ function StockContent() {
   const { currency } = useCurrency();
   const { range: dateRange } = useDateRange();
   const sp = useSearchParams();
-  const { drill, open: openDrill, close: closeDrill } = useDrill();
+  const { stack, open: openDrill, push: pushDrill, close: closeDrill } = useDrill();
 
   const [tab, setTab] = useState<StockTab>((sp.get("tab") as StockTab) || "overview");
   const [range, setRange] = useState("30d");
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [movers, setMovers] = useState<MoverItem[]>([]);
+  const [reorderItems, setReorderItems] = useState<{ item_no: string; description: string; brand: string; category: string; in_stock: number; units_30d: number; daysCover: number; unit_price: number; mie: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [catFilter, setCatFilter] = useState("");
 
@@ -77,10 +78,30 @@ function StockContent() {
     }
   }, [tab, range, catFilter]);
 
+  const loadReorder = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/stock/reorder").then(x => x.json());
+      setReorderItems(r.items || []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (tab === "overview") { setLoading(true); loadOverview().finally(() => setLoading(false)); }
+    else if (tab === "reorder") loadReorder();
     else loadMovers();
-  }, [tab, loadOverview, loadMovers]);
+  }, [tab, loadOverview, loadMovers, loadReorder]);
+
+  const exportReorderCsv = () => {
+    const rows = [
+      ["Item No", "Description", "Brand", "Category", "In Stock", "Sold/mo", "Days Cover", "Price EGP", "Made in EG"],
+      ...reorderItems.map(i => [i.item_no, i.description, i.brand, i.category, i.in_stock, i.units_30d, i.daysCover, i.unit_price, i.mie ? "Yes" : "No"]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "reorder-list.csv"; a.click();
+  };
 
   const val = (v: { egp: number; usd: number }) => fmt(v.egp, v.usd, currency);
 
@@ -89,6 +110,7 @@ function StockContent() {
     { key: "fast", label: "Fast movers", icon: <Zap size={13} /> },
     { key: "low", label: "Low stock", icon: <AlertTriangle size={13} /> },
     { key: "slow", label: "Slow movers", icon: <TrendingDown size={13} /> },
+    { key: "reorder", label: "Reorder", icon: <ShoppingCart size={13} /> },
   ];
 
   return (
@@ -312,10 +334,58 @@ function StockContent() {
           </div>
         )}
 
+        {/* Reorder tab */}
+        {tab === "reorder" && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <p style={{ fontSize: "0.7rem", color: "var(--text3)" }}>
+                Items with &lt;90 days stock cover — order before you run out
+              </p>
+              <button onClick={exportReorderCsv} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: "var(--surface)", color: "var(--text3)", fontSize: "0.68rem", fontWeight: 600 }}>
+                <Download size={12} /> CSV
+              </button>
+            </div>
+            {loading ? (
+              <div className="space-y-2">{[...Array(8)].map((_, i) => <div key={i} className="skeleton h-14 w-full" />)}</div>
+            ) : reorderItems.length === 0 ? (
+              <div className="card p-6 text-center"><p style={{ fontSize: "0.8rem", color: "var(--text3)" }}>All items have &gt;90 days cover 🎉</p></div>
+            ) : (
+              <div className="card overflow-hidden">
+                {reorderItems.map(item => {
+                  const isStockout = item.in_stock === 0;
+                  const isCritical = item.daysCover < 30;
+                  const bgColor = isStockout ? "rgba(239,68,68,0.07)" : isCritical ? "rgba(239,68,68,0.04)" : "rgba(245,158,11,0.04)";
+                  const badgeColor = isStockout || isCritical ? "#EF4444" : "#F59E0B";
+                  const badgeLabel = isStockout ? "OUT" : isCritical ? "ORDER NOW" : "LOW";
+                  const leadTime = item.mie ? "1mo lead" : "2-3mo lead";
+                  return (
+                    <div key={item.item_no} className="list-row px-3" style={{ background: bgColor }}>
+                      <div className="flex-1 min-w-0">
+                        <p style={{ fontSize: "0.73rem", fontWeight: 600 }} className="truncate">{item.description || item.item_no}</p>
+                        <div style={{ display: "flex", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
+                          {item.brand && <span style={{ fontSize: "0.6rem", color: "var(--accent)", fontWeight: 600 }}>{item.brand}</span>}
+                          {item.category && <span style={{ fontSize: "0.6rem", color: "var(--text3)" }}>{item.category}</span>}
+                          {item.mie && <span style={{ fontSize: "0.6rem", color: "#10B981", fontWeight: 600 }}>🇪🇬 Local</span>}
+                          <span style={{ fontSize: "0.6rem", color: "var(--text3)" }}>{leadTime}</span>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                        <span style={{ background: `${badgeColor}20`, color: badgeColor, padding: "2px 7px", borderRadius: 6, fontWeight: 700, fontSize: "0.65rem" }}>{badgeLabel}</span>
+                        <p style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text)", marginTop: 3 }}>{isStockout ? "0 left" : `${item.in_stock} left`}</p>
+                        <p style={{ fontSize: "0.62rem", color: "var(--text3)" }}>{isStockout ? "0d" : `${item.daysCover}d`} · {item.units_30d}/mo</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ height: 8 }} />
       </div>
 
-      {drill && <DrillDownSheet params={drill} onClose={closeDrill} />}
+      {stack.length > 0 && <DrillDownSheet stack={stack} onClose={closeDrill} onPush={pushDrill} />}
     </div>
   );
 }

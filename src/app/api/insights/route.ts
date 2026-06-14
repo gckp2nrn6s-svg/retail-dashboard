@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { query, STORE_NAMES } from "@/lib/db";
+import { navQuery } from "@/lib/navdb";
+import { fetchNavVelocity } from "@/lib/navVelocity";
 
 function sn(code: string) { return STORE_NAMES[code] ?? code; }
 
@@ -18,149 +20,170 @@ export interface Insight {
 export async function GET() {
   const insights: Insight[] = [];
 
-  const [
-    fxRow,
-    criticalStockout,
-    soonStockout,
-    deadStock,
-    hotMomentum,
-    storeWeekly,
-    topOpportunity,
-  ] = await Promise.all([
+  // Pre-fetch NAV velocities (30d and 90d) in parallel with other queries
+  const [vel30, vel90, fxRow, warehouseItems, hotMomentum, storeWeekly, onlineTransfer, onlineImport, topOpportunity] = await Promise.all([
+    fetchNavVelocity(30),
+    fetchNavVelocity(90),
+
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
     ),
 
-    // Items stocking out in < 5 days with active sales
-    query<{ item_no: string; description: string; brand: string; category: string; size: string; in_stock: string; units_30d: string; days_remaining: string; stock_value: string }>(`
+    // All warehouse items (no all_sales join — we'll merge NAV velocity in JS)
+    query<{ item_no: string; description: string; brand: string; category: string; size: string; in_stock: string; unit_price: string }>(`
       SELECT ws.item_no,
              COALESCE(ic.description, ws.description) AS description,
              ic.brand, ic.category, ic.size,
              ws.in_stock::numeric,
-             r.units_30d,
-             ROUND(ws.in_stock / (r.units_30d / 30.0))::int AS days_remaining,
-             ROUND(ws.in_stock * ws.unit_price)::numeric AS stock_value
-      FROM warehouse_stock ws
-      JOIN (
-        SELECT item_no, SUM(units) AS units_30d
-        FROM all_sales WHERE sale_date >= CURRENT_DATE - 30
-        GROUP BY item_no HAVING SUM(units) >= 1
-      ) r ON ws.item_no = r.item_no
-      LEFT JOIN item_categorisation ic ON ws.item_no = ic.item_no
-      WHERE ws.in_stock > 0
-        AND ws.in_stock / (r.units_30d / 30.0) < 5
-      ORDER BY days_remaining ASC, ws.in_stock DESC
-      LIMIT 8
-    `),
-
-    // Items stocking out in 5-14 days
-    query<{ item_no: string; description: string; brand: string; in_stock: string; days_remaining: string; units_30d: string }>(`
-      SELECT ws.item_no,
-             COALESCE(ic.description, ws.description) AS description,
-             ic.brand,
-             ws.in_stock::numeric,
-             ROUND(ws.in_stock / (r.units_30d / 30.0))::int AS days_remaining,
-             r.units_30d
-      FROM warehouse_stock ws
-      JOIN (
-        SELECT item_no, SUM(units) AS units_30d
-        FROM all_sales WHERE sale_date >= CURRENT_DATE - 30
-        GROUP BY item_no HAVING SUM(units) >= 1
-      ) r ON ws.item_no = r.item_no
-      LEFT JOIN item_categorisation ic ON ws.item_no = ic.item_no
-      WHERE ws.in_stock > 0
-        AND ws.in_stock / (r.units_30d / 30.0) BETWEEN 5 AND 14
-      ORDER BY days_remaining ASC
-      LIMIT 20
-    `),
-
-    // Dead stock: ≥ 20 units, zero sales in 90 days
-    query<{ item_no: string; description: string; brand: string; category: string; in_stock: string; dead_value: string }>(`
-      SELECT ws.item_no,
-             COALESCE(ic.description, ws.description) AS description,
-             ic.brand, ic.category,
-             ws.in_stock::numeric,
-             ROUND(ws.in_stock * ws.unit_price)::numeric AS dead_value
+             ws.unit_price::numeric
       FROM warehouse_stock ws
       LEFT JOIN item_categorisation ic ON ws.item_no = ic.item_no
-      LEFT JOIN (
-        SELECT item_no FROM all_sales
-        WHERE sale_date >= CURRENT_DATE - 90
-        GROUP BY item_no
-      ) r ON ws.item_no = r.item_no
-      WHERE ws.in_stock >= 20 AND r.item_no IS NULL AND ws.unit_price > 0
-      ORDER BY dead_value DESC
-      LIMIT 6
+      WHERE ws.in_stock >= 0
     `),
 
-    // Trending: last 7d vs prior 7d, > 80% increase, minimum 3 units last 7d
-    query<{ item_no: string; description: string; brand: string; last7: string; prev7: string; pct_change: string }>(`
-      SELECT item_no,
-             description,
-             brand,
-             last7, prev7,
-             ROUND((last7 - prev7) * 100.0 / NULLIF(prev7, 0)) AS pct_change
-      FROM (
-        SELECT a.item_no,
-               COALESCE(ic.description, a.item_no) AS description,
-               ic.brand,
-               SUM(CASE WHEN sale_date >= CURRENT_DATE - 7  THEN units ELSE 0 END)::numeric AS last7,
-               SUM(CASE WHEN sale_date BETWEEN CURRENT_DATE - 14 AND CURRENT_DATE - 8 THEN units ELSE 0 END)::numeric AS prev7
-        FROM all_sales a
-        LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
-        WHERE a.sale_date >= CURRENT_DATE - 14
-        GROUP BY a.item_no, ic.description, ic.brand
-      ) t
-      WHERE last7 >= 3 AND prev7 > 0 AND last7 / NULLIF(prev7, 0) > 1.8
-      ORDER BY pct_change DESC
-      LIMIT 5
-    `),
-
-    // Store week-over-week (retail only)
-    query<{ store_code: string; this_week: string; last_week: string; pct_change: string }>(`
-      SELECT store_code,
-             this_week, last_week,
-             ROUND((this_week - last_week) * 100.0 / NULLIF(last_week, 0)) AS pct_change
-      FROM (
-        SELECT store_code,
-               SUM(CASE WHEN sale_date >= CURRENT_DATE - 7  THEN revenue ELSE 0 END)::numeric AS this_week,
-               SUM(CASE WHEN sale_date BETWEEN CURRENT_DATE - 14 AND CURRENT_DATE - 8 THEN revenue ELSE 0 END)::numeric AS last_week
-        FROM all_sales
-        WHERE sale_date >= CURRENT_DATE - 14
-          AND store_code = ANY(ARRAY['ALMAZA','CCA','CF-HOS','CSTARS','P90'])
-        GROUP BY store_code
-      ) t
-      WHERE last_week > 0
+    // Trending: last 7d vs prior 7d — from NAV
+    navQuery<{ item_no: string; description: string; brand: string; last7: number; prev7: number; pct_change: number }>(`
+      SELECT TOP 5
+        [Item No_]      AS item_no,
+        [Item No_] AS description,
+        MAX([Item Category Code]) AS brand,
+        -SUM(CASE WHEN CAST([Date] AS DATE) >= CAST(DATEADD(day,-7,GETDATE()) AS DATE)  THEN [Quantity] ELSE 0 END) AS last7,
+        -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END) AS prev7,
+        CASE WHEN SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END) <> 0
+          THEN ROUND((-SUM(CASE WHEN CAST([Date] AS DATE) >= CAST(DATEADD(day,-7,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END) + SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END)) * 100.0 / ABS(SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END)), 0)
+          ELSE 0 END AS pct_change
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) >= CAST(DATEADD(day,-14,GETDATE()) AS DATE)
+      GROUP BY [Item No_]
+      HAVING -SUM(CASE WHEN CAST([Date] AS DATE) >= CAST(DATEADD(day,-7,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END) >= 3
+        AND -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END) > 0
       ORDER BY pct_change DESC
     `),
 
-    // Top revenue items last 30d with their stock health
-    query<{ item_no: string; description: string; brand: string; revenue_30d: string; units_30d: string; in_stock: string; days_remaining: string }>(`
-      SELECT a.item_no,
-             COALESCE(ic.description, a.item_no) AS description,
-             ic.brand,
-             SUM(a.revenue)::numeric AS revenue_30d,
-             SUM(a.units)::numeric  AS units_30d,
-             COALESCE(ws.in_stock, 0)::numeric AS in_stock,
-             CASE WHEN SUM(a.units) > 0 AND ws.in_stock > 0
-               THEN ROUND(ws.in_stock / (SUM(a.units) / 30.0))
-               ELSE NULL END AS days_remaining
-      FROM all_sales a
-      LEFT JOIN item_categorisation ic ON a.item_no = ic.item_no
-      LEFT JOIN warehouse_stock ws ON a.item_no = ws.item_no
-      WHERE a.sale_date >= CURRENT_DATE - 30
-      GROUP BY a.item_no, ic.description, ic.brand, ws.in_stock
-      ORDER BY revenue_30d DESC
+    // Store week-over-week (retail only) — from NAV
+    navQuery<{ store_code: string; this_week: number; last_week: number; pct_change: number }>(`
+      SELECT
+        [Store No_] AS store_code,
+        -SUM(CASE WHEN CAST([Date] AS DATE) >= CAST(DATEADD(day,-7,GETDATE()) AS DATE) THEN [Net Amount]+[VAT Amount] ELSE 0 END) AS this_week,
+        -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Net Amount]+[VAT Amount] ELSE 0 END) AS last_week,
+        CASE WHEN SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Net Amount]+[VAT Amount] ELSE 0 END) <> 0
+          THEN ROUND((-SUM(CASE WHEN CAST([Date] AS DATE) >= CAST(DATEADD(day,-7,GETDATE()) AS DATE) THEN [Net Amount]+[VAT Amount] ELSE 0 END) + SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Net Amount]+[VAT Amount] ELSE 0 END)) * 100.0 / ABS(SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Net Amount]+[VAT Amount] ELSE 0 END)), 0)
+          ELSE 0 END AS pct_change
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) >= CAST(DATEADD(day,-14,GETDATE()) AS DATE)
+        AND [Store No_] IN ('ALMAZA','CCA','CF-HOS','CSTARS','P90','MOA','MOE','HIS','MC')
+      GROUP BY [Store No_]
+      HAVING -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Net Amount]+[VAT Amount] ELSE 0 END) > 0
+      ORDER BY pct_change DESC
+    `),
+
+    // Online items that ARE selling + warehouse HAS stock → transfer alert
+    query<{ item_no: string; description: string; brand: string; in_stock: string; sold_30d: string; rev_30d: string; store: string }>(`
+      SELECT ws.item_no, COALESCE(ic.description, ws.description) AS description,
+             ws.brand, ws.in_stock::int,
+             SUM(ss.quantity)::int AS sold_30d,
+             SUM(ss.line_total)::int AS rev_30d,
+             ss.store_code AS store
+      FROM shopify_sales ss
+      JOIN shopify_item_map sim ON sim.sku = ss.sku
+      JOIN warehouse_stock ws ON ws.item_no = sim.item_no
+      LEFT JOIN item_categorisation ic ON ic.item_no = sim.item_no
+      WHERE ss.sale_date >= CURRENT_DATE - 30
+        AND ss.fulfillment_status = 'fulfilled'
+        AND ss.financial_status <> 'refunded'
+        AND ss.quantity > 0
+        AND ws.in_stock BETWEEN 1 AND 15
+      GROUP BY ws.item_no, ic.description, ws.description, ws.brand, ws.in_stock, ss.store_code
+      ORDER BY sold_30d DESC, ws.in_stock ASC
       LIMIT 10
+    `),
+
+    // Online items that ARE selling + warehouse ALSO has 0 → import needed
+    query<{ item_no: string; description: string; brand: string; sold_30d: string; rev_30d: string; store: string }>(`
+      SELECT ws.item_no, COALESCE(ic.description, ws.description) AS description,
+             ws.brand,
+             SUM(ss.quantity)::int AS sold_30d,
+             SUM(ss.line_total)::int AS rev_30d,
+             ss.store_code AS store
+      FROM shopify_sales ss
+      JOIN shopify_item_map sim ON sim.sku = ss.sku
+      JOIN warehouse_stock ws ON ws.item_no = sim.item_no
+      LEFT JOIN item_categorisation ic ON ic.item_no = sim.item_no
+      WHERE ss.sale_date >= CURRENT_DATE - 30
+        AND ss.fulfillment_status = 'fulfilled'
+        AND ss.financial_status <> 'refunded'
+        AND ss.quantity > 0
+        AND ws.in_stock <= 0
+      GROUP BY ws.item_no, ic.description, ws.description, ws.brand, ss.store_code
+      ORDER BY sold_30d DESC
+      LIMIT 10
+    `),
+
+    // Top revenue items last 30d from NAV, then join stock from Postgres in JS
+    navQuery<{ item_no: string; description: string; brand: string; revenue_30d: number; units_30d: number }>(`
+      SELECT TOP 10
+        [Item No_]                      AS item_no,
+        [Item No_] AS description,
+        MAX([Item Category Code])       AS brand,
+        -SUM([Net Amount]+[VAT Amount]) AS revenue_30d,
+        -SUM([Quantity])                AS units_30d
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) >= CAST(DATEADD(day,-30,GETDATE()) AS DATE)
+      GROUP BY [Item No_]
+      ORDER BY revenue_30d DESC
     `),
   ]);
 
   const fx = parseFloat(fxRow[0]?.egp_per_usd || "50");
 
+  // Compute stockouts from NAV velocity + warehouse stock in JS
+  type StockoutItem = { item_no: string; description: string; brand: string; category: string; size: string; in_stock: number; units_30d: number; days_remaining: number; stock_value: number };
+  const criticalStockout: StockoutItem[] = [];
+  const soonStockout: StockoutItem[] = [];
+  const deadStock: { item_no: string; description: string; brand: string; category: string; in_stock: number; dead_value: number }[] = [];
+
+  for (const ws of warehouseItems) {
+    const stock = parseFloat(ws.in_stock);
+    const price = parseFloat(ws.unit_price);
+    const v30 = vel30.get(ws.item_no);
+    const v90 = vel90.get(ws.item_no);
+    const units30 = v30?.units ?? 0;
+    const units90 = v90?.units ?? 0;
+    const dailyRate = units30 / 30;
+
+    if (stock > 0 && units30 >= 1) {
+      const daysRemaining = Math.round(stock / dailyRate);
+      const entry: StockoutItem = {
+        item_no: ws.item_no,
+        description: ws.description,
+        brand: ws.brand || "",
+        category: ws.category || "",
+        size: ws.size || "",
+        in_stock: stock,
+        units_30d: units30,
+        days_remaining: daysRemaining,
+        stock_value: Math.round(stock * price),
+      };
+      if (daysRemaining < 5)               criticalStockout.push(entry);
+      else if (daysRemaining <= 14)         soonStockout.push(entry);
+    }
+
+    if (stock >= 20 && units90 === 0 && price > 0) {
+      deadStock.push({ item_no: ws.item_no, description: ws.description, brand: ws.brand || "", category: ws.category || "", in_stock: stock, dead_value: Math.round(stock * price) });
+    }
+  }
+
+  criticalStockout.sort((a, b) => a.days_remaining - b.days_remaining);
+  soonStockout.sort((a, b) => a.days_remaining - b.days_remaining);
+  deadStock.sort((a, b) => b.dead_value - a.dead_value);
+  const criticalTop8 = criticalStockout.slice(0, 8);
+  const soonTop20 = soonStockout.slice(0, 20);
+  const deadTop6 = deadStock.slice(0, 6);
+
   // ── CRITICAL STOCKOUTS ──────────────────────────────────────────────────
-  criticalStockout.forEach((item, i) => {
-    const days = parseInt(item.days_remaining);
-    const stock = parseInt(item.in_stock);
+  criticalTop8.forEach((item, i) => {
+    const days = item.days_remaining;
+    const stock = item.in_stock;
     insights.push({
       id: `critical-${item.item_no}`,
       type: "critical",
@@ -176,51 +199,85 @@ export async function GET() {
   });
 
   // If many critical, collapse into summary after first
-  if (criticalStockout.length > 1) {
-    const totalAtRisk = criticalStockout.reduce((s, r) => s + parseFloat(r.stock_value || "0"), 0);
+  if (criticalTop8.length > 1) {
+    const totalAtRisk = criticalTop8.reduce((s, r) => s + r.stock_value, 0);
     insights.push({
       id: "critical-group",
       type: "critical",
       icon: "🚨",
-      title: `${criticalStockout.length} items stock out in < 5 days`,
+      title: `${criticalTop8.length} items stock out in < 5 days`,
       body: `Immediate reorder needed. Combined remaining stock value: EGP ${Math.round(totalAtRisk).toLocaleString()}.`,
       action: "View all critical items",
-      metric: `${criticalStockout.length} items`,
+      metric: `${criticalTop8.length} items`,
       metricSub: "< 5 days",
       link: "/dashboard/stock?tab=low",
     });
   }
 
   // ── SOON STOCKOUTS ──────────────────────────────────────────────────────
-  if (soonStockout.length > 0) {
-    const avgDays = Math.round(
-      soonStockout.reduce((s, r) => s + parseInt(r.days_remaining), 0) / soonStockout.length
-    );
+  if (soonTop20.length > 0) {
+    const avgDays = Math.round(soonTop20.reduce((s, r) => s + r.days_remaining, 0) / soonTop20.length);
     insights.push({
       id: "warning-stockout",
       type: "warning",
       icon: "⚠️",
-      title: `${soonStockout.length} items need reordering this week`,
-      body: `These items will sell out in 5–14 days. Order now to avoid stockouts. Fastest depleting: ${soonStockout[0]?.description || soonStockout[0]?.item_no}.`,
+      title: `${soonTop20.length} items need reordering this week`,
+      body: `These items will sell out in 5–14 days. Order now to avoid stockouts. Fastest depleting: ${soonTop20[0]?.description || soonTop20[0]?.item_no}.`,
       action: "Plan reorders",
-      metric: `${soonStockout.length} SKUs`,
+      metric: `${soonTop20.length} SKUs`,
       metricSub: `avg ${avgDays}d left`,
       link: "/dashboard/stock?tab=low",
     });
   }
 
+  // ── ONLINE: IMPORT NEEDED (selling online, zero in warehouse too) ────────
+  if (onlineImport.length > 0) {
+    const totalRev = onlineImport.reduce((s, r) => s + parseFloat(r.rev_30d || "0"), 0);
+    const topItem = onlineImport[0];
+    const storeLabel = topItem.store === "SHOPIFY-SAM" ? "SAM Online" : "AT Online";
+    insights.push({
+      id: "online-import",
+      type: "critical",
+      icon: "🛳️",
+      title: `${onlineImport.length} online SKUs sold out everywhere — import needed`,
+      body: `These items are selling on ${storeLabel} (EGP ${Math.round(totalRev).toLocaleString()} in 30d) but show ZERO stock in the main warehouse. Cannot transfer — needs import order. Top: ${topItem.description || topItem.item_no}.`,
+      action: "Raise import order",
+      metric: `${onlineImport.length} SKUs`,
+      metricSub: `EGP ${Math.round(totalRev / 1000)}K/mo`,
+      link: "/dashboard/stock?tab=low",
+    });
+  }
+
+  // ── ONLINE: TRANSFER FROM WAREHOUSE (low stock on Shopify, warehouse has it) ──
+  if (onlineTransfer.length > 0) {
+    const totalStock = onlineTransfer.reduce((s, r) => s + parseFloat(r.in_stock || "0"), 0);
+    const totalRev = onlineTransfer.reduce((s, r) => s + parseFloat(r.rev_30d || "0"), 0);
+    const topItem = onlineTransfer[0];
+    insights.push({
+      id: "online-transfer",
+      type: "warning",
+      icon: "🔄",
+      title: `${onlineTransfer.length} online SKUs need warehouse transfer`,
+      body: `Main warehouse has stock for these items (≤15 units each) but online is running low. Transfer now to prevent losing EGP ${Math.round(totalRev).toLocaleString()} in monthly online sales. Start with: ${topItem.description || topItem.item_no} (${topItem.in_stock} units left).`,
+      action: "Transfer to online store",
+      metric: `${onlineTransfer.length} SKUs`,
+      metricSub: `${totalStock} units available`,
+      link: "/dashboard/stock?tab=low",
+    });
+  }
+
   // ── DEAD STOCK ──────────────────────────────────────────────────────────
-  if (deadStock.length > 0) {
-    const totalDeadValue = deadStock.reduce((s, r) => s + parseFloat(r.dead_value || "0"), 0);
+  if (deadTop6.length > 0) {
+    const totalDeadValue = deadTop6.reduce((s, r) => s + r.dead_value, 0);
     insights.push({
       id: "dead-stock",
       type: "warning",
       icon: "📦",
       title: `EGP ${Math.round(totalDeadValue / 1000)}K tied up in dead stock`,
-      body: `${deadStock.length} items (${deadStock[0]?.description || deadStock[0]?.item_no}${deadStock.length > 1 ? ` + ${deadStock.length - 1} more` : ""}) have had zero sales in 90 days. Consider promotion or markdown.`,
+      body: `${deadTop6.length} items (${deadTop6[0]?.description || deadTop6[0]?.item_no}${deadTop6.length > 1 ? ` + ${deadTop6.length - 1} more` : ""}) have had zero sales in 90 days. Consider promotion or markdown.`,
       action: "Review slow movers",
       metric: `EGP ${Math.round(totalDeadValue / 1000)}K`,
-      metricSub: `${deadStock.length} items`,
+      metricSub: `${deadTop6.length} items`,
       link: "/dashboard/stock?tab=slow",
     });
   }
@@ -229,9 +286,9 @@ export async function GET() {
   const bestStore = storeWeekly[0];
   const worstStore = storeWeekly[storeWeekly.length - 1];
 
-  if (bestStore && parseFloat(bestStore.pct_change) > 15) {
-    const pct = parseFloat(bestStore.pct_change);
-    const rev = parseFloat(bestStore.this_week);
+  if (bestStore && Number(bestStore.pct_change) > 15) {
+    const pct = Number(bestStore.pct_change);
+    const rev = Number(bestStore.this_week);
     const name = sn(bestStore.store_code);
     insights.push({
       id: `win-store-${bestStore.store_code}`,
@@ -246,10 +303,10 @@ export async function GET() {
     });
   }
 
-  if (worstStore && parseFloat(worstStore.pct_change) < -20 && worstStore.store_code !== bestStore?.store_code) {
-    const pct = Math.abs(parseFloat(worstStore.pct_change));
-    const rev = parseFloat(worstStore.last_week);
-    const missing = rev - parseFloat(worstStore.this_week);
+  if (worstStore && Number(worstStore.pct_change) < -20 && worstStore.store_code !== bestStore?.store_code) {
+    const pct = Math.abs(Number(worstStore.pct_change));
+    const rev = Number(worstStore.last_week);
+    const missing = rev - Number(worstStore.this_week);
     const name = sn(worstStore.store_code);
     insights.push({
       id: `warn-store-${worstStore.store_code}`,
@@ -266,13 +323,13 @@ export async function GET() {
 
   // ── TRENDING ITEMS ───────────────────────────────────────────────────────
   hotMomentum.forEach((item) => {
-    const pct = parseFloat(item.pct_change);
+    const pct = Number(item.pct_change);
     insights.push({
       id: `trend-${item.item_no}`,
       type: "opportunity",
       icon: "🔥",
       title: `${item.description || item.item_no} trending up ${Math.round(pct)}%`,
-      body: `${parseFloat(item.last7).toFixed(0)} units sold this week vs ${parseFloat(item.prev7).toFixed(0)} last week. Demand is accelerating — ensure stock is ready.`,
+      body: `${Number(item.last7).toFixed(0)} units sold this week vs ${Number(item.prev7).toFixed(0)} last week. Demand is accelerating — ensure stock is ready.`,
       action: "Check stock levels",
       metric: `+${Math.round(pct)}%`,
       metricSub: "this week",
@@ -281,11 +338,9 @@ export async function GET() {
   });
 
   // ── TOP REVENUE OPPORTUNITIES ────────────────────────────────────────────
-  const topRevItems = topOpportunity.filter(
-    (r) => parseFloat(r.days_remaining || "999") < 14 && parseFloat(r.in_stock) > 0
-  );
+  const topRevItems = topOpportunity.filter((r) => Number(r.revenue_30d) > 0);
   if (topRevItems.length > 0) {
-    const totalRev = topRevItems.reduce((s, r) => s + parseFloat(r.revenue_30d), 0);
+    const totalRev = topRevItems.reduce((s, r) => s + Number(r.revenue_30d), 0);
     insights.push({
       id: "opportunity-top-rev",
       type: "opportunity",
@@ -301,13 +356,13 @@ export async function GET() {
 
   // ── STORE ALL-STARS (wins) ────────────────────────────────────────────────
   const allStoresSorted = [...storeWeekly].sort(
-    (a, b) => parseFloat(b.this_week) - parseFloat(a.this_week)
+    (a, b) => Number(b.this_week) - Number(a.this_week)
   );
   if (allStoresSorted.length > 0) {
     const top = allStoresSorted[0];
-    const totalRetailRev = allStoresSorted.reduce((s, r) => s + parseFloat(r.this_week), 0);
+    const totalRetailRev = allStoresSorted.reduce((s, r) => s + Number(r.this_week), 0);
     const topShare = totalRetailRev > 0
-      ? Math.round((parseFloat(top.this_week) / totalRetailRev) * 100)
+      ? Math.round((Number(top.this_week) / totalRetailRev) * 100)
       : 0;
     const name = sn(top.store_code);
     insights.push({
@@ -315,7 +370,7 @@ export async function GET() {
       type: "win",
       icon: "⭐",
       title: `${name} leads retail — ${topShare}% of this week's revenue`,
-      body: `${name} generated EGP ${Math.round(parseFloat(top.this_week)).toLocaleString()} this week, leading all 5 retail stores.`,
+      body: `${name} generated EGP ${Math.round(Number(top.this_week)).toLocaleString()} this week, leading all retail stores.`,
       action: "View top products",
       metric: `${topShare}% share`,
       metricSub: "of retail revenue",
@@ -328,8 +383,8 @@ export async function GET() {
   insights.sort((a, b) => ORDER[a.type] - ORDER[b.type]);
 
   // Deduplicate (remove individual critical if group card exists)
-  const seenCritical = insights.findIndex((x) => x.id === "critical-group") >= 0;
-  const filtered = seenCritical ? insights.filter((x) => !x.id.startsWith("critical-") || x.id === "critical-group") : insights;
+  const hasCriticalGroup = insights.findIndex((x) => x.id === "critical-group") >= 0;
+  const filtered = hasCriticalGroup ? insights.filter((x) => !x.id.startsWith("critical-") || x.id === "critical-group") : insights;
 
   return NextResponse.json({ insights: filtered, fx, generatedAt: new Date().toISOString() });
 }

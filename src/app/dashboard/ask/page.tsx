@@ -18,7 +18,7 @@ const QUICK_ACTIONS = [
   {
     category: "🚨 Urgent",
     color: "#EF4444",
-    bg: "#FFF1F2",
+    bg: "rgba(239,68,68,0.1)",
     questions: [
       "What needs to be restocked TODAY? Give me the exact items and quantities to order.",
       "Which items are at risk of stocking out this week? Prioritise by revenue impact.",
@@ -27,7 +27,7 @@ const QUICK_ACTIONS = [
   {
     category: "📊 Performance",
     color: "#2563EB",
-    bg: "#EFF6FF",
+    bg: "rgba(37,99,235,0.1)",
     questions: [
       "Which store is underperforming this week and why? What should we do?",
       "Give me a full weekly P&L summary — revenue by channel, vs last week.",
@@ -37,7 +37,7 @@ const QUICK_ACTIONS = [
   {
     category: "🔥 Opportunities",
     color: "#F59E0B",
-    bg: "#FFFBEB",
+    bg: "rgba(245,158,11,0.1)",
     questions: [
       "What's my #1 revenue opportunity right now? Be specific.",
       "Which products are trending up that I should push harder?",
@@ -47,7 +47,7 @@ const QUICK_ACTIONS = [
   {
     category: "💰 Inventory",
     color: "#10B981",
-    bg: "#F0FDF4",
+    bg: "rgba(16,185,129,0.1)",
     questions: [
       "Show me dead stock — what's sitting unsold and costing us money?",
       "What should I markdown or promote to clear slow inventory?",
@@ -194,10 +194,10 @@ export default function AskPage() {
                 <button key={q} onClick={() => send(q)} style={{
                   textAlign: "left", padding: "13px 16px",
                   borderRadius: 14,
-                  border: `1.5px solid ${QUICK_ACTIONS[activeCategory].color}30`,
+                  border: `1.5px solid ${QUICK_ACTIONS[activeCategory].color}40`,
                   background: QUICK_ACTIONS[activeCategory].bg,
                   cursor: "pointer", fontSize: "0.78rem",
-                  color: "var(--text)", lineHeight: 1.45,
+                  color: "var(--text2)", lineHeight: 1.45,
                   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
                   transition: "all 0.12s",
                 }}>

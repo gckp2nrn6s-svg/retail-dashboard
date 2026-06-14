@@ -21,10 +21,18 @@ export function useCurrency() {
 }
 
 export function fmt(egp: number, usd: number, currency: Currency): string {
-  if (currency === "USD") return `$${usd.toLocaleString()}`;
-  if (egp >= 1_000_000) return `EGP ${(egp / 1_000_000).toFixed(1)}M`;
-  if (egp >= 1_000) return `EGP ${(egp / 1_000).toFixed(0)}K`;
-  return `EGP ${egp.toLocaleString()}`;
+  if (currency === "USD") {
+    const abs = Math.abs(usd);
+    const sign = usd < 0 ? "-" : "";
+    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+    if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+    return `${sign}$${abs.toFixed(0)}`;
+  }
+  const abs = Math.abs(egp);
+  const sign = egp < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}EGP ${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000)     return `${sign}EGP ${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}EGP ${abs.toLocaleString("en-EG", { maximumFractionDigits: 0 })}`;
 }
 
 export function CurrencyToggle() {

@@ -11,26 +11,26 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 
-type GroupOption = "all" | "retail" | "online" | "ho";
+type GroupOption = "all" | "retail" | "ecom" | "ho";
 
 interface ChartPoint { date: string; egp: number; usd: number; units: number }
 interface Store { code: string; group: string; revenue: { egp: number; usd: number }; units: number; pct: number }
 interface Channel { group: string; revenue: { egp: number; usd: number }; units: number; pct: number }
 interface Category { category: string; revenue: { egp: number; usd: number }; units: number; pct: number }
 
-const GROUP_LABELS: Record<GroupOption, string> = { all: "All", retail: "Retail", online: "Online", ho: "B2B" };
+const GROUP_LABELS: Record<GroupOption, string> = { all: "All", retail: "Retail", ecom: "Ecom", ho: "B2B" };
 
 // Semantic channel colors — consistent with home page
-const CHANNEL_COLORS: Record<string, string> = { Retail: "#0D9488", Online: "#7C3AED", B2B: "#EA580C" };
+const CHANNEL_COLORS: Record<string, string> = { Retail: "#0D9488", Ecom: "#7C3AED", B2B: "#EA580C" };
 const CAT_COLORS = ["#2563EB","#0D9488","#7C3AED","#EA580C","#EC4899","#06B6D4","#F59E0B"];
 
 // Human-readable store names (mirrors db.ts for client-side display)
 const STORE_NAMES: Record<string,string> = {
-  "CSTARS":"City Stars","CF-HOS":"Festival of Hope","ALMAZA":"Almaza City Center",
-  "P90":"Patio 90","CCA":"Cairo Festival City","ONLINE":"Online Store",
+  "CSTARS":"City Stars","CF-HOS":"Cairo Festival City","ALMAZA":"Almaza City Center",
+  "P90":"Point 90","CCA":"Alexandria","ONLINE":"Online Store",
   "AMAZON BAN":"Amazon Banha","AMAZON KAM":"Amazon Kamal",
-  "SHOPIFY-AMT":"AT Online","SHOPIFY-SAM":"Samsonite Online",
-  "HO":"Head Office","NOON":"Noon","AMAZON":"Amazon Egypt","JUMIA":"Jumia",
+  "NOON":"Noon","JUMIA":"Jumia","HO":"HO / Wholesale",
+  "AMAZON":"Amazon Egypt",
   "DUTY FREE":"Duty Free","FOUR SEASO":"Four Seasons","GO SPORT1":"Go Sport",
   "MOA":"Mall of Arabia","MOE":"Mall of Egypt","SPINNEYS":"Spinneys",
 };
@@ -71,7 +71,7 @@ function SalesContent() {
   const { currency } = useCurrency();
   const { range } = useDateRange();
   const sp = useSearchParams();
-  const { drill, open: openDrill, close: closeDrill } = useDrill();
+  const { stack, open: openDrill, push: pushDrill, close: closeDrill } = useDrill();
 
   const [group, setGroup] = useState<GroupOption>((sp.get("group") as GroupOption) || "all");
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
@@ -171,7 +171,8 @@ function SalesContent() {
           </div>
           {loading ? <div className="skeleton" style={{ height: 180 }} /> : chartType === "area" ? (
             <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+              <AreaChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}
+                onClick={(e) => { const ae = e as { activePayload?: { payload: ChartPoint }[] }; if (ae?.activePayload?.[0]) { const d = ae.activePayload[0].payload; openDrill({ title: `${d.date} · All Items`, endpoint: drillUrl({ type: "daily-detail", date: d.date }) }); } }}>
                 <defs>
                   <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%"   stopColor="#2563EB" stopOpacity={0.25} />
@@ -187,7 +188,8 @@ function SalesContent() {
             </ResponsiveContainer>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}
+                onClick={(e) => { const ae = e as { activePayload?: { payload: ChartPoint }[] }; if (ae?.activePayload?.[0]) { const d = ae.activePayload[0].payload; openDrill({ title: `${d.date} · All Items`, endpoint: drillUrl({ type: "daily-detail", date: d.date }) }); } }}>
                 <XAxis dataKey="date" tickFormatter={d => formatDate(d, days)} tick={{ fontSize: 10, fill: "var(--text4)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fontSize: 10, fill: "var(--text4)" }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
                 <ReferenceLine y={avgRev} stroke="rgba(37,99,235,0.3)" strokeDasharray="4 4" />
@@ -309,7 +311,7 @@ function SalesContent() {
 
       </div>
 
-      {drill && <DrillDownSheet params={drill} onClose={closeDrill} />}
+      {stack.length > 0 && <DrillDownSheet stack={stack} onClose={closeDrill} onPush={pushDrill} />}
     </div>
   );
 }

@@ -35,10 +35,10 @@ export const STORE_GROUPS = {
 // Human-readable store names shown everywhere in the UI
 export const STORE_NAMES: Record<string, string> = {
   "CSTARS":       "City Stars",
-  "CF-HOS":       "Festival of Hope",
+  "CF-HOS":       "Cairo Festival City",
   "ALMAZA":       "Almaza City Center",
-  "P90":          "Patio 90",
-  "CCA":          "Cairo Festival City",
+  "P90":          "Point 90",
+  "CCA":          "Alexandria",
   "ONLINE":       "Online Store",
   "AMAZON BAN":   "Amazon Banha",
   "AMAZON KAM":   "Amazon Kamal",
