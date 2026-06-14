@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   RefreshCw, ChevronRight, ArrowUpRight, ArrowDownRight,
   TrendingUp, Package, MessageCircle, BarChart2, Store,
 } from "lucide-react";
 import { useCurrency, CurrencyToggle, fmt } from "@/components/CurrencyToggle";
+import { LiveBadge } from "@/components/LiveBadge";
+import { fmt as fmtNum } from "@/lib/format";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
@@ -28,6 +30,7 @@ interface BrandRow  { brand: string; egp: number; usd: number; units: number; pc
 interface CatRow    { category: string; egp: number; usd: number; units: number; pct: number }
 interface ProductRow{ item_no: string; description: string; brand: string; category: string; egp: number; usd: number; units: number; pct: number }
 
+interface FreshnessRow { source: string; maxDate: string; lagDays: number }
 interface HomeData {
   stores: StoreRow[];
   channelTotals: Channel[];
@@ -36,6 +39,7 @@ interface HomeData {
   products: ProductRow[];
   totalRev: number;
   fx: number;
+  freshness: FreshnessRow[];
 }
 
 const TYPE_CFG = {
@@ -45,7 +49,7 @@ const TYPE_CFG = {
   win:         { accent: "#2563EB", bg: "rgba(37,99,235,0.08)",  border: "rgba(37,99,235,0.2)",  label: "WIN" },
 } as const;
 
-const CHANNEL_COLORS: Record<string,string> = { Retail: "#0D9488", Online: "#7C3AED", B2B: "#EA580C" };
+const CHANNEL_COLORS: Record<string,string> = { Retail: "#0D9488", Ecom: "#7C3AED", B2B: "#EA580C" };
 const STORE_COLORS: Record<string,string> = {
   "CSTARS":"#2563EB","CF-HOS":"#0D9488","ALMAZA":"#7C3AED","P90":"#EA580C",
   "CCA":"#EC4899","SHOPIFY-AMT":"#10B981","SHOPIFY-SAM":"#059669",
@@ -78,8 +82,8 @@ function InsightCard({ insight, idx }: { insight: Insight; idx: number }) {
   );
 }
 
-function Delta({ v, large = false, dark = false }: { v: number | null; large?: boolean; dark?: boolean }) {
-  if (v === null) return null;
+function Delta({ v, large = false, dark = false, showNa = false }: { v: number | null; large?: boolean; dark?: boolean; showNa?: boolean }) {
+  if (v === null) return showNa ? <span style={{ fontSize: "0.62rem", color: "var(--text4)", background: "var(--surface3)", padding: "2px 8px", borderRadius: 20 }}>N/A</span> : null;
   const up = v >= 0;
   const green = dark ? "#34D399" : "var(--green)";
   const red   = dark ? "#F87171" : "var(--red)";
@@ -94,20 +98,20 @@ function Delta({ v, large = false, dark = false }: { v: number | null; large?: b
 }
 
 function MiniKpi({ label, value, sub, delta, onClick, dark = false }: { label: string; value: string; sub?: string; delta?: number | null; onClick?: () => void; dark?: boolean }) {
-  const bg  = dark ? "rgba(255,255,255,0.06)" : "var(--surface)";
-  const bdr = dark ? "rgba(255,255,255,0.1)"  : "var(--border)";
+  const bg  = dark ? "rgba(255,255,255,0.05)" : "var(--surface)";
+  const bdr = dark ? "rgba(255,255,255,0.09)" : "var(--border)";
   const txt = dark ? "white"                   : "var(--text)";
-  const lbl = dark ? "rgba(255,255,255,0.4)"  : "var(--text3)";
+  const lbl = dark ? "rgba(255,255,255,0.35)" : "var(--text3)";
   return (
     <div onClick={onClick}
-      style={{ background: bg, border: `1px solid ${bdr}`, borderRadius: 16, padding: "14px 16px", cursor: onClick ? "pointer" : "default", transition: "all 0.15s" }}
-      onMouseEnter={e => onClick && (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.1)" : "var(--surface3)")}
+      style={{ background: bg, border: `1px solid ${bdr}`, borderRadius: 18, padding: "14px 16px", cursor: onClick ? "pointer" : "default", transition: "all 0.18s", backdropFilter: dark ? "blur(8px)" : undefined }}
+      onMouseEnter={e => onClick && (e.currentTarget.style.background = dark ? "rgba(255,255,255,0.09)" : "var(--surface3)")}
       onMouseLeave={e => { e.currentTarget.style.background = bg; }}
     >
-      <p style={{ fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: lbl, marginBottom: 6 }}>{label}</p>
-      <p style={{ fontSize: "1.3rem", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1, color: txt }}>{value}</p>
-      {sub && <p style={{ fontSize: "0.6rem", color: lbl, marginTop: 4 }}>{sub}</p>}
-      {delta !== undefined && delta !== null && <div style={{ marginTop: 6 }}><Delta v={delta} dark={dark} /></div>}
+      <p style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: lbl, marginBottom: 8 }}>{label}</p>
+      <p style={{ fontSize: "1.35rem", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: txt }}>{value}</p>
+      {sub && <p style={{ fontSize: "0.58rem", color: lbl, marginTop: 5 }}>{sub}</p>}
+      {delta !== undefined && delta !== null && <div style={{ marginTop: 7 }}><Delta v={delta} dark={dark} /></div>}
     </div>
   );
 }
@@ -124,7 +128,7 @@ function SectionHeader({ title, sub }: { title: string; sub?: string }) {
 export default function HomePage() {
   const { currency } = useCurrency();
   const { range } = useDateRange();
-  const { drill, open: openDrill, close: closeDrill } = useDrill();
+  const { stack, open: openDrill, push: pushDrill, close: closeDrill } = useDrill();
 
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [chart, setChart] = useState<ChartPoint[]>([]);
@@ -134,10 +138,14 @@ export default function HomePage() {
   const [homeLoading, setHomeLoading] = useState(true);
   const [insightsLoading, setInsightsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
 
-  const load = useCallback(async (from: string, to: string) => {
-    setLoading(true);
-    setHomeLoading(true);
+  const load = useCallback(async (from: string, to: string, silent = false) => {
+    if (!silent) { setLoading(true); setHomeLoading(true); }
+    setError(null);
     try {
       const days = Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / 86400000);
       const cr = days <= 8 ? "7d" : days <= 32 ? "30d" : days <= 92 ? "90d" : "12m";
@@ -149,6 +157,9 @@ export default function HomePage() {
       setKpi(kpiRes);
       setChart(chartRes.series || []);
       setHome(homeRes);
+      setLastUpdated(new Date());
+    } catch (e) {
+      setError("Failed to load data. Check your connection.");
     } finally { setLoading(false); setHomeLoading(false); setRefreshing(false); }
   }, []);
 
@@ -158,8 +169,18 @@ export default function HomePage() {
     finally { setInsightsLoading(false); }
   }, []);
 
+  // Initial load on date range change
   useEffect(() => { load(range.from, range.to); }, [range.from, range.to, load]);
   useEffect(() => { loadInsights(); }, [loadInsights]);
+
+  // Auto-refresh every 5 minutes (silent — no loading spinner)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      load(rangeRef.current.from, rangeRef.current.to, true);
+      loadInsights();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [load, loadInsights]);
 
   const refresh = () => { setRefreshing(true); load(range.from, range.to); loadInsights(); };
 
@@ -171,11 +192,9 @@ export default function HomePage() {
   const drillUrl = (params: Record<string, string>) =>
     "/api/drill?" + new URLSearchParams({ ...params, from: range.from, to: range.to }).toString();
 
-  const fmtEgp = (n: number) => `EGP ${n.toLocaleString()}`;
-  const fmtUsd = (n: number) => `$${n.toLocaleString()}`;
-  const fmtMoney = (egp: number, usd: number) => currency === "USD" ? fmtUsd(usd) : fmtEgp(egp);
+  const fmtMoney = (egp: number, usd: number) => fmt(egp, usd, currency);
   const fmtKpi   = (v: { egp: number; usd: number }) => fmtMoney(v.egp, v.usd);
-  const altKpi   = (v: { egp: number; usd: number }) => currency === "USD" ? fmtEgp(v.egp) : fmtUsd(v.usd);
+  const altKpi   = (v: { egp: number; usd: number }) => currency === "USD" ? fmt(v.egp, v.usd, "EGP") : fmt(v.egp, v.usd, "USD");
 
   const topStore = home?.stores[0];
   const maxRev   = topStore?.egp ?? 1;
@@ -184,8 +203,11 @@ export default function HomePage() {
     <div style={{ minHeight: "100%", background: "var(--bg)", paddingBottom: 80 }}>
 
       {/* ── HERO ─────────────────────────────────────────────── */}
-      <div style={{ background: "linear-gradient(160deg, #050D1A 0%, #0D1B2A 50%, #0f2d4a 100%)", paddingBottom: 28, position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -100, right: -60, width: 350, height: 350, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ background: "linear-gradient(160deg, #030B16 0%, #0B1A2E 55%, #0D2440 100%)", paddingBottom: 32, position: "relative", overflow: "hidden" }}>
+        {/* Ambient glow orbs */}
+        <div style={{ position: "absolute", top: -120, right: -80, width: 420, height: 420, borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.14) 0%, transparent 65%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", bottom: -60, left: -60, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(124,58,237,0.09) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "40%", left: "30%", width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, rgba(13,148,136,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
 
         {/* Top bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px 0", position: "relative" }}>
@@ -194,11 +216,36 @@ export default function HomePage() {
             <p style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.76rem", fontWeight: 600, marginTop: 1 }}>{dateStr}</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <LiveBadge lastUpdated={lastUpdated} refreshing={refreshing} />
             <DateRangePicker dark />
             <CurrencyToggle />
-            <button onClick={refresh} style={{ color: "rgba(255,255,255,0.4)", padding: 8, background: "rgba(255,255,255,0.07)", borderRadius: 10, border: "none", cursor: "pointer" }} className={refreshing ? "animate-spin" : ""}><RefreshCw size={14} /></button>
+            <button onClick={refresh} style={{ color: "rgba(255,255,255,0.4)", padding: 8, background: "rgba(255,255,255,0.07)", borderRadius: 10, border: "none", cursor: "pointer", transition: "background 0.15s" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.07)")}
+            ><RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /></button>
           </div>
         </div>
+
+        {/* Error banner */}
+        {error && (
+          <div style={{ margin: "10px 24px 0", display: "flex", alignItems: "center", gap: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 12, padding: "7px 12px" }}>
+            <span style={{ fontSize: "0.7rem", color: "#EF4444", fontWeight: 600 }}>⚠ {error}</span>
+            <button onClick={refresh} style={{ marginLeft: "auto", fontSize: "0.65rem", color: "#EF4444", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 8, padding: "2px 8px", cursor: "pointer" }}>Retry</button>
+          </div>
+        )}
+
+        {/* Data freshness banner */}
+        {home && home.freshness?.some(f => f.lagDays > 3) && (
+          <div style={{ margin: "10px 24px 0", display: "flex", alignItems: "center", gap: 8, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: "7px 12px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.75rem" }}>⚠️</span>
+            <span style={{ fontSize: "0.68rem", fontWeight: 600, color: "#FDE68A" }}>Data lag detected:</span>
+            {home.freshness.filter(f => f.lagDays > 3).map(f => (
+              <span key={f.source} style={{ fontSize: "0.62rem", color: "rgba(253,230,138,0.75)", background: "rgba(245,158,11,0.12)", padding: "2px 8px", borderRadius: 8 }}>
+                {f.source} last synced {f.maxDate} ({f.lagDays}d ago)
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Alert banner */}
         {!insightsLoading && criticalCount > 0 && (
@@ -211,40 +258,41 @@ export default function HomePage() {
 
         {/* Revenue hero */}
         <div style={{ padding: "24px 24px 0", cursor: "pointer" }} onClick={() => openDrill({ title: `Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })}>
-          <p style={{ fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>
+          <p style={{ fontSize: "0.58rem", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>
             Total Revenue · {range.label}
           </p>
           {loading ? (
-            <div style={{ height: 68, width: 280, borderRadius: 12, background: "rgba(255,255,255,0.07)" }} className="skeleton" />
+            <div style={{ height: 76, width: 300, borderRadius: 12, background: "rgba(255,255,255,0.07)" }} className="skeleton" />
           ) : (
             <div className="fade-up">
-              <p style={{ fontSize: "clamp(38px,8vw,58px)", fontWeight: 900, letterSpacing: "-0.05em", lineHeight: 1, color: "white" }}>
+              <p className="num-hero" style={{ color: "white", textShadow: "0 0 80px rgba(96,165,250,0.2)" }}>
                 {kpi ? fmtKpi(kpi.revenue) : "—"}
               </p>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
                 <Delta v={kpi?.revChange ?? null} large dark />
-                <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.3)" }}>vs previous period</span>
-                {kpi && <><span style={{ color: "rgba(255,255,255,0.2)" }}>·</span><span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.3)" }}>{altKpi(kpi.revenue)}</span></>}
+                <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>vs previous period</span>
+                {kpi && <><span style={{ color: "rgba(255,255,255,0.15)" }}>·</span><span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>{altKpi(kpi.revenue)}</span></>}
               </div>
             </div>
           )}
         </div>
 
         {/* Sub KPIs */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "18px 24px 0" }} className="kpi-sub-grid">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "20px 24px 0" }} className="kpi-sub-grid">
           <MiniKpi label="Units Sold"    value={loading ? "—" : kpi!.units.toLocaleString()} delta={kpi?.unitsChange ?? null} dark onClick={() => openDrill({ title: `Daily Units · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })} />
           <MiniKpi label="Avg Ticket"    value={loading ? "—" : fmtKpi(kpi!.avgTicket)} sub={loading ? "" : altKpi(kpi!.avgTicket)} dark onClick={() => openDrill({ title: `Top Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) })} />
-          <MiniKpi label="Active Stores" value={loading ? "—" : String(kpi?.activeStores ?? "—")} sub={loading ? "" : `1 EGP = $${(kpi?.fx ?? 52).toFixed(2)}`} dark onClick={() => openDrill({ title: `All Channels · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "all" }) })} />
+          <MiniKpi label="Active Stores" value={loading ? "—" : String(kpi?.activeStores ?? "—")} sub={loading ? "" : `$1 = ${(kpi?.fx ?? 52).toFixed(1)} EGP`} dark onClick={() => openDrill({ title: `All Channels · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "all" }) })} />
         </div>
 
         {/* Sparkline */}
-        <div style={{ padding: "18px 24px 0", cursor: "pointer" }} onClick={() => openDrill({ title: `Daily Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })}>
-          {loading ? <div style={{ height: 66, borderRadius: 10, background: "rgba(255,255,255,0.05)" }} className="skeleton" /> : (
-            <ResponsiveContainer width="100%" height={66}>
-              <AreaChart data={chart} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+        <div style={{ padding: "20px 24px 0", cursor: "pointer" }} onClick={() => openDrill({ title: `Daily Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })}>
+          {loading ? <div style={{ height: 84, borderRadius: 12, background: "rgba(255,255,255,0.05)" }} className="skeleton" /> : (
+            <ResponsiveContainer width="100%" height={84}>
+              <AreaChart data={chart} margin={{ top: 6, right: 0, left: 0, bottom: 0 }}
+                onClick={(e) => { const ae = e as { activePayload?: { payload: ChartPoint }[] }; if (ae?.activePayload?.[0]) { const d = ae.activePayload[0].payload; openDrill({ title: `${d.date} · All Sales`, endpoint: drillUrl({ type: "daily-detail", date: d.date }) }); } }}>
                 <defs>
                   <linearGradient id="hg" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#3B82F6" stopOpacity={0.3} />
+                    <stop offset="0%"   stopColor="#3B82F6" stopOpacity={0.4} />
                     <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -253,18 +301,18 @@ export default function HomePage() {
                   if (!active || !payload?.length) return null;
                   const d = payload[0].payload as ChartPoint;
                   return (
-                    <div style={{ background: "rgba(5,13,26,0.95)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 12px" }}>
-                      <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.6rem" }}>{d.date}</p>
-                      <p style={{ color: "white", fontSize: "0.85rem", fontWeight: 700, marginTop: 2 }}>{fmt(d.egp, d.usd, currency)}</p>
-                      <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.6rem" }}>{d.units.toLocaleString()} units</p>
+                    <div style={{ background: "rgba(4,12,24,0.97)", border: "1px solid rgba(96,165,250,0.15)", borderRadius: 12, padding: "10px 14px", backdropFilter: "blur(8px)" }}>
+                      <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.6rem" }}>{d.date}</p>
+                      <p style={{ color: "white", fontSize: "0.9rem", fontWeight: 800, marginTop: 2, letterSpacing: "-0.03em" }}>{fmt(d.egp, d.usd, currency)}</p>
+                      <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.6rem", marginTop: 2 }}>{d.units.toLocaleString()} units</p>
                     </div>
                   );
                 }} />
-                <Area type="monotone" dataKey={currency === "USD" ? "usd" : "egp"} stroke="#3B82F6" strokeWidth={2.5} fill="url(#hg)" dot={false} activeDot={{ r: 4, fill: "#60A5FA", strokeWidth: 0 }} />
+                <Area type="monotone" dataKey={currency === "USD" ? "usd" : "egp"} stroke="#3B82F6" strokeWidth={2} fill="url(#hg)" dot={false} activeDot={{ r: 4, fill: "#60A5FA", strokeWidth: 0 }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
-          <p style={{ fontSize: "0.56rem", color: "rgba(255,255,255,0.18)", textAlign: "right", marginTop: 4, paddingRight: 2 }}>tap for daily breakdown</p>
+          <p style={{ fontSize: "0.55rem", color: "rgba(255,255,255,0.14)", textAlign: "right", marginTop: 4, paddingRight: 2 }}>tap any point for daily breakdown</p>
         </div>
       </div>
 
@@ -278,23 +326,23 @@ export default function HomePage() {
             {/* ── CHANNEL SUMMARY ────────────────────────── */}
             <div style={{ marginTop: 20 }}>
               <SectionHeader title="By Channel" sub="click to drill into stores" />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                {homeLoading ? [1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 88, borderRadius: 16 }} />) :
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                {homeLoading ? [1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 100, borderRadius: 18 }} />) :
                   home?.channelTotals.map(ch => {
                     const color = CHANNEL_COLORS[ch.group] ?? "#94A3B8";
                     return (
                       <div key={ch.group}
                         onClick={() => openDrill({ title: `${ch.group} · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: ch.group }) })}
-                        style={{ background: `${color}08`, border: `1.5px solid ${color}25`, borderRadius: 16, padding: "14px 12px", cursor: "pointer", transition: "all 0.15s", textAlign: "center" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = `${color}15`; e.currentTarget.style.borderColor = `${color}50`; e.currentTarget.style.transform = "translateY(-1px)"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = `${color}08`; e.currentTarget.style.borderColor = `${color}25`; e.currentTarget.style.transform = ""; }}
+                        style={{ background: `${color}0A`, border: `1.5px solid ${color}30`, borderRadius: 18, padding: "16px 14px", cursor: "pointer", transition: "all 0.18s", textAlign: "center", position: "relative", overflow: "hidden" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = `${color}18`; e.currentTarget.style.borderColor = `${color}55`; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 8px 24px ${color}20`; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = `${color}0A`; e.currentTarget.style.borderColor = `${color}30`; e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}
                       >
-                        <p style={{ fontSize: "0.72rem", fontWeight: 700, color }}>{ch.group}</p>
-                        <p style={{ fontSize: "1.05rem", fontWeight: 800, color: "var(--text)", marginTop: 6, letterSpacing: "-0.02em" }}>
-                          {currency === "USD" ? fmtUsd(ch.usd) : fmtEgp(ch.egp)}
+                        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${color}, transparent)`, opacity: 0.6 }} />
+                        <p style={{ fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color }}>{ch.group}</p>
+                        <p style={{ fontSize: "1.15rem", fontWeight: 900, color: "var(--text)", marginTop: 8, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                          {fmt(ch.egp, ch.usd, currency)}
                         </p>
-                        <p style={{ fontSize: "0.58rem", color: "var(--text4)", marginTop: 3 }}>{ch.units.toLocaleString()} units · {ch.pct}%</p>
-                        <p style={{ fontSize: "0.56rem", color, marginTop: 4, fontWeight: 600 }}>{ch.storeCount} store{ch.storeCount > 1 ? "s" : ""} →</p>
+                        <p style={{ fontSize: "0.58rem", color: "var(--text4)", marginTop: 5 }}>{ch.units.toLocaleString()} u · <span style={{ color, fontWeight: 700 }}>{ch.pct}%</span></p>
                       </div>
                     );
                   })
@@ -335,9 +383,9 @@ export default function HomePage() {
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                         <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)" }}>{s.name}</span>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          {s.wow !== null && <Delta v={s.wow} />}
+                          <Delta v={s.wow} showNa />
                           <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--text)" }}>
-                            {currency === "USD" ? fmtUsd(s.usd) : fmtEgp(s.egp)}
+                            {fmt(s.egp, s.usd, currency)}
                           </span>
                         </div>
                       </div>
@@ -386,7 +434,7 @@ export default function HomePage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ fontSize: "0.58rem", color: "var(--text4)" }}>{p.units}u</span>
                           <span style={{ fontSize: "0.78rem", fontWeight: 800, color: "var(--text)" }}>
-                            {currency === "USD" ? fmtUsd(p.usd) : fmtEgp(p.egp)}
+                            {fmt(p.egp, p.usd, currency)}
                           </span>
                         </div>
                       </div>
@@ -426,7 +474,7 @@ export default function HomePage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: "0.6rem", color: "var(--text4)" }}>{b.units.toLocaleString()} units</span>
                           <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--text)" }}>
-                            {currency === "USD" ? fmtUsd(b.usd) : fmtEgp(b.egp)}
+                            {fmt(b.egp, b.usd, currency)}
                           </span>
                           <span style={{ fontSize: "0.62rem", fontWeight: 700, color, background: `${color}14`, padding: "2px 7px", borderRadius: 12 }}>{b.pct}%</span>
                         </div>
@@ -462,7 +510,7 @@ export default function HomePage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: "0.6rem", color: "var(--text4)" }}>{c.units.toLocaleString()} u</span>
                           <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "var(--text)" }}>
-                            {currency === "USD" ? fmtUsd(c.usd) : fmtEgp(c.egp)}
+                            {fmt(c.egp, c.usd, currency)}
                           </span>
                           <span style={{ fontSize: "0.62rem", fontWeight: 700, color, background: `${color}14`, padding: "2px 7px", borderRadius: 12 }}>{c.pct}%</span>
                         </div>
@@ -542,7 +590,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {drill && <DrillDownSheet params={drill} onClose={closeDrill} />}
+      {stack.length > 0 && <DrillDownSheet stack={stack} onClose={closeDrill} onPush={pushDrill} />}
 
       <style>{`
         @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
