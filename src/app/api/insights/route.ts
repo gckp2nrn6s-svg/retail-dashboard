@@ -1,3 +1,4 @@
+// v2026-06-15
 import { NextResponse } from "next/server";
 import { query, STORE_NAMES } from "@/lib/db";
 import { navQuery } from "@/lib/navdb";

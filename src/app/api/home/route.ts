@@ -1,3 +1,4 @@
+// v2026-06-15
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";

@@ -1418,3 +1418,36 @@
 [2026-06-15T07:37:11.253Z] sync complete
 [2026-06-15T07:37:16.699Z] Shopify american-tourister-egypt: upserted 7 line items
 [2026-06-15T07:37:17.938Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-15T07:42:12.852Z] sales: full refresh, 34049 rows
+[2026-06-15T07:42:13.540Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-15T07:42:13.873Z] sync complete
+[2026-06-15T07:42:16.932Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-15T07:42:18.022Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-15T07:47:27.610Z] sales: full refresh, 34049 rows
+[2026-06-15T07:47:27.890Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-15T07:47:28.123Z] sync complete
+[2026-06-15T07:47:30.898Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-15T07:47:32.196Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-15T07:52:23.307Z] sales: full refresh, 34049 rows
+[2026-06-15T07:52:23.633Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-15T07:52:23.877Z] sync complete
+[2026-06-15T07:52:27.200Z] Shopify american-tourister-egypt: upserted 7 line items
+[2026-06-15T07:52:28.176Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-15T08:11:24.909Z] starting sync loop, every 5 min
+[2026-06-15T08:31:09.228Z] starting sync loop, every 5 min
+[2026-06-15T08:31:19.610Z] starting sync loop, every 5 min
+[2026-06-15T08:31:44.992Z] sales: full refresh, 34049 rows
+[2026-06-15T08:31:45.040Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-15T08:31:45.503Z] sync complete
+[2026-06-15T08:31:49.813Z] Shopify american-tourister-egypt: upserted 11 line items
+[2026-06-15T08:31:51.363Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-15T08:42:21.051Z] sales: full refresh, 34049 rows
+[2026-06-15T08:42:21.112Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-15T08:42:21.408Z] sync complete
+[2026-06-15T08:42:24.685Z] Shopify american-tourister-egypt: upserted 8 line items
+[2026-06-15T08:42:26.154Z] Shopify samsonite-eg-globosoft: upserted 1 line items
+[2026-06-15T08:47:19.344Z] sales: full refresh, 34049 rows
+[2026-06-15T08:47:19.453Z] items: Items view not yet available in ReplitReports (waiting on IT)
+[2026-06-15T08:47:20.148Z] sync complete
+[2026-06-15T08:47:22.583Z] Shopify american-tourister-egypt: upserted 6 line items
+[2026-06-15T08:47:23.420Z] Shopify samsonite-eg-globosoft: upserted 1 line items
