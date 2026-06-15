@@ -825,7 +825,7 @@ export async function GET(req: NextRequest) {
       skus:     r.skus,
       pct:      total > 0 ? Math.round(r.egp * 100 / total) : 0,
       _drill_url:   dUrl({ type: "store-subcat", store, category: r.pg }, from, to),
-      _drill_title: `${storeLabelCat} · ${r.pg} · Sizes`,
+      _drill_title: `${storeLabelCat} · ${r.pg} · Products`,
     }));
     return NextResponse.json({
       columns: [
@@ -907,45 +907,42 @@ export async function GET(req: NextRequest) {
     );
     const dMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
 
-    const bySize: Record<string, { egp: number; units: number; skus: Set<string> }> = {};
-    for (const [itemNo, vals] of Object.entries(byItemNo)) {
-      const sz = parseSize(dMap[itemNo] || "");
-      if (!bySize[sz]) bySize[sz] = { egp: 0, units: 0, skus: new Set() };
-      bySize[sz].egp += vals.egp;
-      bySize[sz].units += vals.units;
-      bySize[sz].skus.add(itemNo);
-    }
-
-    const total = Object.values(bySize).reduce((s, v) => s + v.egp, 0);
-    const sizeRows = Object.entries(bySize)
-      .map(([sz, v]) => ({
-        size:  sz,
-        egp:   Math.round(v.egp),
-        usd:   Math.round(v.egp / fx),
-        units: v.units,
-        skus:  v.skus.size,
-        pct:   total > 0 ? Math.round(v.egp * 100 / total) : 0,
-        _drill_url:   dUrl({ type: "items", store, category, size: sz }, from, to),
-        _drill_title: `${storeLabelSub} · ${category} · ${sz} · Items`,
-      }))
-      .sort((a, b) => {
-        if (a.size === "Other") return 1;
-        if (b.size === "Other") return -1;
-        return parseInt(a.size) - parseInt(b.size);
-      });
+    // One row per product, with size + colour parsed from the description.
+    // Users need to see the actual products that sold — not just size buckets.
+    const total = Object.values(byItemNo).reduce((s, v) => s + v.egp, 0);
+    const itemRows = Object.entries(byItemNo)
+      .map(([itemNo, v]) => {
+        const desc = dMap[itemNo] || itemNo;
+        const sz   = parseSize(desc);
+        return {
+          item_no:     itemNo,
+          description: desc,
+          size:        sz !== "Other" ? sz : "",
+          color:       parseColor(desc),
+          egp:         Math.round(v.egp),
+          usd:         Math.round(v.egp / fx),
+          units:       Math.round(v.units),
+          pct:         total > 0 ? Math.round(v.egp * 100 / total) : 0,
+          _drill_url:   dUrl({ type: "item", item: itemNo }, from, to),
+          _drill_title: desc,
+        };
+      })
+      .sort((a, b) => b.egp - a.egp);
 
     return NextResponse.json({
       columns: [
-        { key: "size",  label: "Size",         type: "text" },
-        { key: "egp",   label: "Revenue",      type: "currency" },
-        { key: "units", label: "Units",        type: "units" },
-        { key: "skus",  label: "SKUs",         type: "number" },
-        { key: "pct",   label: "% of category",type: "number" },
+        { key: "description", label: "Product",       type: "text" },
+        { key: "size",        label: "Size",          type: "text" },
+        { key: "color",       label: "Colour",        type: "text" },
+        { key: "egp",         label: "Revenue",       type: "currency" },
+        { key: "units",       label: "Units",         type: "units" },
+        { key: "pct",         label: "% of category", type: "number" },
       ],
-      rows: sizeRows,
+      rows: itemRows,
       summary: [
         { label: "source",   value: storeLabelSub },
         { label: "category", value: category },
+        { label: "products", value: String(itemRows.length) },
         { label: "revenue",  value: `EGP ${Math.round(total).toLocaleString()}` },
       ],
       fx,

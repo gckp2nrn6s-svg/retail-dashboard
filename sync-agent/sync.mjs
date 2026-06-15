@@ -1,5 +1,33 @@
 import sql from "mssql";
 import pg from "pg";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Self-load repo-root .env.local — this runs under launchd with no shell, so
+// process.env is otherwise empty for anything not hardcoded below.
+(() => {
+  try {
+    const dir = path.dirname(fileURLToPath(import.meta.url));
+    const txt = fs.readFileSync(path.join(dir, "..", ".env.local"), "utf8");
+    for (const line of txt.split("\n")) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m || process.env[m[1]] !== undefined) continue;
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      process.env[m[1]] = v;
+    }
+  } catch { /* fall back to real env */ }
+})();
+
+// Resolve a Shopify token by store, tolerating both naming conventions
+// (Railway uses SHOPIFY_{AMT,SAM}_TOKEN; .env.local historically used
+// SHOPIFY_{AT,SAMSONITE}_TOKEN).
+function shopifyToken(storeCode) {
+  if (storeCode === "SHOPIFY-AMT") return process.env.SHOPIFY_AMT_TOKEN || process.env.SHOPIFY_AT_TOKEN || "";
+  if (storeCode === "SHOPIFY-SAM") return process.env.SHOPIFY_SAM_TOKEN || process.env.SHOPIFY_SAMSONITE_TOKEN || "";
+  return "";
+}
 
 const NAV = {
   server: "164.160.104.73",
@@ -197,8 +225,8 @@ async function runOnce(runCount) {
 
 // ── Shopify incremental sync ─────────────────────────────────────────────
 const SHOPIFY_STORES = [
-  { handle: "american-tourister-egypt", token: "process.env.SHOPIFY_AMT_TOKEN", store_code: "SHOPIFY-AMT" },
-  { handle: "samsonite-eg-globosoft",   token: "process.env.SHOPIFY_SAM_TOKEN", store_code: "SHOPIFY-SAM" },
+  { handle: "american-tourister-egypt", store_code: "SHOPIFY-AMT" },
+  { handle: "samsonite-eg-globosoft",   store_code: "SHOPIFY-SAM" },
 ];
 
 async function getShopifyLastSync(pgc, handle) {
@@ -221,7 +249,12 @@ async function shopifyIncrementalSync(pgc) {
         + `&fields=id,order_number,created_at,financial_status,fulfillment_status,line_items,total_discounts`
         + `&created_at_min=${since.toISOString()}`;
 
-      const headers = { "X-Shopify-Access-Token": store.token };
+      const token = shopifyToken(store.store_code);
+      if (!token) {
+        log(`Shopify ${store.handle}: no token — set ${store.store_code === "SHOPIFY-AMT" ? "SHOPIFY_AMT_TOKEN" : "SHOPIFY_SAM_TOKEN"} in .env.local`);
+        continue;
+      }
+      const headers = { "X-Shopify-Access-Token": token };
       let pageUrl = url;
       let count = 0;
 
