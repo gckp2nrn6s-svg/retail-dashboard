@@ -3,7 +3,7 @@ import { query, STORE_NAMES } from "@/lib/db";
 import { navQuery } from "@/lib/navdb";
 
 const RETAIL = ["CF-HOS", "CSTARS", "CCA", "ALMAZA", "P90", "MOA", "MOE", "HIS", "MC"];
-const ECOM   = ["ONLINE", "NOON", "JUMIA"];
+const ECOM   = ["NOON", "JUMIA"]; // ONLINE excluded — use Shopify for own website
 
 function sn(code: string) { return STORE_NAMES[code] ?? code; }
 

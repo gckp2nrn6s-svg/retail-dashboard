@@ -4,7 +4,7 @@ import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
 
 const RETAIL_STORES = ["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"];
-const ECOM_STORES   = ["ONLINE","NOON","JUMIA"];
+const ECOM_STORES   = ["NOON","JUMIA"]; // ONLINE excluded — Shopify is the source for own website
 // B2B = everything else (HO, GO SPORT1, ATCFC, EVENT, ...)
 
 const STORE_NAMES: Record<string,string> = {
@@ -40,7 +40,7 @@ function inList(codes: string[]) {
 function channelInClause(ch: string): string {
   if (ch === "Retail") return `AND [Store No_] IN (${inList(RETAIL_STORES)})`;
   if (ch === "Ecom")   return `AND [Store No_] IN (${inList(ECOM_STORES)})`;
-  if (ch === "B2B")    return `AND [Store No_] NOT IN (${inList([...RETAIL_STORES,...ECOM_STORES])})`;
+  if (ch === "B2B")    return `AND [Store No_] NOT IN (${inList([...RETAIL_STORES,...ECOM_STORES,"ONLINE"])})`;
   return "";
 }
 

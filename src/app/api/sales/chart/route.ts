@@ -3,7 +3,7 @@ import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 
 const RETAIL = new Set(["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"]);
-const ONLINE = new Set(["ONLINE","NOON","JUMIA"]);
+const ONLINE = new Set(["NOON","JUMIA"]); // ONLINE excluded — use Shopify for own website
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   } else if (group === "retail") {
     storeWhere = `AND [Store No_] IN ('ALMAZA','CCA','CF-HOS','CSTARS','P90','MOA','MOE','HIS','MC')`;
   } else if (group === "online" || group === "ecom") {
-    storeWhere = `AND [Store No_] IN ('ONLINE','NOON','JUMIA')`;
+    storeWhere = `AND [Store No_] IN ('NOON','JUMIA')`;
   } else if (group === "ho" || group === "b2b") {
     storeWhere = `AND [Store No_] IN ('ATCFC','EVENT','HO','GO SPORT1')`;
   }

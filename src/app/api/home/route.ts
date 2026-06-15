@@ -25,7 +25,7 @@ const STORE_NAMES: Record<string, string> = {
 
 function groupOf(code: string) {
   if (["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"].includes(code)) return "Retail";
-  if (["ONLINE","NOON","JUMIA"].includes(code)) return "Ecom";
+  if (["NOON","JUMIA"].includes(code)) return "Ecom"; // ONLINE excluded — use Shopify for own website
   return "B2B";
 }
 
@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
         -SUM([Quantity])   AS units
       FROM TransSalesEntry
       WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        AND [Store No_] != 'ONLINE'
       GROUP BY [Store No_]
       ORDER BY egp DESC
     `, { from, to }),
