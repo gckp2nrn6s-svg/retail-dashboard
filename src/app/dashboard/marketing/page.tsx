@@ -318,21 +318,17 @@ export default function MarketingPage() {
   const [loadingAds, setLoadingAds] = useState(false);
 
   // Data
-  const today = new Date().toISOString().slice(0, 10);
-  const [overview, setOverview] = useState<ReturnType<typeof mockOverview>>(mockOverview(today.slice(0, 8) + "01", today, "All"));
+  const [overview, setOverview] = useState<ReturnType<typeof mockOverview> | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [adSets, setAdSets] = useState<AdSet[]>([]);
   const [ads, setAds] = useState<Ad[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation | null>(null);
 
-  // ── Fetch overview ──
+  // ── Load overview with mock data (client-only to avoid hydration mismatch) ──
   useEffect(() => {
     setLoadingOverview(true);
-    const params = new URLSearchParams({ from: range.from, to: range.to, ...(platform !== "All" ? { platform } : {}) });
-    fetch(`/api/marketing/overview?${params}`)
-      .then(r => r.json())
-      .then(d => { setOverview(d); setLoadingOverview(false); })
-      .catch(() => setLoadingOverview(false));
+    setOverview(mockOverview(range.from, range.to, platform));
+    setLoadingOverview(false);
   }, [range.from, range.to, platform]);
 
   // ── Fetch campaigns ──
