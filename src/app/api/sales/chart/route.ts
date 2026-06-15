@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
+import { safeSource, isDegraded } from "@/lib/resilience";
 
 const RETAIL = new Set(["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"]);
 const ONLINE = new Set(["NOON","JUMIA"]); // ONLINE excluded — use Shopify for own website
+
+interface PeriodRow { period: string; revenue: number; units: number }
+interface FxRow { week_start: string; egp_per_usd: string }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -36,48 +40,61 @@ export async function GET(req: NextRequest) {
     ? "DATEADD(day, 1 - DATEPART(weekday, [Date]), CAST([Date] AS DATE))"
     : "CAST([Date] AS DATE)";
 
-  const [rows, fxRows] = await Promise.all([
-    navQuery<{ period: string; revenue: number; units: number }>(`
-      SELECT
-        ${truncExpr} AS period,
-        -SUM([Net Amount] + [VAT Amount]) AS revenue,
-        -SUM([Quantity])   AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-        ${storeWhere}
-      GROUP BY ${truncExpr}
-      ORDER BY ${truncExpr}
-    `, { from, to }),
+  try {
+    const [navResult, pgResult] = await Promise.all([
+      safeSource<PeriodRow[]>("nav", () => navQuery<PeriodRow>(`
+        SELECT
+          ${truncExpr} AS period,
+          -SUM([Net Amount] + [VAT Amount]) AS revenue,
+          -SUM([Quantity])   AS units
+        FROM TransSalesEntry
+        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+          ${storeWhere}
+        GROUP BY ${truncExpr}
+        ORDER BY ${truncExpr}
+      `, { from, to }), []),
 
-    query<{ week_start: string; egp_per_usd: string }>(
-      "SELECT week_start::date AS week_start, egp_per_usd FROM fx_rates ORDER BY week_start"
-    ),
-  ]);
+      safeSource<FxRow[]>("pg", () => query<FxRow>(
+        "SELECT week_start::date AS week_start, egp_per_usd FROM fx_rates ORDER BY week_start"
+      ), []),
+    ]);
 
-  const fxMap: Record<string, number> = {};
-  for (const r of fxRows) fxMap[r.week_start] = parseFloat(r.egp_per_usd);
+    const rows   = navResult.value;
+    const fxRows = pgResult.value;
+    const sources = { nav: navResult.status, pg: pgResult.status };
 
-  function getFx(date: string): number {
-    const d = new Date(date).getTime();
-    let closest = 50, closestDiff = Infinity;
-    for (const [ws, rate] of Object.entries(fxMap)) {
-      const diff = Math.abs(new Date(ws).getTime() - d);
-      if (diff < closestDiff) { closestDiff = diff; closest = rate; }
+    const fxMap: Record<string, number> = {};
+    for (const r of fxRows) fxMap[r.week_start] = parseFloat(r.egp_per_usd);
+
+    function getFx(date: string): number {
+      const d = new Date(date).getTime();
+      let closest = 50, closestDiff = Infinity;
+      for (const [ws, rate] of Object.entries(fxMap)) {
+        const diff = Math.abs(new Date(ws).getTime() - d);
+        if (diff < closestDiff) { closestDiff = diff; closest = rate; }
+      }
+      return closest;
     }
-    return closest;
+
+    const series = rows.map((r) => {
+      const rev     = Number(r.revenue);
+      const dateStr = r.period ? String(r.period).slice(0, 10) : "";
+      const fx      = getFx(dateStr);
+      return {
+        date:  dateStr,
+        egp:   Math.round(rev),
+        usd:   Math.round(rev / fx),
+        units: Math.round(Number(r.units)),
+      };
+    });
+
+    return NextResponse.json({ series, store, group, sources, degraded: isDegraded(sources) });
+  } catch (e) {
+    console.error("[sales/chart] fatal:", e instanceof Error ? e.message : e);
+    return NextResponse.json({
+      series: [], store, group,
+      sources: { nav: "offline", pg: "offline" }, degraded: true,
+      error: "Failed to load chart data",
+    }, { status: 200 });
   }
-
-  const series = rows.map((r) => {
-    const rev     = Number(r.revenue);
-    const dateStr = r.period ? String(r.period).slice(0, 10) : "";
-    const fx      = getFx(dateStr);
-    return {
-      date:  dateStr,
-      egp:   Math.round(rev),
-      usd:   Math.round(rev / fx),
-      units: Math.round(Number(r.units)),
-    };
-  });
-
-  return NextResponse.json({ series, store, group });
 }

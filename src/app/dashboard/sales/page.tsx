@@ -83,24 +83,31 @@ function SalesContent() {
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<"area" | "bar">("area");
   const [autoOpened, setAutoOpened] = useState(false);
+  const [navOffline, setNavOffline] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const days = Math.ceil((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000);
   const chartRange = days <= 8 ? "7d" : days <= 32 ? "30d" : days <= 92 ? "90d" : "12m";
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const [chartRes, storesRes] = await Promise.all([
         fetch(`/api/sales/chart?range=${chartRange}&group=${group}&from=${range.from}&to=${range.to}`).then(x => x.json()),
         fetch(`/api/sales/stores?range=${chartRange}&from=${range.from}&to=${range.to}`).then(x => x.json()),
       ]);
       setChartData(chartRes.series || []);
-      const filtered = group === "all" ? storesRes.stores : storesRes.stores.filter((s: Store) => s.group.toLowerCase() === group);
-      setStores(filtered || []);
+      const allStores = storesRes.stores || [];
+      const filtered = group === "all" ? allStores : allStores.filter((s: Store) => s.group.toLowerCase() === group);
+      setStores(filtered);
       setChannels(storesRes.channelTotals || []);
       setCategories(storesRes.categories || []);
       setTotal(storesRes.total || { egp: 0, usd: 0 });
       setFx(storesRes.fx || 52);
+      setNavOffline(storesRes.sources?.nav === "offline");
+    } catch {
+      setLoadError(true);
     } finally { setLoading(false); }
   }, [range.from, range.to, group, chartRange]);
 
@@ -163,6 +170,21 @@ function SalesContent() {
       </div>
 
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+        {/* NAV-offline / load-error banner */}
+        {!loading && (loadError || navOffline) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: loadError ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)", border: `1px solid ${loadError ? "rgba(239,68,68,0.25)" : "rgba(245,158,11,0.3)"}`, borderRadius: 12, padding: "9px 14px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.72rem", color: loadError ? "#EF4444" : "#F59E0B", fontWeight: 700 }}>
+              {loadError ? "⚠ Couldn't load sales data" : "⚠ NAV offline"}
+            </span>
+            <span style={{ fontSize: "0.68rem", color: "var(--text3)" }}>
+              {loadError
+                ? "The data service didn't respond. Tap retry."
+                : "Showing online (Shopify) sales only — retail, B2B & marketplace figures are temporarily unavailable."}
+            </span>
+            <button onClick={load} style={{ marginLeft: "auto", fontSize: "0.65rem", color: loadError ? "#EF4444" : "#F59E0B", background: "none", border: `1px solid ${loadError ? "rgba(239,68,68,0.4)" : "rgba(245,158,11,0.4)"}`, borderRadius: 8, padding: "3px 10px", cursor: "pointer", fontWeight: 600 }}>Retry</button>
+          </div>
+        )}
 
         {/* Revenue chart */}
         <div className="card" style={{ padding: "16px 20px" }}>

@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
+import { safeSource, isDegraded } from "@/lib/resilience";
 
 function groupOf(code: string) {
   if (["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"].includes(code)) return "Retail";
   if (["NOON","JUMIA"].includes(code)) return "Ecom"; // ONLINE excluded — use Shopify for own website
   return "B2B";
 }
+
+interface StoreRow { store: string; revenue: number; units: number }
+interface CatRow   { category: string; revenue: number; units: number }
+interface FxRow    { egp_per_usd: string }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -17,90 +22,111 @@ export async function GET(req: NextRequest) {
   const from = fromParam || new Date().toISOString().slice(0, 8) + "01";
   const to   = toParam   || new Date().toISOString().slice(0, 10);
 
-  const [storeRows, fxRow, categoryRows, shopify] = await Promise.all([
-    navQuery<{ store: string; revenue: number; units: number }>(`
-      SELECT
-        [Store No_]        AS store,
-        -SUM([Net Amount] + [VAT Amount]) AS revenue,
-        -SUM([Quantity])   AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-        AND [Store No_] != 'ONLINE'
-      GROUP BY [Store No_]
-      ORDER BY revenue DESC
-    `, { from, to }),
+  try {
+    // Each source is isolated: a NAV outage no longer zeroes Shopify or FX.
+    const [navResult, pgResult, shopResult] = await Promise.all([
+      safeSource<[StoreRow[], CatRow[]]>("nav", () => Promise.all([
+        navQuery<StoreRow>(`
+          SELECT
+            [Store No_]        AS store,
+            -SUM([Net Amount] + [VAT Amount]) AS revenue,
+            -SUM([Quantity])   AS units
+          FROM TransSalesEntry
+          WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+            AND [Store No_] != 'ONLINE'
+          GROUP BY [Store No_]
+          ORDER BY revenue DESC
+        `, { from, to }),
+        navQuery<CatRow>(`
+          SELECT
+            CASE
+              WHEN [Item Category Code] = 'SAMSONITE' THEN 'Samsonite'
+              WHEN [Item Category Code] = 'AM-TOUR'   THEN 'American Tourister'
+              WHEN [Item Category Code] != ''          THEN [Item Category Code]
+              ELSE 'Other'
+            END AS category,
+            -SUM([Net Amount] + [VAT Amount]) AS revenue,
+            -SUM([Quantity])   AS units
+          FROM TransSalesEntry
+          WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+          GROUP BY [Item Category Code]
+          ORDER BY revenue DESC
+        `, { from, to }),
+      ]), [[], []]),
 
-    query<{ egp_per_usd: string }>(
-      "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
-    ),
+      safeSource<FxRow[]>("pg", () => query<FxRow>(
+        "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
+      ), []),
 
-    navQuery<{ category: string; revenue: number; units: number }>(`
-      SELECT
-        CASE
-          WHEN [Item Category Code] = 'SAMSONITE' THEN 'Samsonite'
-          WHEN [Item Category Code] = 'AM-TOUR'   THEN 'American Tourister'
-          WHEN [Item Category Code] != ''          THEN [Item Category Code]
-          ELSE 'Other'
-        END AS category,
-        -SUM([Net Amount] + [VAT Amount]) AS revenue,
-        -SUM([Quantity])   AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-      GROUP BY [Item Category Code]
-      ORDER BY revenue DESC
-    `, { from, to }),
+      safeSource("shopify", () => getShopifyRevenue(from, to), { egp: 0, units: 0 }),
+    ]);
 
-    getShopifyRevenue(from, to),
-  ]);
+    const [storeRows, categoryRows] = navResult.value;
+    const fxRow   = pgResult.value;
+    const shopify = shopResult.value;
+    const sources = { nav: navResult.status, shopify: shopResult.status, pg: pgResult.status };
 
-  const fx          = parseFloat(fxRow[0]?.egp_per_usd || "50");
-  const navTotal    = storeRows.reduce((s, r) => s + Number(r.revenue), 0);
-  const shopifyEgp  = Math.round(shopify.egp);
-  const shopifyUnits = Math.round(shopify.units);
-  const grandTotal  = navTotal + shopifyEgp;
+    const fx          = parseFloat(fxRow[0]?.egp_per_usd || "50");
+    const navTotal    = storeRows.reduce((s, r) => s + Number(r.revenue), 0);
+    const shopifyEgp  = Math.round(shopify.egp);
+    const shopifyUnits = Math.round(shopify.units);
+    const grandTotal  = navTotal + shopifyEgp;
 
-  const stores = storeRows.map((r) => {
-    const rev = Number(r.revenue);
-    return {
-      code:    r.store,
-      group:   groupOf(r.store),
-      revenue: { egp: Math.round(rev), usd: Math.round(rev / fx) },
-      units:   Math.round(Number(r.units)),
-      pct:     grandTotal > 0 ? Math.round((rev / grandTotal) * 100) : 0,
-    };
-  });
+    const stores = storeRows.map((r) => {
+      const rev = Number(r.revenue);
+      return {
+        code:    r.store,
+        group:   groupOf(r.store),
+        revenue: { egp: Math.round(rev), usd: Math.round(rev / fx) },
+        units:   Math.round(Number(r.units)),
+        pct:     grandTotal > 0 ? Math.round((rev / grandTotal) * 100) : 0,
+      };
+    });
 
-  const channelTotals = ["Retail", "Ecom", "B2B"].map((grp) => {
-    const filtered  = stores.filter((s) => s.group === grp);
-    const navRev    = filtered.reduce((s, r) => s + r.revenue.egp, 0);
-    const rev       = grp === "Ecom" ? navRev + shopifyEgp : navRev;
-    const units     = grp === "Ecom"
-      ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
-      : filtered.reduce((s, r) => s + r.units, 0);
-    return {
-      group:   grp,
-      revenue: { egp: rev, usd: Math.round(rev / fx) },
-      units,
-      pct:     grandTotal > 0 ? Math.round((rev / grandTotal) * 100) : 0,
-    };
-  });
+    const channelTotals = ["Retail", "Ecom", "B2B"].map((grp) => {
+      const filtered  = stores.filter((s) => s.group === grp);
+      const navRev    = filtered.reduce((s, r) => s + r.revenue.egp, 0);
+      const rev       = grp === "Ecom" ? navRev + shopifyEgp : navRev;
+      const units     = grp === "Ecom"
+        ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
+        : filtered.reduce((s, r) => s + r.units, 0);
+      return {
+        group:   grp,
+        revenue: { egp: rev, usd: Math.round(rev / fx) },
+        units,
+        pct:     grandTotal > 0 ? Math.round((rev / grandTotal) * 100) : 0,
+      };
+    });
 
-  const totalCat = categoryRows.reduce((s, r) => s + Number(r.revenue), 0);
-  const categories = categoryRows.map((r) => {
-    const rev = Number(r.revenue);
-    return {
-      category: r.category,
-      revenue:  { egp: Math.round(rev), usd: Math.round(rev / fx) },
-      units:    Math.round(Number(r.units)),
-      pct:      totalCat > 0 ? Math.round((rev / totalCat) * 100) : 0,
-    };
-  });
+    const totalCat = categoryRows.reduce((s, r) => s + Number(r.revenue), 0);
+    const categories = categoryRows.map((r) => {
+      const rev = Number(r.revenue);
+      return {
+        category: r.category,
+        revenue:  { egp: Math.round(rev), usd: Math.round(rev / fx) },
+        units:    Math.round(Number(r.units)),
+        pct:      totalCat > 0 ? Math.round((rev / totalCat) * 100) : 0,
+      };
+    });
 
-  return NextResponse.json({
-    stores,
-    channelTotals,
-    categories,
-    total: { egp: grandTotal, usd: Math.round(grandTotal / fx) },
-    fx,
-  });
+    return NextResponse.json({
+      stores,
+      channelTotals,
+      categories,
+      total: { egp: grandTotal, usd: Math.round(grandTotal / fx) },
+      fx,
+      sources,
+      degraded: isDegraded(sources),
+    });
+  } catch (e) {
+    // Last-resort safety net — never return a raw 500 that the client reads as 0.
+    console.error("[sales/stores] fatal:", e instanceof Error ? e.message : e);
+    return NextResponse.json({
+      stores: [], channelTotals: [], categories: [],
+      total: { egp: 0, usd: 0 }, fx: 50,
+      sources: { nav: "offline", shopify: "offline", pg: "offline" },
+      degraded: true,
+      error: "Failed to load sales data",
+    }, { status: 200 });
+  }
 }

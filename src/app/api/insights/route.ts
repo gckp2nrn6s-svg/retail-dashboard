@@ -19,6 +19,20 @@ export interface Insight {
 }
 
 export async function GET() {
+  try {
+    return await buildInsights();
+  } catch (e) {
+    // Insights are non-critical — never 500 the page over them. NAV/PG offline
+    // just means no cards this cycle.
+    console.error("[insights] fatal:", e instanceof Error ? e.message : e);
+    return NextResponse.json(
+      { insights: [], fx: 50, generatedAt: new Date().toISOString(), degraded: true },
+      { status: 200 }
+    );
+  }
+}
+
+async function buildInsights() {
   const insights: Insight[] = [];
 
   // Pre-fetch NAV velocities (30d and 90d) in parallel with other queries

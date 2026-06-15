@@ -14,6 +14,7 @@ import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import type { Insight } from "@/app/api/insights/route";
 
+type Sources = { nav?: string; shopify?: string; pg?: string };
 interface KPI {
   revenue: { egp: number; usd: number };
   units: number;
@@ -22,6 +23,8 @@ interface KPI {
   revChange: number | null;
   unitsChange: number | null;
   fx: number;
+  sources?: Sources;
+  degraded?: boolean;
 }
 interface ChartPoint { date: string; egp: number; usd: number; units: number }
 interface StoreRow  { code: string; name: string; group: string; egp: number; usd: number; units: number; pct: number; wow: number | null; this7: number }
@@ -40,6 +43,8 @@ interface HomeData {
   totalRev: number;
   fx: number;
   freshness: FreshnessRow[];
+  sources?: Sources;
+  degraded?: boolean;
 }
 
 const TYPE_CFG = {
@@ -199,6 +204,9 @@ export default function HomePage() {
   const topStore = home?.stores[0];
   const maxRev   = topStore?.egp ?? 1;
 
+  // NAV offline → NAV figures (retail/B2B/marketplaces) are unavailable; Shopify still shows.
+  const navOffline = kpi?.sources?.nav === "offline" || home?.sources?.nav === "offline";
+
   return (
     <div style={{ minHeight: "100%", background: "var(--bg)", paddingBottom: 80 }}>
 
@@ -231,6 +239,15 @@ export default function HomePage() {
           <div style={{ margin: "10px 24px 0", display: "flex", alignItems: "center", gap: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 12, padding: "7px 12px" }}>
             <span style={{ fontSize: "0.7rem", color: "#EF4444", fontWeight: 600 }}>⚠ {error}</span>
             <button onClick={refresh} style={{ marginLeft: "auto", fontSize: "0.65rem", color: "#EF4444", background: "none", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 8, padding: "2px 8px", cursor: "pointer" }}>Retry</button>
+          </div>
+        )}
+
+        {/* NAV-offline degraded banner — Shopify still shows, NAV figures don't */}
+        {!loading && !error && navOffline && (
+          <div style={{ margin: "10px 24px 0", display: "flex", alignItems: "center", gap: 8, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12, padding: "7px 12px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.7rem", color: "#F59E0B", fontWeight: 700 }}>⚠ NAV offline</span>
+            <span style={{ fontSize: "0.68rem", color: "rgba(255,255,255,0.6)" }}>Showing online (Shopify) sales only — retail, B2B &amp; marketplace figures are temporarily unavailable.</span>
+            <button onClick={refresh} style={{ marginLeft: "auto", fontSize: "0.65rem", color: "#F59E0B", background: "none", border: "1px solid rgba(245,158,11,0.4)", borderRadius: 8, padding: "2px 8px", cursor: "pointer" }}>Retry</button>
           </div>
         )}
 

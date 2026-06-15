@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenueAndItems } from "@/lib/shopify";
+import { safeSource, isDegraded } from "@/lib/resilience";
+import { navDateToISO, lagDaysFrom } from "@/lib/dates";
+import type { ShopifyLineItemRow } from "@/lib/shopify";
 
 const STORE_NAMES: Record<string, string> = {
   ALMAZA:      "Almaza City Center",
@@ -29,6 +32,25 @@ function groupOf(code: string) {
   return "B2B";
 }
 
+interface StoreRow   { store: string; egp: number; units: number }
+interface ProductRow { item_no: string; description: string; brand: string; category: string; egp: number; units: number }
+interface CatRow     { category: string; egp: number; units: number }
+interface WoWRow     { store: string; this7: number; prev7: number }
+interface MaxDateRow { max_date: string }
+interface FxRow      { egp_per_usd: string }
+interface DescRow    { item_no: string; description: string }
+interface SkuRow     { sku: string; item_no: string }
+
+type NavBundle = {
+  storeRows: StoreRow[];
+  topProducts: ProductRow[];
+  catRows: CatRow[];
+  storeWoW: WoWRow[];
+  navMaxDateRows: MaxDateRow[];
+};
+type PgBundle = { fxRow: FxRow[]; descRows: DescRow[]; skuMap: SkuRow[] };
+type ShopBundle = { egp: number; units: number; items: ShopifyLineItemRow[] };
+
 export async function GET(req: NextRequest) {
   const p    = new URL(req.url).searchParams;
   const from = p.get("from") || new Date().toISOString().slice(0, 8) + "01";
@@ -39,205 +61,219 @@ export async function GET(req: NextRequest) {
   const d14ago    = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const d8ago     = new Date(Date.now() - 8  * 86400000).toISOString().slice(0, 10);
 
-  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopifyData, skuMap, navMaxDateRows] = await Promise.all([
+  try {
+    // Three isolated source groups, run in parallel. NAV failing no longer
+    // zeroes Shopify or Postgres — Shopify revenue always renders.
+    const [navResult, pgResult, shopResult] = await Promise.all([
+      safeSource<NavBundle>("nav", async () => {
+        const [storeRows, topProducts, catRows, storeWoW, navMaxDateRows] = await Promise.all([
+          navQuery<StoreRow>(`
+            SELECT
+              [Store No_]        AS store,
+              -SUM([Net Amount] + [VAT Amount]) AS egp,
+              -SUM([Quantity])   AS units
+            FROM TransSalesEntry
+            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+              AND [Store No_] != 'ONLINE'
+            GROUP BY [Store No_]
+            ORDER BY egp DESC
+          `, { from, to }),
+          navQuery<ProductRow>(`
+            SELECT TOP 8
+              [Item No_]           AS item_no,
+              [Item No_] AS description,
+              MAX([Item Category Code]) AS brand,
+              MAX([Product Group Code]) AS category,
+              -SUM([Net Amount] + [VAT Amount]) AS egp,
+              -SUM([Quantity])                  AS units
+            FROM TransSalesEntry
+            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+            GROUP BY [Item No_]
+            ORDER BY egp DESC
+          `, { from, to }),
+          navQuery<CatRow>(`
+            SELECT
+              CASE
+                WHEN [Item Category Code] = 'SAMSONITE' THEN 'Samsonite'
+                WHEN [Item Category Code] = 'AM-TOUR'   THEN 'American Tourister'
+                WHEN [Item Category Code] != ''          THEN [Item Category Code]
+                ELSE 'Other'
+              END AS category,
+              -SUM([Net Amount] + [VAT Amount]) AS egp,
+              -SUM([Quantity])   AS units
+            FROM TransSalesEntry
+            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+            GROUP BY [Item Category Code]
+            ORDER BY egp DESC
+          `, { from, to }),
+          navQuery<WoWRow>(`
+            SELECT
+              [Store No_] AS store,
+              -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN @d7ago AND @today THEN [Net Amount] + [VAT Amount] ELSE 0 END) AS this7,
+              -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN @d14ago AND @d8ago THEN [Net Amount] + [VAT Amount] ELSE 0 END) AS prev7
+            FROM TransSalesEntry
+            WHERE CAST([Date] AS DATE) >= @d14ago
+            GROUP BY [Store No_]
+          `, { today, d7ago, d14ago, d8ago }),
+          navQuery<MaxDateRow>(
+            "SELECT MAX(CAST([Date] AS DATE)) AS max_date FROM TransSalesEntry", {}
+          ),
+        ]);
+        return { storeRows, topProducts, catRows, storeWoW, navMaxDateRows };
+      }, { storeRows: [], topProducts: [], catRows: [], storeWoW: [], navMaxDateRows: [] }),
 
-    query<{ egp_per_usd: string }>(
-      "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
-    ),
+      safeSource<PgBundle>("pg", async () => {
+        const [fxRow, descRows, skuMap] = await Promise.all([
+          query<FxRow>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"),
+          query<DescRow>("SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"),
+          query<SkuRow>("SELECT sku, item_no FROM shopify_item_map"),
+        ]);
+        return { fxRow, descRows, skuMap };
+      }, { fxRow: [], descRows: [], skuMap: [] }),
 
-    navQuery<{ store: string; egp: number; units: number }>(`
-      SELECT
-        [Store No_]        AS store,
-        -SUM([Net Amount] + [VAT Amount]) AS egp,
-        -SUM([Quantity])   AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-        AND [Store No_] != 'ONLINE'
-      GROUP BY [Store No_]
-      ORDER BY egp DESC
-    `, { from, to }),
+      safeSource<ShopBundle>("shopify", () => getShopifyRevenueAndItems(from, to),
+        { egp: 0, units: 0, items: [] }),
+    ]);
 
-    navQuery<{ item_no: string; description: string; brand: string; category: string; egp: number; units: number }>(`
-      SELECT TOP 8
-        [Item No_]           AS item_no,
-        [Item No_] AS description,
-        MAX([Item Category Code]) AS brand,
-        MAX([Product Group Code]) AS category,
-        -SUM([Net Amount] + [VAT Amount]) AS egp,
-        -SUM([Quantity])                  AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-      GROUP BY [Item No_]
-      ORDER BY egp DESC
-    `, { from, to }),
+    const { storeRows, topProducts, catRows, storeWoW, navMaxDateRows } = navResult.value;
+    const { fxRow, descRows, skuMap } = pgResult.value;
+    const shopify = shopResult.value;
+    const shopifyItems = shopify.items;
+    const sources = { nav: navResult.status, shopify: shopResult.status, pg: pgResult.status };
 
-    navQuery<{ category: string; egp: number; units: number }>(`
-      SELECT
-        CASE
-          WHEN [Item Category Code] = 'SAMSONITE' THEN 'Samsonite'
-          WHEN [Item Category Code] = 'AM-TOUR'   THEN 'American Tourister'
-          WHEN [Item Category Code] != ''          THEN [Item Category Code]
-          ELSE 'Other'
-        END AS category,
-        -SUM([Net Amount] + [VAT Amount]) AS egp,
-        -SUM([Quantity])   AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-      GROUP BY [Item Category Code]
-      ORDER BY egp DESC
-    `, { from, to }),
+    const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
 
-    navQuery<{ store: string; this7: number; prev7: number }>(`
-      SELECT
-        [Store No_] AS store,
-        -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN @d7ago AND @today THEN [Net Amount] + [VAT Amount] ELSE 0 END) AS this7,
-        -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN @d14ago AND @d8ago THEN [Net Amount] + [VAT Amount] ELSE 0 END) AS prev7
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) >= @d14ago
-      GROUP BY [Store No_]
-    `, { today, d7ago, d14ago, d8ago }),
+    // Build Shopify item_no → { egp, units } from line items via shopify_item_map
+    const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
+    const shopifyByItem: Record<string, { egp: number; units: number }> = {};
+    for (const li of shopifyItems) {
+      const itemNo = skuToItemNo[li.sku];
+      if (!itemNo) continue;
+      if (!shopifyByItem[itemNo]) shopifyByItem[itemNo] = { egp: 0, units: 0 };
+      shopifyByItem[itemNo].egp += li.egp;
+      shopifyByItem[itemNo].units += li.quantity;
+    }
 
-    query<{ item_no: string; description: string }>(
-      "SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"
-    ),
+    const fx       = parseFloat(fxRow[0]?.egp_per_usd || "50");
+    const totalRev = storeRows.reduce((s, r) => s + Number(r.egp), 0); // NAV only, used for per-store pct
 
-    getShopifyRevenueAndItems(from, to),
+    const wowMap = Object.fromEntries(storeWoW.map(r => {
+      const t = Number(r.this7), pv = Number(r.prev7);
+      return [r.store, { this7: t, prev7: pv, pct: pv > 0 ? ((t - pv) / pv) * 100 : 0 }];
+    }));
 
-    query<{ sku: string; item_no: string }>(
-      "SELECT sku, item_no FROM shopify_item_map"
-    ),
+    const stores = storeRows.map(r => ({
+      code:  r.store,
+      name:  STORE_NAMES[r.store] ?? r.store,
+      group: groupOf(r.store),
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      pct:   totalRev > 0 ? Math.round(Number(r.egp) * 100 / totalRev) : 0,
+      wow:   wowMap[r.store]?.pct ?? null,
+      this7: Math.round(wowMap[r.store]?.this7 ?? 0),
+    }));
 
-    navQuery<{ max_date: string }>(
-      "SELECT MAX(CAST([Date] AS DATE)) AS max_date FROM TransSalesEntry",
-      {}
-    ),
-  ]);
+    const shopifyEgp   = Math.round(shopify.egp);
+    const shopifyUnits = Math.round(shopify.units);
+    const grandTotal   = totalRev + shopifyEgp;
 
-  const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
-
-  const shopify = shopifyData;
-  const shopifyItems = shopifyData.items;
-
-  // Build Shopify item_no → { egp, units } from line items via shopify_item_map
-  const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
-  const shopifyByItem: Record<string, { egp: number; units: number }> = {};
-  for (const li of shopifyItems) {
-    const itemNo = skuToItemNo[li.sku];
-    if (!itemNo) continue;
-    if (!shopifyByItem[itemNo]) shopifyByItem[itemNo] = { egp: 0, units: 0 };
-    shopifyByItem[itemNo].egp += li.egp;
-    shopifyByItem[itemNo].units += li.quantity;
-  }
-
-  const fx       = parseFloat(fxRow[0]?.egp_per_usd || "50");
-  const totalRev = storeRows.reduce((s, r) => s + Number(r.egp), 0); // NAV only, used for per-store pct
-
-  const wowMap = Object.fromEntries(storeWoW.map(r => {
-    const t = Number(r.this7), p = Number(r.prev7);
-    return [r.store, { this7: t, prev7: p, pct: p > 0 ? ((t - p) / p) * 100 : 0 }];
-  }));
-
-  const stores = storeRows.map(r => ({
-    code:  r.store,
-    name:  STORE_NAMES[r.store] ?? r.store,
-    group: groupOf(r.store),
-    egp:   Math.round(Number(r.egp)),
-    usd:   Math.round(Number(r.egp) / fx),
-    units: Math.round(Number(r.units)),
-    pct:   totalRev > 0 ? Math.round(Number(r.egp) * 100 / totalRev) : 0,
-    wow:   wowMap[r.store]?.pct ?? null,
-    this7: Math.round(wowMap[r.store]?.this7 ?? 0),
-  }));
-
-  const shopifyEgp   = Math.round(shopify.egp);
-  const shopifyUnits = Math.round(shopify.units);
-  const grandTotal   = totalRev + shopifyEgp;
-
-  const channelTotals = ["Retail","Ecom","B2B"].map(grp => {
-    const filtered = stores.filter(s => s.group === grp);
-    const navEgp   = filtered.reduce((s, r) => s + r.egp, 0);
-    // Shopify own-website orders are Ecom, not in NAV
-    const egp      = grp === "Ecom" ? navEgp + shopifyEgp : navEgp;
-    const units    = grp === "Ecom"
-      ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
-      : filtered.reduce((s, r) => s + r.units, 0);
-    return {
-      group:      grp,
-      egp,
-      usd:        Math.round(egp / fx),
-      units,
-      pct:        grandTotal > 0 ? Math.round(egp * 100 / grandTotal) : 0,
-      storeCount: filtered.length,
-    };
-  });
-
-  const totalCat = catRows.reduce((s, r) => s + Number(r.egp), 0);
-  const categories = catRows.map(r => ({
-    category: r.category,
-    egp:   Math.round(Number(r.egp)),
-    usd:   Math.round(Number(r.egp) / fx),
-    units: Math.round(Number(r.units)),
-    pct:   totalCat > 0 ? Math.round(Number(r.egp) * 100 / totalCat) : 0,
-  }));
-
-  function brandLabel(code: string) {
-    if (code === "SAMSONITE") return "Samsonite";
-    if (code === "AM-TOUR")   return "American Tourister";
-    return code || "";
-  }
-
-  // Merge Shopify line item sales into NAV top products
-  const navItemSet = new Set(topProducts.map(r => r.item_no));
-  const mergedProducts = topProducts.map(r => {
-    const shopifyItem = shopifyByItem[r.item_no] ?? { egp: 0, units: 0 };
-    const totalEgp = Math.round(Number(r.egp) + shopifyItem.egp);
-    const totalUnits = Math.round(Number(r.units)) + shopifyItem.units;
-    return {
-      item_no:     r.item_no,
-      description: descMap[r.item_no] || r.item_no,
-      brand:       brandLabel(r.brand),
-      category:    r.category || "",
-      egp:         totalEgp,
-      usd:         Math.round(totalEgp / fx),
-      units:       totalUnits,
-      pct:         grandTotal > 0 ? Math.round(totalEgp * 100 / grandTotal) : 0,
-    };
-  });
-
-  // Add Shopify-only items (not in NAV top 8) that have meaningful sales
-  for (const [itemNo, shopifyItem] of Object.entries(shopifyByItem)) {
-    if (navItemSet.has(itemNo)) continue;
-    const egp = Math.round(shopifyItem.egp);
-    if (egp < 100) continue; // skip noise
-    mergedProducts.push({
-      item_no:     itemNo,
-      description: descMap[itemNo] || itemNo,
-      brand:       "",
-      category:    "",
-      egp,
-      usd:         Math.round(egp / fx),
-      units:       shopifyItem.units,
-      pct:         grandTotal > 0 ? Math.round(egp * 100 / grandTotal) : 0,
+    const channelTotals = ["Retail","Ecom","B2B"].map(grp => {
+      const filtered = stores.filter(s => s.group === grp);
+      const navEgp   = filtered.reduce((s, r) => s + r.egp, 0);
+      // Shopify own-website orders are Ecom, not in NAV
+      const egp      = grp === "Ecom" ? navEgp + shopifyEgp : navEgp;
+      const units    = grp === "Ecom"
+        ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
+        : filtered.reduce((s, r) => s + r.units, 0);
+      return {
+        group:      grp,
+        egp,
+        usd:        Math.round(egp / fx),
+        units,
+        pct:        grandTotal > 0 ? Math.round(egp * 100 / grandTotal) : 0,
+        storeCount: filtered.length,
+      };
     });
+
+    const totalCat = catRows.reduce((s, r) => s + Number(r.egp), 0);
+    const categories = catRows.map(r => ({
+      category: r.category,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      pct:   totalCat > 0 ? Math.round(Number(r.egp) * 100 / totalCat) : 0,
+    }));
+
+    function brandLabel(code: string) {
+      if (code === "SAMSONITE") return "Samsonite";
+      if (code === "AM-TOUR")   return "American Tourister";
+      return code || "";
+    }
+
+    // Merge Shopify line item sales into NAV top products
+    const navItemSet = new Set(topProducts.map(r => r.item_no));
+    const mergedProducts = topProducts.map(r => {
+      const shopifyItem = shopifyByItem[r.item_no] ?? { egp: 0, units: 0 };
+      const totalEgp = Math.round(Number(r.egp) + shopifyItem.egp);
+      const totalUnits = Math.round(Number(r.units)) + shopifyItem.units;
+      return {
+        item_no:     r.item_no,
+        description: descMap[r.item_no] || r.item_no,
+        brand:       brandLabel(r.brand),
+        category:    r.category || "",
+        egp:         totalEgp,
+        usd:         Math.round(totalEgp / fx),
+        units:       totalUnits,
+        pct:         grandTotal > 0 ? Math.round(totalEgp * 100 / grandTotal) : 0,
+      };
+    });
+
+    // Add Shopify-only items (not in NAV top 8) that have meaningful sales
+    for (const [itemNo, shopifyItem] of Object.entries(shopifyByItem)) {
+      if (navItemSet.has(itemNo)) continue;
+      const egp = Math.round(shopifyItem.egp);
+      if (egp < 100) continue; // skip noise
+      mergedProducts.push({
+        item_no:     itemNo,
+        description: descMap[itemNo] || itemNo,
+        brand:       "",
+        category:    "",
+        egp,
+        usd:         Math.round(egp / fx),
+        units:       shopifyItem.units,
+        pct:         grandTotal > 0 ? Math.round(egp * 100 / grandTotal) : 0,
+      });
+    }
+
+    // Re-sort by egp descending and cap at top 8
+    const products = mergedProducts.sort((a, b) => b.egp - a.egp).slice(0, 8);
+
+    return NextResponse.json({
+      stores,
+      channelTotals,
+      brands:     [],
+      categories,
+      products,
+      totalRev:   Math.round(totalRev + shopifyEgp),
+      fx,
+      sources,
+      degraded:   isDegraded(sources),
+      freshness:  [{
+        source:  "nav",
+        maxDate: navDateToISO(navMaxDateRows[0]?.max_date) ?? "unknown",
+        lagDays: lagDaysFrom(navDateToISO(navMaxDateRows[0]?.max_date)),
+      }],
+    });
+  } catch (e) {
+    console.error("[home] fatal:", e instanceof Error ? e.message : e);
+    return NextResponse.json({
+      stores: [], channelTotals: [], brands: [], categories: [], products: [],
+      totalRev: 0, fx: 50,
+      sources: { nav: "offline", shopify: "offline", pg: "offline" },
+      degraded: true,
+      freshness: [{ source: "nav", maxDate: "unknown", lagDays: null }],
+      error: "Failed to load home data",
+    }, { status: 200 });
   }
-
-  // Re-sort by egp descending and cap at top 8
-  const products = mergedProducts.sort((a, b) => b.egp - a.egp).slice(0, 8);
-
-  return NextResponse.json({
-    stores,
-    channelTotals,
-    brands:     [],
-    categories,
-    products,
-    totalRev:   Math.round(totalRev + shopifyEgp),
-    fx,
-    freshness:  [{
-      source:  "nav",
-      maxDate: navMaxDateRows[0]?.max_date?.slice(0,10) ?? "unknown",
-      lagDays: navMaxDateRows[0]?.max_date
-        ? Math.max(0, Math.round((Date.now() - new Date(navMaxDateRows[0].max_date).getTime()) / 86400000))
-        : null,
-    }],
-  });
 }
