@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
-import { getShopifyRevenue } from "@/lib/shopify";
+import { getShopifyRevenue, getShopifyLineItems } from "@/lib/shopify";
 
 const STORE_NAMES: Record<string, string> = {
   ALMAZA:      "Almaza City Center",
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   const d14ago    = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const d8ago     = new Date(Date.now() - 8  * 86400000).toISOString().slice(0, 10);
 
-  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopify] = await Promise.all([
+  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopify, shopifyItems, skuMap] = await Promise.all([
 
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
@@ -102,9 +102,26 @@ export async function GET(req: NextRequest) {
     ),
 
     getShopifyRevenue(from, to),
+
+    getShopifyLineItems(from, to),
+
+    query<{ sku: string; item_no: string }>(
+      "SELECT sku, item_no FROM shopify_item_map"
+    ),
   ]);
 
   const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
+
+  // Build Shopify item_no → { egp, units } from line items via shopify_item_map
+  const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
+  const shopifyByItem: Record<string, { egp: number; units: number }> = {};
+  for (const li of shopifyItems) {
+    const itemNo = skuToItemNo[li.sku];
+    if (!itemNo) continue;
+    if (!shopifyByItem[itemNo]) shopifyByItem[itemNo] = { egp: 0, units: 0 };
+    shopifyByItem[itemNo].egp += li.egp;
+    shopifyByItem[itemNo].units += li.quantity;
+  }
 
   const fx       = parseFloat(fxRow[0]?.egp_per_usd || "50");
   const totalRev = storeRows.reduce((s, r) => s + Number(r.egp), 0); // NAV only, used for per-store pct
@@ -163,16 +180,43 @@ export async function GET(req: NextRequest) {
     return code || "";
   }
 
-  const products = topProducts.map(r => ({
-    item_no:     r.item_no,
-    description: descMap[r.item_no] || r.item_no,
-    brand:       brandLabel(r.brand),
-    category:    r.category || "",
-    egp:         Math.round(Number(r.egp)),
-    usd:         Math.round(Number(r.egp) / fx),
-    units:       Math.round(Number(r.units)),
-    pct:         totalRev > 0 ? Math.round(Number(r.egp) * 100 / totalRev) : 0,
-  }));
+  // Merge Shopify line item sales into NAV top products
+  const navItemSet = new Set(topProducts.map(r => r.item_no));
+  const mergedProducts = topProducts.map(r => {
+    const shopifyItem = shopifyByItem[r.item_no] ?? { egp: 0, units: 0 };
+    const totalEgp = Math.round(Number(r.egp) + shopifyItem.egp);
+    const totalUnits = Math.round(Number(r.units)) + shopifyItem.units;
+    return {
+      item_no:     r.item_no,
+      description: descMap[r.item_no] || r.item_no,
+      brand:       brandLabel(r.brand),
+      category:    r.category || "",
+      egp:         totalEgp,
+      usd:         Math.round(totalEgp / fx),
+      units:       totalUnits,
+      pct:         grandTotal > 0 ? Math.round(totalEgp * 100 / grandTotal) : 0,
+    };
+  });
+
+  // Add Shopify-only items (not in NAV top 8) that have meaningful sales
+  for (const [itemNo, shopifyItem] of Object.entries(shopifyByItem)) {
+    if (navItemSet.has(itemNo)) continue;
+    const egp = Math.round(shopifyItem.egp);
+    if (egp < 100) continue; // skip noise
+    mergedProducts.push({
+      item_no:     itemNo,
+      description: descMap[itemNo] || itemNo,
+      brand:       "",
+      category:    "",
+      egp,
+      usd:         Math.round(egp / fx),
+      units:       shopifyItem.units,
+      pct:         grandTotal > 0 ? Math.round(egp * 100 / grandTotal) : 0,
+    });
+  }
+
+  // Re-sort by egp descending and cap at top 8
+  const products = mergedProducts.sort((a, b) => b.egp - a.egp).slice(0, 8);
 
   return NextResponse.json({
     stores,
