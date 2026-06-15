@@ -85,10 +85,6 @@ export async function GET(req: NextRequest) {
       ORDER BY egp DESC
     `, { from, to }),
 
-    query<{ item_no: string; description: string }>(
-      "SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"
-    ),
-
     navQuery<{ store: string; this7: number; prev7: number }>(`
       SELECT
         [Store No_] AS store,
@@ -98,6 +94,10 @@ export async function GET(req: NextRequest) {
       WHERE CAST([Date] AS DATE) >= @d14ago
       GROUP BY [Store No_]
     `, { today, d7ago, d14ago, d8ago }),
+
+    query<{ item_no: string; description: string }>(
+      "SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"
+    ),
   ]);
 
   const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
