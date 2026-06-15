@@ -150,6 +150,7 @@ export async function GET(req: NextRequest) {
 
     const drillRows = rows.map(r => ({
       ...r,
+      description:  descMap[r.item_no] || r.item_no,
       egp:         Math.round(Number(r.egp)),
       usd:         Math.round(Number(r.egp) / fx),
       units:       Math.round(Number(r.units)),
@@ -286,6 +287,7 @@ export async function GET(req: NextRequest) {
     const totalRev = rows.reduce((s,r) => s + Number(r.egp), 0);
     const drillRows = rows.map(r => ({
       ...r,
+      description:  descMap[r.item_no] || r.item_no,
       egp:   Math.round(Number(r.egp)),
       usd:   Math.round(Number(r.egp) / fx),
       units: Math.round(Number(r.units)),
@@ -370,6 +372,7 @@ export async function GET(req: NextRequest) {
 
     const drillRows = rows.map(r => ({
       ...r,
+      description:  descMap[r.item_no] || r.item_no,
       egp:   Math.round(Number(r.egp)),
       usd:   Math.round(Number(r.egp) / fx),
       units: Math.round(Number(r.units)),
@@ -545,6 +548,7 @@ export async function GET(req: NextRequest) {
 
     const drillRows = rows.map(r => ({
       ...r,
+      description:  descMap[r.item_no] || r.item_no,
       egp:   Math.round(Number(r.egp)),
       usd:   Math.round(Number(r.egp) / fx),
       units: Math.round(Number(r.units)),

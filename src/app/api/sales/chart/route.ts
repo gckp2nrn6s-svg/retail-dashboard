@@ -26,9 +26,9 @@ export async function GET(req: NextRequest) {
     storeWhere = `AND [Store No_] = '${store.replace(/'/g, "''")}'`;
   } else if (group === "retail") {
     storeWhere = `AND [Store No_] IN ('ALMAZA','CCA','CF-HOS','CSTARS','P90','MOA','MOE','HIS','MC')`;
-  } else if (group === "online") {
+  } else if (group === "online" || group === "ecom") {
     storeWhere = `AND [Store No_] IN ('ONLINE','NOON','JUMIA')`;
-  } else if (group === "ho") {
+  } else if (group === "ho" || group === "b2b") {
     storeWhere = `AND [Store No_] IN ('ATCFC','EVENT','HO','GO SPORT1')`;
   }
 

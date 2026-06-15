@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
+import { getShopifyRevenue } from "@/lib/shopify";
 
 function groupOf(code: string) {
   if (["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"].includes(code)) return "Retail";
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
   const from = fromParam || new Date().toISOString().slice(0, 8) + "01";
   const to   = toParam   || new Date().toISOString().slice(0, 10);
 
-  const [storeRows, fxRow, categoryRows] = await Promise.all([
+  const [storeRows, fxRow, categoryRows, shopify] = await Promise.all([
     navQuery<{ store: string; revenue: number; units: number }>(`
       SELECT
         [Store No_]        AS store,
@@ -47,10 +48,15 @@ export async function GET(req: NextRequest) {
       GROUP BY [Item Category Code]
       ORDER BY revenue DESC
     `, { from, to }),
+
+    getShopifyRevenue(from, to),
   ]);
 
-  const fx       = parseFloat(fxRow[0]?.egp_per_usd || "50");
-  const totalRev = storeRows.reduce((s, r) => s + Number(r.revenue), 0);
+  const fx          = parseFloat(fxRow[0]?.egp_per_usd || "50");
+  const navTotal    = storeRows.reduce((s, r) => s + Number(r.revenue), 0);
+  const shopifyEgp  = Math.round(shopify.egp);
+  const shopifyUnits = Math.round(shopify.units);
+  const grandTotal  = navTotal + shopifyEgp;
 
   const stores = storeRows.map((r) => {
     const rev = Number(r.revenue);
@@ -59,19 +65,22 @@ export async function GET(req: NextRequest) {
       group:   groupOf(r.store),
       revenue: { egp: Math.round(rev), usd: Math.round(rev / fx) },
       units:   Math.round(Number(r.units)),
-      pct:     totalRev > 0 ? Math.round((rev / totalRev) * 100) : 0,
+      pct:     grandTotal > 0 ? Math.round((rev / grandTotal) * 100) : 0,
     };
   });
 
   const channelTotals = ["Retail", "Ecom", "B2B"].map((grp) => {
-    const filtered = stores.filter((s) => s.group === grp);
-    const rev      = filtered.reduce((s, r) => s + r.revenue.egp, 0);
-    const units    = filtered.reduce((s, r) => s + r.units, 0);
+    const filtered  = stores.filter((s) => s.group === grp);
+    const navRev    = filtered.reduce((s, r) => s + r.revenue.egp, 0);
+    const rev       = grp === "Ecom" ? navRev + shopifyEgp : navRev;
+    const units     = grp === "Ecom"
+      ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
+      : filtered.reduce((s, r) => s + r.units, 0);
     return {
       group:   grp,
-      revenue: { egp: Math.round(rev), usd: Math.round(rev / fx) },
+      revenue: { egp: rev, usd: Math.round(rev / fx) },
       units,
-      pct:     totalRev > 0 ? Math.round((rev / totalRev) * 100) : 0,
+      pct:     grandTotal > 0 ? Math.round((rev / grandTotal) * 100) : 0,
     };
   });
 
@@ -90,7 +99,7 @@ export async function GET(req: NextRequest) {
     stores,
     channelTotals,
     categories,
-    total: { egp: Math.round(totalRev), usd: Math.round(totalRev / fx) },
+    total: { egp: grandTotal, usd: Math.round(grandTotal / fx) },
     fx,
   });
 }
