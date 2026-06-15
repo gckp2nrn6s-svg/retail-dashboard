@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 export type DatePreset = "today" | "mtd" | "7d" | "30d" | "90d" | "ytd" | "custom";
 
@@ -57,19 +57,24 @@ const Ctx = createContext<DateRangeCtx>({
 });
 
 export function DateRangeProvider({ children }: { children: ReactNode }) {
-  const [range, setRange] = useState<DateRange>(() => {
-    if (typeof window === "undefined") return makeRange("mtd");
+  // Always start with MTD so server and client render the same initial HTML.
+  // Restore saved preference in useEffect (client-only, after hydration).
+  const [range, setRange] = useState<DateRange>(() => makeRange("mtd"));
+
+  useEffect(() => {
     try {
       const saved = localStorage.getItem("ls_date_range");
       if (saved) {
         const p = JSON.parse(saved) as { preset: DatePreset; from: string; to: string };
-        if (p.preset === "custom") return { ...p, label: `${p.from} → ${p.to}` };
-        const found = PRESETS.find(x => x.key === p.preset);
-        if (found) return makeRange(p.preset);
+        if (p.preset === "custom") {
+          setRange({ ...p, label: `${p.from} → ${p.to}` });
+        } else {
+          const found = PRESETS.find(x => x.key === p.preset);
+          if (found) setRange(makeRange(p.preset));
+        }
       }
     } catch {}
-    return makeRange("mtd");
-  });
+  }, []);
 
   const setPreset = (p: DatePreset) => {
     if (p !== "custom") {
