@@ -121,6 +121,15 @@ function SalesContent() {
   const sub = (v: { egp: number; usd: number }) => currency === "USD" ? `EGP ${Math.round(v.egp).toLocaleString()}` : `$${Math.round(v.usd).toLocaleString()}`;
   const drillUrl = (p: Record<string, string>) => "/api/drill?" + new URLSearchParams({ ...p, from: range.from, to: range.to }).toString();
 
+  // Map group option key → channelTotals group name
+  const groupToChannel: Record<GroupOption, string | null> = { all: null, retail: "Retail", ecom: "Ecom", ho: "B2B" };
+  const activeChannel = groupToChannel[group];
+  const channelRow = activeChannel ? channels.find(c => c.group === activeChannel) : null;
+
+  // Use channel-specific total when a tab is selected (includes Shopify for Ecom)
+  const displayTotal  = channelRow ? channelRow.revenue : total;
+  const displayUnits  = channelRow ? channelRow.units : chartData.reduce((s, d) => s + d.units, 0);
+
   // Avg daily revenue for reference line
   const avgRev = chartData.length > 0 ? chartData.reduce((s,d) => s + (currency === "USD" ? d.usd : d.egp), 0) / chartData.length : 0;
 
@@ -133,10 +142,10 @@ function SalesContent() {
           <div>
             <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Sales Analytics</p>
             <h1 style={{ color: "white", fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", marginTop: 3 }}>
-              {loading ? "—" : val(total)}
+              {loading ? "—" : val(displayTotal)}
             </h1>
             <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.7rem", marginTop: 3 }}>
-              {loading ? "Loading…" : `${chartData.reduce((s,d) => s + d.units, 0).toLocaleString()} units · ${range.label}`}
+              {loading ? "Loading…" : `${displayUnits.toLocaleString()} units · ${range.label}`}
             </p>
           </div>
           <DateRangePicker dark />
