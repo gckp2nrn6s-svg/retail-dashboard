@@ -8,13 +8,13 @@ interface ShopifyConfig {
 function getConfig(brand: ShopifyStore): ShopifyConfig {
   if (brand === "samsonite") {
     return {
-      store: process.env.SHOPIFY_SAMSONITE_STORE!,
-      token: process.env.SHOPIFY_SAMSONITE_TOKEN!,
+      store: (process.env.SHOPIFY_SAM_STORE || process.env.SHOPIFY_SAMSONITE_STORE)!,
+      token: (process.env.SHOPIFY_SAM_TOKEN || process.env.SHOPIFY_SAMSONITE_TOKEN)!,
     };
   }
   return {
-    store: process.env.SHOPIFY_AT_STORE!,
-    token: process.env.SHOPIFY_AT_TOKEN!,
+    store: (process.env.SHOPIFY_AMT_STORE || process.env.SHOPIFY_AT_STORE)!,
+    token: (process.env.SHOPIFY_AMT_TOKEN || process.env.SHOPIFY_AT_TOKEN)!,
   };
 }
 
