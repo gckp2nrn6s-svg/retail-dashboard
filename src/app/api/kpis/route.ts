@@ -103,32 +103,16 @@ export async function GET(req: NextRequest) {
   const sparkline = sparkRows.map(r => Number(r.revenue));
 
   return NextResponse.json({
-    revenue: {
-      egp: rev, usd: rev / fx,
-      comparisons: [
-        { label: "vs Yesterday",  pct: pct(rev, yestRev * spanDays) },
-        { label: "vs 7d avg",     pct: pct(rev / spanDays, d7Rev) },
-        { label: "vs 30d avg",    pct: pct(rev / spanDays, d30Rev) },
-        { label: "YoY",           pct: pct(rev, yoyRev) },
-        { label: "vs prev period",pct: pct(rev, prevRev) },
-      ],
-    },
-    units: {
-      value: units,
-      comparisons: [
-        { label: "vs prev period", pct: pct(units, prevUnits) },
-        { label: "YoY", pct: pct(units, Number(yoy_row[0]?.units ?? 0)) },
-      ],
-    },
-    avgTicket: {
-      egp: units > 0 ? rev / units : 0,
-      usd: units > 0 ? rev / units / fx : 0,
-    },
+    revenue:      { egp: rev, usd: rev / fx },
+    revChange:    prevRev > 0 ? pct(rev, prevRev) : null,
+    units,
+    unitsChange:  prevUnits > 0 ? pct(units, prevUnits) : null,
+    avgTicket:    { egp: units > 0 ? rev / units : 0, usd: units > 0 ? rev / units / fx : 0 },
     activeStores: Number(storeCount[0]?.n ?? 0),
     fx,
     sparkline,
     todayRevenue: todayRev,
     pace: paceToTarget !== null ? { pct: paceToTarget, dailyTarget } : null,
-    lastUpdated: new Date().toISOString(),
+    lastUpdated:  new Date().toISOString(),
   });
 }
