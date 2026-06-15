@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lesouverain.navtunnel</string>
+
+  <!-- Stable ngrok static domain → :4001. URL never changes, so Railway's
+       NAV_PROXY_URL is set once and never touched again. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/ngrok</string>
+    <string>http</string>
+    <string>--url=https://__NGROK_DOMAIN__</string>
+    <string>4001</string>
+    <string>--log=stdout</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/sherif/Desktop/retail-dashboard</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/sherif/Desktop/retail-dashboard/nav-bridge/navtunnel.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sherif/Desktop/retail-dashboard/nav-bridge/navtunnel.log</string>
+</dict>
+</plist>

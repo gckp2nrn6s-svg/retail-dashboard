@@ -42,3 +42,6 @@ next-env.d.ts
 
 /src/generated/prisma
 sync-agent/node_modules
+
+# NAV bridge runtime logs
+nav-bridge/*.log

@@ -9,6 +9,27 @@
 
 const http = require("http");
 const sql  = require("mssql");
+const fs   = require("fs");
+const path = require("path");
+
+// Self-load .env.local so this works as a background/launchd service without a
+// shell that already exported the vars. Existing env vars always win.
+(function loadEnvLocal() {
+  try {
+    const file = fs.readFileSync(path.join(__dirname, ".env.local"), "utf8");
+    for (const line of file.split("\n")) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m) continue;
+      const key = m[1];
+      if (process.env[key] !== undefined) continue;
+      let val = m[2].trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  } catch { /* no .env.local — rely on real env */ }
+})();
 
 const PORT = 4001;
 const SECRET = process.env.PROXY_SECRET || "nav-proxy-secret-2024";

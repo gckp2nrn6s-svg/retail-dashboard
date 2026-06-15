@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lesouverain.navproxy</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/sherif/Desktop/retail-dashboard/nav-proxy.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/sherif/Desktop/retail-dashboard</string>
+
+  <!-- Start on login, restart if it ever exits (sleep/wake, crash, etc.) -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/sherif/Desktop/retail-dashboard/nav-bridge/navproxy.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/sherif/Desktop/retail-dashboard/nav-bridge/navproxy.log</string>
+</dict>
+</plist>
