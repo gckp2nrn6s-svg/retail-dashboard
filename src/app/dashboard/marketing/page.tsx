@@ -318,7 +318,8 @@ export default function MarketingPage() {
   const [loadingAds, setLoadingAds] = useState(false);
 
   // Data
-  const [overview, setOverview] = useState<ReturnType<typeof mockOverview>>(mockOverview());
+  const today = new Date().toISOString().slice(0, 10);
+  const [overview, setOverview] = useState<ReturnType<typeof mockOverview>>(mockOverview(today.slice(0, 8) + "01", today, "All"));
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [adSets, setAdSets] = useState<AdSet[]>([]);
   const [ads, setAds] = useState<Ad[]>([]);
