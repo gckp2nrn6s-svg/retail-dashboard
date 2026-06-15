@@ -8641,3 +8641,15 @@ Error: getaddrinfo ENOTFOUND acela.proxy.rlwy.net
 }
 
 Node.js v26.0.0
+node:internal/process/promises:332
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: read EADDRNOTAVAIL
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20) {
+  errno: -49,
+  code: 'EADDRNOTAVAIL',
+  syscall: 'read'
+}
+
+Node.js v26.0.0

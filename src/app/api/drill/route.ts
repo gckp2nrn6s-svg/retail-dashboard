@@ -62,6 +62,21 @@ function safeStr(val: string | null): string {
   if (!val) return "";
   return val.replace(/[';]/g, "").slice(0, 100);
 }
+
+// Parse luggage size from a description string (e.g. "MAGNUM ECO 81/30 GRAPHITE" → "81CM")
+function parseSize(desc: string): string {
+  const m = desc.match(/(?<![A-Z\d])(5[5-9]|6[0-9]|7[0-9]|8[0-5])(?:\/\d{2})?(?![A-Z\d])/i);
+  return m ? m[1] + "CM" : "Other";
+}
+
+// Parse color from description (text after the size, before the product code)
+function parseColor(desc: string): string {
+  const sizeMatch = desc.match(/(?<![A-Z\d])(5[5-9]|6[0-9]|7[0-9]|8[0-5])(?:\/\d{2})?(?![A-Z\d])/i);
+  if (!sizeMatch) return "";
+  const afterSize = desc.slice((sizeMatch.index ?? 0) + sizeMatch[0].length).trim();
+  const colorMatch = afterSize.match(/^([A-Z][A-Z\s]+?)(?:\s+[A-Z]{1,3}[\d-]|$)/i);
+  return colorMatch ? colorMatch[1].trim() : "";
+}
 const ALLOWED_TYPES = new Set([
   "daily","kpi","store","store-daily","channel","category","brand",
   "item","item-store","items","daily-detail",
@@ -79,6 +94,7 @@ export async function GET(req: NextRequest) {
   const channel = safeStr(p.get("channel"));
   const category= safeStr(p.get("category"));
   const brand   = safeStr(p.get("brand"));
+  const size    = safeStr(p.get("size"));
   const itemNo  = safeStr(p.get("item"));
   const datePm  = safeDate(p.get("date"), today);
 
@@ -601,25 +617,29 @@ export async function GET(req: NextRequest) {
           return true;
         })
         .map(([itemNo, v]) => {
-          const egp = Math.round(v.egp);
+          const egp  = Math.round(v.egp);
+          const desc = descMap[itemNo] || itemNo;
           return {
             item_no:     itemNo,
-            description: descMap[itemNo] || itemNo,
+            description: desc,
+            size:        parseSize(desc) !== "Other" ? parseSize(desc) : "",
+            color:       parseColor(desc),
             egp,
             usd:         Math.round(egp / fx),
             units:       v.units,
             brand:       brandLabel(itemMeta[itemNo]?.category_code || ""),
             category:    itemMeta[itemNo]?.subcat || "",
             _drill_url:  dUrl({ type: "item", item: itemNo }, from, to),
-            _drill_title: descMap[itemNo] || itemNo,
+            _drill_title: desc,
           };
         })
         .sort((a, b) => b.egp - a.egp);
       return NextResponse.json({
         columns: [
           { key: "description", label: "Product",  type: "text" },
+          { key: "size",        label: "Size",     type: "text" },
+          { key: "color",       label: "Colour",   type: "text" },
           { key: "brand",       label: "Brand",    type: "text" },
-          { key: "category",    label: "Category", type: "text" },
           { key: "egp",         label: "Revenue",  type: "currency" },
           { key: "units",       label: "Units",    type: "units" },
         ],
@@ -674,78 +694,78 @@ export async function GET(req: NextRequest) {
     const shopifyTotal = Object.values(shopifyByItem).reduce((s, v) => s + v.egp, 0);
     const grandTotal = navTotal + shopifyTotal;
 
-    const drillRows = rows.map(r => {
-      const shopifyItem = shopifyByItem[r.item_no] ?? { egp: 0, units: 0 };
-      const egp = Math.round(Number(r.egp) + shopifyItem.egp);
-      const units = Math.round(Number(r.units)) + shopifyItem.units;
+    const buildRow = (item_no: string, egpVal: number, unitsVal: number, brandCode: string, catCode: string) => {
+      const desc = descMap[item_no] || item_no;
+      const itemSize  = parseSize(desc);
+      const itemColor = parseColor(desc);
       return {
-        item_no: r.item_no,
-        description:  descMap[r.item_no] || r.item_no,
-        egp,
-        usd:   Math.round(egp / fx),
-        units,
-        brand: brandLabel(r.brand),
-        category: r.category || "",
-        _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
-        _drill_title: descMap[r.item_no] || r.item_no,
+        item_no,
+        description: desc,
+        size:        itemSize !== "Other" ? itemSize : "",
+        color:       itemColor,
+        egp:         Math.round(egpVal),
+        usd:         Math.round(egpVal / fx),
+        units:       Math.round(unitsVal),
+        brand:       brandLabel(brandCode),
+        category:    catCode || "",
+        _drill_url:   dUrl({type:"item", item:item_no}, from, to),
+        _drill_title: desc,
       };
+    };
+
+    let drillRows = rows.map(r => {
+      const shopifyItem = shopifyByItem[r.item_no] ?? { egp: 0, units: 0 };
+      return buildRow(r.item_no, Number(r.egp) + shopifyItem.egp, Number(r.units) + shopifyItem.units, r.brand, r.category);
     });
 
     // Add Shopify-only items not in NAV top 200
     for (const [itemNo, shopifyItem] of Object.entries(shopifyByItem)) {
       if (navItemSet.has(itemNo)) continue;
-      const egp = Math.round(shopifyItem.egp);
-      if (egp < 100) continue;
-      drillRows.push({
-        item_no: itemNo,
-        description: descMap[itemNo] || itemNo,
-        egp,
-        usd: Math.round(egp / fx),
-        units: shopifyItem.units,
-        brand: "",
-        category: "",
-        _drill_url:   dUrl({type:"item", item:itemNo}, from, to),
-        _drill_title: descMap[itemNo] || itemNo,
-      });
+      if (shopifyItem.egp < 100) continue;
+      drillRows.push(buildRow(itemNo, shopifyItem.egp, shopifyItem.units, "", ""));
     }
 
     drillRows.sort((a, b) => b.egp - a.egp);
 
+    // Filter by size if specified (from store-subcat drill)
+    if (size) drillRows = drillRows.filter(r => r.size === size);
+
     return NextResponse.json({
       columns:[
         {key:"description",label:"Product",  type:"text"},
+        {key:"size",       label:"Size",     type:"text"},
+        {key:"color",      label:"Colour",   type:"text"},
         {key:"brand",      label:"Brand",    type:"text"},
-        {key:"category",   label:"Category", type:"text"},
         {key:"egp",        label:"Revenue",  type:"currency"},
         {key:"units",      label:"Units",    type:"units"},
       ],
       rows: drillRows,
       summary:[
         {label:"SKUs",   value:String(drillRows.length)},
-        {label:"revenue",value:`EGP ${Math.round(grandTotal).toLocaleString()}`},
+        {label:"revenue",value:`EGP ${Math.round(drillRows.reduce((s,r)=>s+r.egp,0)).toLocaleString()}`},
         {label:"units",  value:drillRows.reduce((s,r)=>s+r.units,0).toLocaleString()},
       ],
       fx,
     });
   }
 
-  // ── Store / Source → categories ──────────────────────────────────────────────
+  // ── Store / Source → product categories ──────────────────────────────────────
   if (type === "store-category") {
-    let catRows: { category_code: string; category: string; egp: number; units: number; skus: number }[];
-
     const isShopify = store === "SHOPIFY" || store === "SHOPIFY-SAM" || store === "SHOPIFY-AMT";
-    const shopifyBrand = store === "SHOPIFY-SAM" ? "samsonite" as const
-                       : store === "SHOPIFY-AMT" ? "american-tourister" as const
-                       : undefined;
-    const storeLabel = store === "SHOPIFY-SAM" ? "Samsonite Website"
-                     : store === "SHOPIFY-AMT" ? "American Tourister Website"
-                     : store === "SHOPIFY"     ? "Own Website (Shopify)"
-                     : sn(store);
+    const shopifyBrandCat = store === "SHOPIFY-SAM" ? "samsonite" as const
+                          : store === "SHOPIFY-AMT" ? "american-tourister" as const
+                          : undefined;
+    const storeLabelCat = store === "SHOPIFY-SAM" ? "Samsonite Website"
+                        : store === "SHOPIFY-AMT" ? "American Tourister Website"
+                        : store === "SHOPIFY"     ? "Own Website (Shopify)"
+                        : sn(store);
+
+    // Aggregate egp/units/skus by [Product Group Code]
+    const pgMap: Record<string, { egp: number; units: number; skus: Set<string> }> = {};
 
     if (isShopify) {
-      // Shopify: map line items → item_no → NAV category codes
       const [shopifyItems, skuMap] = await Promise.all([
-        getShopifyLineItems(from, to, shopifyBrand),
+        getShopifyLineItems(from, to, shopifyBrandCat),
         query<{ sku: string; item_no: string }>("SELECT sku, item_no FROM shopify_item_map"),
       ]);
       const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
@@ -758,64 +778,54 @@ export async function GET(req: NextRequest) {
         byItemNo[itemNo].units += li.quantity;
       }
       const itemNos = Object.keys(byItemNo);
-      if (itemNos.length === 0) {
-        catRows = [];
-      } else {
+      if (itemNos.length > 0) {
         const inClause = itemNos.map(n => `'${n}'`).join(",");
-        const itemCats = await navQuery<{ item_no: string; category_code: string }>(`
-          SELECT [Item No_] AS item_no, MAX([Item Category Code]) AS category_code
+        const pgRows = await navQuery<{ item_no: string; pg: string }>(`
+          SELECT [Item No_] AS item_no, MAX([Product Group Code]) AS pg
           FROM TransSalesEntry WHERE [Item No_] IN (${inClause})
           GROUP BY [Item No_]
         `, {});
-        const itemCatMap = Object.fromEntries(itemCats.map(r => [r.item_no, r.category_code]));
-        const byCat: Record<string, { egp: number; units: number; skus: Set<string> }> = {};
+        const itemPgMap = Object.fromEntries(pgRows.map(r => [r.item_no, r.pg || "Other"]));
         for (const [itemNo, vals] of Object.entries(byItemNo)) {
-          const cc = itemCatMap[itemNo] || "";
-          if (!byCat[cc]) byCat[cc] = { egp: 0, units: 0, skus: new Set() };
-          byCat[cc].egp += vals.egp;
-          byCat[cc].units += vals.units;
-          byCat[cc].skus.add(itemNo);
+          const pg = itemPgMap[itemNo] || "Other";
+          if (!pgMap[pg]) pgMap[pg] = { egp: 0, units: 0, skus: new Set() };
+          pgMap[pg].egp += vals.egp;
+          pgMap[pg].units += vals.units;
+          pgMap[pg].skus.add(itemNo);
         }
-        catRows = Object.entries(byCat).map(([cc, v]) => ({
-          category_code: cc,
-          category: cc === "SAMSONITE" ? "Samsonite" : cc === "AM-TOUR" ? "American Tourister" : cc || "Other",
-          egp: v.egp,
-          units: v.units,
-          skus: v.skus.size,
-        })).sort((a, b) => b.egp - a.egp);
       }
     } else {
-      catRows = await navQuery<{ category_code: string; category: string; egp: number; units: number; skus: number }>(`
+      const rows = await navQuery<{ pg: string; egp: number; units: number; skus: number }>(`
         SELECT
-          [Item Category Code] AS category_code,
-          CASE
-            WHEN [Item Category Code] = 'SAMSONITE' THEN 'Samsonite'
-            WHEN [Item Category Code] = 'AM-TOUR'   THEN 'American Tourister'
-            WHEN [Item Category Code] != ''          THEN [Item Category Code]
-            ELSE 'Other'
-          END AS category,
+          CASE WHEN LEN([Product Group Code]) > 0 THEN [Product Group Code] ELSE 'Other' END AS pg,
           -SUM([Net Amount]+[VAT Amount]) AS egp,
           -SUM([Quantity])                AS units,
           COUNT(DISTINCT [Item No_])      AS skus
         FROM TransSalesEntry
         WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
           AND [Store No_] = @store
-        GROUP BY [Item Category Code]
+        GROUP BY [Product Group Code]
         ORDER BY egp DESC
       `, { from, to, store });
+      for (const r of rows) {
+        pgMap[r.pg] = { egp: Number(r.egp), units: Number(r.units), skus: new Set(Array(Number(r.skus)).fill("")) };
+      }
     }
 
-    const total = catRows.reduce((s, r) => s + Number(r.egp), 0);
+    const catRows = Object.entries(pgMap)
+      .map(([pg, v]) => ({ pg, egp: v.egp, units: v.units, skus: v.skus.size }))
+      .sort((a, b) => b.egp - a.egp);
+
+    const total = catRows.reduce((s, r) => s + r.egp, 0);
     const drillRows = catRows.map(r => ({
-      category:      r.category,
-      category_code: r.category_code,
-      egp:           Math.round(Number(r.egp)),
-      usd:           Math.round(Number(r.egp) / fx),
-      units:         Math.round(Number(r.units)),
-      skus:          Number(r.skus),
-      pct:           total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
-      _drill_url:    dUrl({ type: "store-subcat", store, brand: r.category_code }, from, to),
-      _drill_title:  `${storeLabel} · ${r.category} · Sub-categories`,
+      category: r.pg,
+      egp:      Math.round(r.egp),
+      usd:      Math.round(r.egp / fx),
+      units:    Math.round(r.units),
+      skus:     r.skus,
+      pct:      total > 0 ? Math.round(r.egp * 100 / total) : 0,
+      _drill_url:   dUrl({ type: "store-subcat", store, category: r.pg }, from, to),
+      _drill_title: `${storeLabelCat} · ${r.pg} · Sizes`,
     }));
     return NextResponse.json({
       columns: [
@@ -827,7 +837,7 @@ export async function GET(req: NextRequest) {
       ],
       rows: drillRows,
       summary: [
-        { label: "source",     value: storeLabel },
+        { label: "source",     value: storeLabelCat },
         { label: "revenue",    value: `EGP ${Math.round(total).toLocaleString()}` },
         { label: "categories", value: String(catRows.length) },
       ],
@@ -835,105 +845,107 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // ── Store + Category → sub-categories ────────────────────────────────────────
+  // ── Store + Category → sizes (parsed from descriptions) ──────────────────────
   if (type === "store-subcat") {
-    const brandF = brand ? `AND [Item Category Code] = '${brand}'` : "";
+    const isShopifySub = store === "SHOPIFY" || store === "SHOPIFY-SAM" || store === "SHOPIFY-AMT";
+    const shopifyBrandSub = store === "SHOPIFY-SAM" ? "samsonite" as const
+                          : store === "SHOPIFY-AMT" ? "american-tourister" as const
+                          : undefined;
+    const storeLabelSub = store === "SHOPIFY-SAM" ? "Samsonite Website"
+                        : store === "SHOPIFY-AMT" ? "American Tourister Website"
+                        : store === "SHOPIFY"     ? "Own Website (Shopify)"
+                        : sn(store);
+    const catFilter = category ? `AND [Product Group Code] = '${category}'` : "";
 
-    let subcatRows: { subcat: string; egp: number; units: number; skus: number }[];
+    // Step 1: get revenue/units by item_no
+    let byItemNo: Record<string, { egp: number; units: number }> = {};
 
-    const isShopifySubcat = store === "SHOPIFY" || store === "SHOPIFY-SAM" || store === "SHOPIFY-AMT";
-    const shopifyBrandSubcat = store === "SHOPIFY-SAM" ? "samsonite" as const
-                             : store === "SHOPIFY-AMT" ? "american-tourister" as const
-                             : undefined;
-    const storeLabelSubcat = store === "SHOPIFY-SAM" ? "Samsonite Website"
-                           : store === "SHOPIFY-AMT" ? "American Tourister Website"
-                           : store === "SHOPIFY"     ? "Own Website (Shopify)"
-                           : sn(store);
-
-    if (isShopifySubcat) {
+    if (isShopifySub) {
       const [shopifyItems, skuMap] = await Promise.all([
-        getShopifyLineItems(from, to, shopifyBrandSubcat),
+        getShopifyLineItems(from, to, shopifyBrandSub),
         query<{ sku: string; item_no: string }>("SELECT sku, item_no FROM shopify_item_map"),
       ]);
       const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
-      const byItemNo: Record<string, { egp: number; units: number }> = {};
+      const allItemNos: Record<string, { egp: number; units: number }> = {};
       for (const li of shopifyItems) {
         const itemNo = skuToItemNo[li.sku];
         if (!itemNo) continue;
-        if (!byItemNo[itemNo]) byItemNo[itemNo] = { egp: 0, units: 0 };
-        byItemNo[itemNo].egp += li.egp;
-        byItemNo[itemNo].units += li.quantity;
+        if (!allItemNos[itemNo]) allItemNos[itemNo] = { egp: 0, units: 0 };
+        allItemNos[itemNo].egp += li.egp;
+        allItemNos[itemNo].units += li.quantity;
       }
-      const itemNos = Object.keys(byItemNo);
-      if (itemNos.length === 0) {
-        subcatRows = [];
-      } else {
-        const inClause = itemNos.map(n => `'${n}'`).join(",");
-        const brandClause = brand ? `AND MAX([Item Category Code]) = '${brand}'` : "";
-        const itemMeta = await navQuery<{ item_no: string; category_code: string; subcat: string }>(`
-          SELECT [Item No_] AS item_no,
-            MAX([Item Category Code]) AS category_code,
-            MAX([Product Group Code]) AS subcat
-          FROM TransSalesEntry WHERE [Item No_] IN (${inClause})
+      if (Object.keys(allItemNos).length > 0 && category) {
+        const inClause = Object.keys(allItemNos).map(n => `'${n}'`).join(",");
+        const pgRows = await navQuery<{ item_no: string }>(`
+          SELECT [Item No_] AS item_no FROM TransSalesEntry
+          WHERE [Item No_] IN (${inClause}) AND [Product Group Code] = '${category}'
           GROUP BY [Item No_]
-          HAVING 1=1 ${brandClause}
         `, {});
-        const itemMetaMap = Object.fromEntries(itemMeta.map(r => [r.item_no, r]));
-        const bySubcat: Record<string, { egp: number; units: number; skus: Set<string> }> = {};
-        for (const [itemNo, vals] of Object.entries(byItemNo)) {
-          const meta = itemMetaMap[itemNo];
-          if (!meta) continue;
-          const sc = meta.subcat || "Other";
-          if (!bySubcat[sc]) bySubcat[sc] = { egp: 0, units: 0, skus: new Set() };
-          bySubcat[sc].egp += vals.egp;
-          bySubcat[sc].units += vals.units;
-          bySubcat[sc].skus.add(itemNo);
+        const valid = new Set(pgRows.map(r => r.item_no));
+        for (const [itemNo, vals] of Object.entries(allItemNos)) {
+          if (valid.has(itemNo)) byItemNo[itemNo] = vals;
         }
-        subcatRows = Object.entries(bySubcat).map(([sc, v]) => ({
-          subcat: sc,
-          egp: v.egp,
-          units: v.units,
-          skus: v.skus.size,
-        })).sort((a, b) => b.egp - a.egp);
+      } else {
+        byItemNo = allItemNos;
       }
     } else {
-      subcatRows = await navQuery<{ subcat: string; egp: number; units: number; skus: number }>(`
-        SELECT
-          CASE WHEN [Product Group Code] != '' THEN [Product Group Code] ELSE 'Other' END AS subcat,
+      const rows = await navQuery<{ item_no: string; egp: number; units: number }>(`
+        SELECT [Item No_] AS item_no,
           -SUM([Net Amount]+[VAT Amount]) AS egp,
-          -SUM([Quantity])                AS units,
-          COUNT(DISTINCT [Item No_])      AS skus
+          -SUM([Quantity])                AS units
         FROM TransSalesEntry
         WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-          AND [Store No_] = @store ${brandF}
-        GROUP BY [Product Group Code]
-        ORDER BY egp DESC
+          AND [Store No_] = @store ${catFilter}
+        GROUP BY [Item No_]
       `, { from, to, store });
+      for (const r of rows) byItemNo[r.item_no] = { egp: Number(r.egp), units: Number(r.units) };
     }
 
-    const total = subcatRows.reduce((s, r) => s + Number(r.egp), 0);
-    const drillRows = subcatRows.map(r => ({
-      subcat:    r.subcat,
-      egp:       Math.round(Number(r.egp)),
-      usd:       Math.round(Number(r.egp) / fx),
-      units:     Math.round(Number(r.units)),
-      skus:      Number(r.skus),
-      pct:       total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
-      _drill_url:   dUrl({ type: "items", store, brand, category: r.subcat }, from, to),
-      _drill_title: `${storeLabelSubcat} · ${brandLabel(brand)} · ${r.subcat} · Items`,
-    }));
+    // Step 2: get descriptions from PostgreSQL and parse sizes
+    const descRows = await query<{ item_no: string; description: string }>(
+      "SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"
+    );
+    const dMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
+
+    const bySize: Record<string, { egp: number; units: number; skus: Set<string> }> = {};
+    for (const [itemNo, vals] of Object.entries(byItemNo)) {
+      const sz = parseSize(dMap[itemNo] || "");
+      if (!bySize[sz]) bySize[sz] = { egp: 0, units: 0, skus: new Set() };
+      bySize[sz].egp += vals.egp;
+      bySize[sz].units += vals.units;
+      bySize[sz].skus.add(itemNo);
+    }
+
+    const total = Object.values(bySize).reduce((s, v) => s + v.egp, 0);
+    const sizeRows = Object.entries(bySize)
+      .map(([sz, v]) => ({
+        size:  sz,
+        egp:   Math.round(v.egp),
+        usd:   Math.round(v.egp / fx),
+        units: v.units,
+        skus:  v.skus.size,
+        pct:   total > 0 ? Math.round(v.egp * 100 / total) : 0,
+        _drill_url:   dUrl({ type: "items", store, category, size: sz }, from, to),
+        _drill_title: `${storeLabelSub} · ${category} · ${sz} · Items`,
+      }))
+      .sort((a, b) => {
+        if (a.size === "Other") return 1;
+        if (b.size === "Other") return -1;
+        return parseInt(a.size) - parseInt(b.size);
+      });
+
     return NextResponse.json({
       columns: [
-        { key: "subcat", label: "Sub-category",   type: "text" },
-        { key: "egp",    label: "Revenue",        type: "currency" },
-        { key: "units",  label: "Units",          type: "units" },
-        { key: "skus",   label: "SKUs",           type: "number" },
-        { key: "pct",    label: "% of category",  type: "number" },
+        { key: "size",  label: "Size",         type: "text" },
+        { key: "egp",   label: "Revenue",      type: "currency" },
+        { key: "units", label: "Units",        type: "units" },
+        { key: "skus",  label: "SKUs",         type: "number" },
+        { key: "pct",   label: "% of category",type: "number" },
       ],
-      rows: drillRows,
+      rows: sizeRows,
       summary: [
-        { label: "source",   value: storeLabelSubcat },
-        { label: "category", value: brandLabel(brand) },
+        { label: "source",   value: storeLabelSub },
+        { label: "category", value: category },
         { label: "revenue",  value: `EGP ${Math.round(total).toLocaleString()}` },
       ],
       fx,

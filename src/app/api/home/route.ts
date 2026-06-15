@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   const d14ago    = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const d8ago     = new Date(Date.now() - 8  * 86400000).toISOString().slice(0, 10);
 
-  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopify, shopifyItems, skuMap] = await Promise.all([
+  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopify, shopifyItems, skuMap, navMaxDateRows] = await Promise.all([
 
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
@@ -107,6 +107,11 @@ export async function GET(req: NextRequest) {
 
     query<{ sku: string; item_no: string }>(
       "SELECT sku, item_no FROM shopify_item_map"
+    ),
+
+    navQuery<{ max_date: string }>(
+      "SELECT MAX(CAST([Date] AS DATE)) AS max_date FROM TransSalesEntry",
+      {}
     ),
   ]);
 
@@ -226,6 +231,12 @@ export async function GET(req: NextRequest) {
     products,
     totalRev:   Math.round(totalRev + shopifyEgp),
     fx,
-    freshness:  [{ source: "nav", maxDate: today, lagDays: 0 }],
+    freshness:  [{
+      source:  "nav",
+      maxDate: navMaxDateRows[0]?.max_date?.slice(0,10) ?? "unknown",
+      lagDays: navMaxDateRows[0]?.max_date
+        ? Math.max(0, Math.round((Date.now() - new Date(navMaxDateRows[0].max_date).getTime()) / 86400000))
+        : null,
+    }],
   });
 }
