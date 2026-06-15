@@ -311,6 +311,12 @@ export default function MarketingPage() {
   // Expanded recommendation cards
   const [expandedRec, setExpandedRec] = useState<string | null>(null);
 
+  // Brief timestamp — client-only to avoid hydration mismatch
+  const [briefTime, setBriefTime] = useState<string>("");
+  useEffect(() => {
+    setBriefTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+  }, []);
+
   // Loading states
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
@@ -341,12 +347,18 @@ export default function MarketingPage() {
       .catch(() => setLoadingCampaigns(false));
   }, [range.from, range.to, platform]);
 
-  // ── Fetch recommendations ──
+  // ── Fetch recommendations (fall back to mock if API missing or malformed) ──
   useEffect(() => {
     fetch(`/api/marketing/recommendations?from=${range.from}&to=${range.to}`)
       .then(r => r.json())
-      .then(d => setRecommendations(d))
-      .catch(() => {});
+      .then(d => {
+        if (d && Array.isArray(d.alerts) && Array.isArray(d.doThis)) {
+          setRecommendations(d);
+        } else {
+          setRecommendations(mockRecommendations());
+        }
+      })
+      .catch(() => setRecommendations(mockRecommendations()));
   }, [range.from, range.to]);
 
   // ── Fetch ad sets when campaign selected ──
@@ -514,7 +526,7 @@ export default function MarketingPage() {
                 <Sparkles size={16} style={{ color: "#60A5FA" }} />
                 <span className="text-sm font-semibold" style={{ color: "#60A5FA" }}>AI Daily Brief</span>
                 <span className="ml-auto text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-                  Generated {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {briefTime ? `Generated ${briefTime}` : ""}
                 </span>
               </div>
               {recommendations ? (
@@ -542,11 +554,12 @@ export default function MarketingPage() {
               {recommendations ? (
                 <div className="space-y-2">
                   {recommendations.alerts.map((a, i) => {
-                    const cfg = {
+                    const cfg = ({
                       danger: { bg: "rgba(239,68,68,0.12)", color: "#EF4444", icon: <XCircle size={13} /> },
                       warning: { bg: "rgba(245,158,11,0.12)", color: "#F59E0B", icon: <AlertTriangle size={13} /> },
                       good: { bg: "rgba(16,185,129,0.12)", color: "#10B981", icon: <CheckCircle size={13} /> },
-                    }[a.type];
+                    } as Record<string, { bg: string; color: string; icon: React.ReactNode }>)[a.type]
+                      ?? { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", icon: <AlertCircle size={13} /> };
                     return (
                       <div
                         key={i}
