@@ -1,7 +1,7 @@
 export type ShopifyStore = "samsonite" | "american-tourister";
 
 interface ShopifyConfig {
-  store: string;
+  store: string; // full myshopify subdomain, e.g. "samsonite-eg-globosoft"
   token: string;
 }
 
@@ -23,7 +23,7 @@ export async function shopifyFetch<T>(
   endpoint: string
 ): Promise<T> {
   const { store, token } = getConfig(brand);
-  const res = await fetch(`https://${store}/admin/api/2024-01/${endpoint}`, {
+  const res = await fetch(`https://${store}.myshopify.com/admin/api/2024-01/${endpoint}`, {
     headers: {
       "X-Shopify-Access-Token": token,
       "Content-Type": "application/json",
@@ -43,4 +43,41 @@ export async function getShopifyOrders(brand: ShopifyStore, since?: string) {
 export async function getShopifyInventory(brand: ShopifyStore) {
   const data = await shopifyFetch<{ products: unknown[] }>(brand, "products.json?limit=250");
   return data.products;
+}
+
+interface ShopifyOrder {
+  created_at: string;
+  total_price: string;
+  currency: string;
+  financial_status: string;
+  line_items: { quantity: number; price: string }[];
+}
+
+/** Fetch revenue + units for both Shopify stores within a date range.
+ *  Returns EGP totals (Shopify already bills in EGP for these stores). */
+export async function getShopifyRevenue(from: string, to: string): Promise<{ egp: number; units: number }> {
+  const toDateTime = `${to}T23:59:59+03:00`;
+  const fromDateTime = `${from}T00:00:00+03:00`;
+
+  const fetchBrand = async (brand: ShopifyStore) => {
+    try {
+      const params = `?status=any&financial_status=paid&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
+      const data = await shopifyFetch<{ orders: ShopifyOrder[] }>(brand, `orders.json${params}`);
+      return data.orders ?? [];
+    } catch {
+      return [];
+    }
+  };
+
+  const [samOrders, amtOrders] = await Promise.all([
+    fetchBrand("samsonite"),
+    fetchBrand("american-tourister"),
+  ]);
+
+  let egp = 0, units = 0;
+  for (const o of [...samOrders, ...amtOrders]) {
+    egp += parseFloat(o.total_price);
+    units += o.line_items.reduce((s, i) => s + i.quantity, 0);
+  }
+  return { egp, units };
 }

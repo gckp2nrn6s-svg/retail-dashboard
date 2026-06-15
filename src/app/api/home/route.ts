@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
+import { getShopifyRevenue } from "@/lib/shopify";
 
 const STORE_NAMES: Record<string, string> = {
   ALMAZA:      "Almaza City Center",
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
   const d14ago    = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const d8ago     = new Date(Date.now() - 8  * 86400000).toISOString().slice(0, 10);
 
-  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows] = await Promise.all([
+  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopify] = await Promise.all([
 
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
@@ -98,12 +99,14 @@ export async function GET(req: NextRequest) {
     query<{ item_no: string; description: string }>(
       "SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"
     ),
+
+    getShopifyRevenue(from, to),
   ]);
 
   const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
 
   const fx       = parseFloat(fxRow[0]?.egp_per_usd || "50");
-  const totalRev = storeRows.reduce((s, r) => s + Number(r.egp), 0);
+  const totalRev = storeRows.reduce((s, r) => s + Number(r.egp), 0); // NAV only, used for per-store pct
 
   const wowMap = Object.fromEntries(storeWoW.map(r => {
     const t = Number(r.this7), p = Number(r.prev7);
@@ -122,15 +125,24 @@ export async function GET(req: NextRequest) {
     this7: Math.round(wowMap[r.store]?.this7 ?? 0),
   }));
 
+  const shopifyEgp   = Math.round(shopify.egp);
+  const shopifyUnits = Math.round(shopify.units);
+  const grandTotal   = totalRev + shopifyEgp;
+
   const channelTotals = ["Retail","Ecom","B2B"].map(grp => {
     const filtered = stores.filter(s => s.group === grp);
-    const egp      = filtered.reduce((s, r) => s + r.egp, 0);
+    const navEgp   = filtered.reduce((s, r) => s + r.egp, 0);
+    // Shopify own-website orders are Ecom, not in NAV
+    const egp      = grp === "Ecom" ? navEgp + shopifyEgp : navEgp;
+    const units    = grp === "Ecom"
+      ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
+      : filtered.reduce((s, r) => s + r.units, 0);
     return {
       group:      grp,
       egp,
       usd:        Math.round(egp / fx),
-      units:      filtered.reduce((s, r) => s + r.units, 0),
-      pct:        totalRev > 0 ? Math.round(egp * 100 / totalRev) : 0,
+      units,
+      pct:        grandTotal > 0 ? Math.round(egp * 100 / grandTotal) : 0,
       storeCount: filtered.length,
     };
   });
@@ -164,10 +176,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     stores,
     channelTotals,
-    brands:     [],   // brand data not in NAV, kept for schema compat
+    brands:     [],
     categories,
     products,
-    totalRev:   Math.round(totalRev),
+    totalRev:   Math.round(totalRev + shopifyEgp),
     fx,
     freshness:  [{ source: "nav", maxDate: today, lagDays: 0 }],
   });

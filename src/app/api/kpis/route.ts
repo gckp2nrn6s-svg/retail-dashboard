@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
+import { getShopifyRevenue } from "@/lib/shopify";
 
 function safeDate(val: string | null, fallback: string): string {
   if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
   // Sparkline: daily revenue for last 30 days
   const sparkStart = d30from;
 
-  const [current, previous, yest_row, d7_row, d30_row, yoy_row, fxRow, storeCount, sparkRows] = await Promise.all([
+  const [current, previous, yest_row, d7_row, d30_row, yoy_row, fxRow, storeCount, sparkRows, shopifyCurrent, shopifyPrev] = await Promise.all([
     navQuery<{ revenue: number; units: number }>(`
       SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units
       FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
@@ -78,12 +79,15 @@ export async function GET(req: NextRequest) {
       FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @sparkStart AND @today
       GROUP BY CAST([Date] AS DATE) ORDER BY day
     `, { sparkStart, today }),
+
+    getShopifyRevenue(from, to),
+    getShopifyRevenue(prevFrom, prevTo),
   ]);
 
-  const rev       = Number(current[0]?.revenue  ?? 0);
-  const units     = Number(current[0]?.units    ?? 0);
-  const prevRev   = Number(previous[0]?.revenue ?? 0);
-  const prevUnits = Number(previous[0]?.units   ?? 0);
+  const rev       = Number(current[0]?.revenue  ?? 0) + (shopifyCurrent.egp);
+  const units     = Number(current[0]?.units    ?? 0) + (shopifyCurrent.units);
+  const prevRev   = Number(previous[0]?.revenue ?? 0) + (shopifyPrev.egp);
+  const prevUnits = Number(previous[0]?.units   ?? 0) + (shopifyPrev.units);
   const yestRev   = Number(yest_row[0]?.revenue ?? 0);
   const d7Rev     = Number(d7_row[0]?.revenue   ?? 0); // daily avg
   const d30Rev    = Number(d30_row[0]?.revenue  ?? 0); // daily avg
@@ -94,10 +98,14 @@ export async function GET(req: NextRequest) {
 
   // Pace: daily run-rate vs estimated daily target (30d avg * 1.1 as proxy)
   const dailyTarget = d30Rev * 1.1;
-  const todayRev    = Number((await navQuery<{ revenue: number }>(`
-    SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry
-    WHERE CAST([Date] AS DATE) = @today
-  `, { today }))[0]?.revenue ?? 0);
+  const [todayNavRow, shopifyToday] = await Promise.all([
+    navQuery<{ revenue: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) = @today
+    `, { today }),
+    getShopifyRevenue(today, today),
+  ]);
+  const todayRev = Number(todayNavRow[0]?.revenue ?? 0) + shopifyToday.egp;
   const paceToTarget = dailyTarget > 0 ? (todayRev / dailyTarget) * 100 : null;
 
   const sparkline = sparkRows.map(r => Number(r.revenue));
