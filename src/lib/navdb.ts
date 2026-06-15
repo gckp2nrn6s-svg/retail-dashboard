@@ -31,19 +31,27 @@ export async function navQuery<T = Record<string, unknown>>(
 ): Promise<T[]> {
   // ── Proxy mode (Railway → local machine) ──────────────────────────────
   if (PROXY_URL) {
-    const res = await fetch(`${PROXY_URL}/query`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-proxy-secret": PROXY_SECRET,
-      },
-      body: JSON.stringify({ query, params }),
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`NAV proxy error ${res.status}: ${err}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    let res: Response;
+    try {
+      res = await fetch(`${PROXY_URL}/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-proxy-secret": PROXY_SECRET,
+        },
+        body: JSON.stringify({ query, params }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
     }
-    const data = await res.json() as { rows: T[]; error?: string };
+    if (!res!.ok) {
+      const err = await res!.text();
+      throw new Error(`NAV proxy error ${res!.status}: ${err}`);
+    }
+    const data = await res!.json() as { rows: T[]; error?: string };
     if (data.error) throw new Error(`NAV proxy query error: ${data.error}`);
     return data.rows;
   }

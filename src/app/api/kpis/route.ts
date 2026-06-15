@@ -34,7 +34,8 @@ export async function GET(req: NextRequest) {
   // Sparkline: daily revenue for last 30 days
   const sparkStart = d30from;
 
-  const [current, previous, yest_row, d7_row, d30_row, yoy_row, fxRow, storeCount, sparkRows, shopifyCurrent, shopifyPrev] = await Promise.all([
+  // All queries in ONE parallel batch — no sequential round-trips
+  const [current, previous, yest_row, d7_row, d30_row, yoy_row, fxRow, storeCount, sparkRows, todayNavRow, shopifyCurrent, shopifyPrev, shopifyToday] = await Promise.all([
     navQuery<{ revenue: number; units: number }>(`
       SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units
       FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
@@ -80,8 +81,14 @@ export async function GET(req: NextRequest) {
       GROUP BY CAST([Date] AS DATE) ORDER BY day
     `, { sparkStart, today }),
 
+    navQuery<{ revenue: number }>(`
+      SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) = @today
+    `, { today }),
+
     getShopifyRevenue(from, to),
     getShopifyRevenue(prevFrom, prevTo),
+    getShopifyRevenue(today, today),
   ]);
 
   const rev       = Number(current[0]?.revenue  ?? 0) + (shopifyCurrent.egp);
@@ -96,15 +103,7 @@ export async function GET(req: NextRequest) {
 
   function pct(a: number, b: number) { return b > 0 ? ((a - b) / b) * 100 : 0; }
 
-  // Pace: daily run-rate vs estimated daily target (30d avg * 1.1 as proxy)
   const dailyTarget = d30Rev * 1.1;
-  const [todayNavRow, shopifyToday] = await Promise.all([
-    navQuery<{ revenue: number }>(`
-      SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) = @today
-    `, { today }),
-    getShopifyRevenue(today, today),
-  ]);
   const todayRev = Number(todayNavRow[0]?.revenue ?? 0) + shopifyToday.egp;
   const paceToTarget = dailyTarget > 0 ? (todayRev / dailyTarget) * 100 : null;
 

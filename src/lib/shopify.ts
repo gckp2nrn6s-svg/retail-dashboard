@@ -114,6 +114,30 @@ export interface ShopifyLineItemRow {
   egp: number; // total for this line (price × qty)
 }
 
+/**
+ * Combined fetch: revenue + units + line items in 2 API calls instead of 4.
+ * Use on routes that need both the revenue total and per-item breakdown.
+ */
+export async function getShopifyRevenueAndItems(
+  from: string,
+  to: string
+): Promise<{ egp: number; units: number; items: ShopifyLineItemRow[] }> {
+  const [samOrders, amtOrders] = await Promise.all([
+    fetchBrandOrders("samsonite", from, to),
+    fetchBrandOrders("american-tourister", from, to),
+  ]);
+  const sam = ordersToRevenue(samOrders);
+  const amt = ordersToRevenue(amtOrders);
+  const items: ShopifyLineItemRow[] = [];
+  for (const o of [...samOrders, ...amtOrders]) {
+    for (const li of o.line_items) {
+      if (!li.sku) continue;
+      items.push({ sku: li.sku.trim(), title: li.title, quantity: li.quantity, egp: parseFloat(li.price) * li.quantity });
+    }
+  }
+  return { egp: sam.egp + amt.egp, units: sam.units + amt.units, items };
+}
+
 /** Fetch all line items. Pass brand to restrict to one store ("samsonite" | "american-tourister"). */
 export async function getShopifyLineItems(
   from: string,

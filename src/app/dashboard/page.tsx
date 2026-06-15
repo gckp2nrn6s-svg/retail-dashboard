@@ -279,8 +279,8 @@ export default function HomePage() {
 
         {/* Sub KPIs */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "20px 24px 0" }} className="kpi-sub-grid">
-          <MiniKpi label="Units Sold"    value={loading ? "—" : kpi!.units.toLocaleString()} delta={kpi?.unitsChange ?? null} dark onClick={() => openDrill({ title: `Daily Units · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })} />
-          <MiniKpi label="Avg Ticket"    value={loading ? "—" : fmtKpi(kpi!.avgTicket)} sub={loading ? "" : altKpi(kpi!.avgTicket)} dark onClick={() => openDrill({ title: `Top Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) })} />
+          <MiniKpi label="Units Sold"    value={loading || !kpi ? "—" : kpi.units.toLocaleString()} delta={kpi?.unitsChange ?? null} dark onClick={() => openDrill({ title: `Daily Units · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })} />
+          <MiniKpi label="Avg Ticket"    value={loading || !kpi ? "—" : fmtKpi(kpi.avgTicket)} sub={loading || !kpi ? "" : altKpi(kpi.avgTicket)} dark onClick={() => openDrill({ title: `Top Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) })} />
           <MiniKpi label="Active Stores" value={loading ? "—" : String(kpi?.activeStores ?? "—")} sub={loading ? "" : `$1 = ${(kpi?.fx ?? 52).toFixed(1)} EGP`} dark onClick={() => openDrill({ title: `All Channels · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "all" }) })} />
         </div>
 

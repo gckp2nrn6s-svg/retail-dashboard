@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
-import { getShopifyRevenue, getShopifyLineItems } from "@/lib/shopify";
+import { getShopifyRevenueAndItems } from "@/lib/shopify";
 
 const STORE_NAMES: Record<string, string> = {
   ALMAZA:      "Almaza City Center",
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   const d14ago    = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
   const d8ago     = new Date(Date.now() - 8  * 86400000).toISOString().slice(0, 10);
 
-  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopify, shopifyItems, skuMap, navMaxDateRows] = await Promise.all([
+  const [fxRow, storeRows, topProducts, catRows, storeWoW, descRows, shopifyData, skuMap, navMaxDateRows] = await Promise.all([
 
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
@@ -101,9 +101,7 @@ export async function GET(req: NextRequest) {
       "SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"
     ),
 
-    getShopifyRevenue(from, to),
-
-    getShopifyLineItems(from, to),
+    getShopifyRevenueAndItems(from, to),
 
     query<{ sku: string; item_no: string }>(
       "SELECT sku, item_no FROM shopify_item_map"
@@ -116,6 +114,9 @@ export async function GET(req: NextRequest) {
   ]);
 
   const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
+
+  const shopify = shopifyData;
+  const shopifyItems = shopifyData.items;
 
   // Build Shopify item_no → { egp, units } from line items via shopify_item_map
   const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
