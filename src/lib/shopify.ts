@@ -61,9 +61,10 @@ export async function getShopifyRevenue(from: string, to: string): Promise<{ egp
 
   const fetchBrand = async (brand: ShopifyStore) => {
     try {
-      const params = `?status=any&financial_status=paid&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
+      // Include paid + pending (COD/bank transfer); exclude voided (cancelled) and refunded
+      const params = `?status=any&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
       const data = await shopifyFetch<{ orders: ShopifyOrder[] }>(brand, `orders.json${params}`);
-      return data.orders ?? [];
+      return (data.orders ?? []).filter(o => o.financial_status !== "voided" && o.financial_status !== "refunded");
     } catch {
       return [];
     }

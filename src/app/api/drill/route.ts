@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
+import { getShopifyRevenue } from "@/lib/shopify";
 
 const RETAIL_STORES = ["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"];
 const ECOM_STORES   = ["ONLINE","NOON","JUMIA"];
@@ -227,20 +228,27 @@ export async function GET(req: NextRequest) {
   // ── Channel → stores breakdown ───────────────────────────────────────────────
   if (type === "channel") {
     const cf = channelInClause(channel);
-    const rows = await navQuery<{store_code:string;egp:number;units:number;days:number}>(`
-      SELECT
-        [Store No_]                     AS store_code,
-        -SUM([Net Amount]+[VAT Amount]) AS egp,
-        -SUM([Quantity])                AS units,
-        COUNT(DISTINCT CAST([Date] AS DATE)) AS days
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${cf}
-      GROUP BY [Store No_]
-      ORDER BY egp DESC
-    `, { from, to });
+    const [rows, shopify] = await Promise.all([
+      navQuery<{store_code:string;egp:number;units:number;days:number}>(`
+        SELECT
+          [Store No_]                     AS store_code,
+          -SUM([Net Amount]+[VAT Amount]) AS egp,
+          -SUM([Quantity])                AS units,
+          COUNT(DISTINCT CAST([Date] AS DATE)) AS days
+        FROM TransSalesEntry
+        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${cf}
+        GROUP BY [Store No_]
+        ORDER BY egp DESC
+      `, { from, to }),
+      channel === "Ecom" ? getShopifyRevenue(from, to) : Promise.resolve({ egp: 0, units: 0 }),
+    ]);
 
-    const total = rows.reduce((s,r) => s + Number(r.egp), 0);
-    const drillRows = rows.map(r => ({
+    const navTotal = rows.reduce((s,r) => s + Number(r.egp), 0);
+    const shopifyEgp = Math.round(shopify.egp);
+    const shopifyUnits = Math.round(shopify.units);
+    const total = navTotal + shopifyEgp;
+
+    const drillRows: object[] = rows.map(r => ({
       store_display: sn(r.store_code),
       egp:           Math.round(Number(r.egp)),
       usd:           Math.round(Number(r.egp) / fx),
@@ -250,6 +258,21 @@ export async function GET(req: NextRequest) {
       _drill_url:    dUrl({type:"store", store:r.store_code}, from, to),
       _drill_title:  `${sn(r.store_code)} · Top Products`,
     }));
+
+    // Add Shopify own-website as a synthetic row for Ecom channel
+    if (channel === "Ecom" && shopifyEgp > 0) {
+      drillRows.push({
+        store_display: "Own Website (Shopify)",
+        egp:           shopifyEgp,
+        usd:           Math.round(shopifyEgp / fx),
+        units:         shopifyUnits,
+        days:          null,
+        pct:           total > 0 ? Math.round(shopifyEgp*100/total) : 0,
+        _drill_url:    null,
+        _drill_title:  "Own Website (Shopify)",
+      });
+    }
+
     return NextResponse.json({
       columns:[
         {key:"store_display",label:"Store",        type:"text"},
@@ -260,7 +283,7 @@ export async function GET(req: NextRequest) {
       ],
       rows: drillRows,
       summary:[
-        {label:"stores", value:String(rows.length)},
+        {label:"stores", value:String(rows.length + (channel === "Ecom" && shopifyEgp > 0 ? 1 : 0))},
         {label:"revenue",value:`EGP ${Math.round(total).toLocaleString()}`},
       ],
       fx,
