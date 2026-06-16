@@ -476,34 +476,81 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // ── Category → products ──────────────────────────────────────────────────────
+  // ── Category → products (cross-channel, incl. own website) ───────────────────
   if (type === "category") {
     const catF   = category ? `AND [Product Group Code] = '${category}'` : "";
     const brandF = brand    ? `AND [Item Category Code] = '${brand}'`    : "";
-    const rows = await navQuery<{item_no:string;description:string;brand:string;category:string;egp:number;units:number}>(`
-      SELECT TOP 200
-        [Item No_]                     AS item_no,
-        [Item No_] AS description,
-        MAX([Item Category Code])      AS brand,
-        MAX([Product Group Code])      AS category,
-        -SUM([Net Amount]+[VAT Amount]) AS egp,
-        -SUM([Quantity])               AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${catF} ${brandF}
-      GROUP BY [Item No_]
-      ORDER BY egp DESC
-    `, { from, to });
+    const [rows, shopItems, skuMap] = await Promise.all([
+      navQuery<{item_no:string;description:string;brand:string;category:string;egp:number;units:number}>(`
+        SELECT TOP 200
+          [Item No_]                     AS item_no,
+          [Item No_] AS description,
+          MAX([Item Category Code])      AS brand,
+          MAX([Product Group Code])      AS category,
+          -SUM([Net Amount]+[VAT Amount]) AS egp,
+          -SUM([Quantity])               AS units
+        FROM TransSalesEntry
+        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${catF} ${brandF}
+        GROUP BY [Item No_]
+        ORDER BY egp DESC
+      `, { from, to }),
+      getShopifyLineItems(from, to),
+      query<{sku:string;item_no:string}>("SELECT sku, item_no FROM shopify_item_map"),
+    ]);
 
-    const drillRows = rows.map(r => ({
-      ...r,
-      description:  descMap[r.item_no] || r.item_no,
-      egp:   Math.round(Number(r.egp)),
-      usd:   Math.round(Number(r.egp) / fx),
-      units: Math.round(Number(r.units)),
-      brand: brandLabel(r.brand),
-      _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
-      _drill_title: descMap[r.item_no] || r.item_no,
-    }));
+    // Aggregate Shopify line items by NAV item_no
+    const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
+    const shopByItem: Record<string, { egp:number; units:number }> = {};
+    for (const li of shopItems) {
+      const itemNo = skuToItemNo[li.sku];
+      if (!itemNo) continue;
+      if (!shopByItem[itemNo]) shopByItem[itemNo] = { egp:0, units:0 };
+      shopByItem[itemNo].egp += li.egp; shopByItem[itemNo].units += li.quantity;
+    }
+    // Keep only Shopify items that belong to this category/brand (via NAV metadata)
+    const shopItemNos = Object.keys(shopByItem);
+    let validShop = new Set<string>();
+    if (shopItemNos.length > 0 && (category || brand)) {
+      const inClause = shopItemNos.map(n => `'${n.replace(/'/g,"''")}'`).join(",");
+      const pgRows = await navQuery<{item_no:string}>(`
+        SELECT [Item No_] AS item_no FROM TransSalesEntry
+        WHERE [Item No_] IN (${inClause}) ${catF} ${brandF}
+        GROUP BY [Item No_]
+      `, {});
+      validShop = new Set(pgRows.map(r => r.item_no));
+    } else {
+      validShop = new Set(shopItemNos); // no filter → all map
+    }
+
+    const navItemSet = new Set(rows.map(r => r.item_no));
+    const merged = rows.map(r => {
+      const s = shopByItem[r.item_no];
+      const egp = Number(r.egp) + (s ? s.egp : 0);
+      const units = Number(r.units) + (s ? s.units : 0);
+      return {
+        item_no: r.item_no,
+        description: descMap[r.item_no] || r.item_no,
+        egp: Math.round(egp), usd: Math.round(egp / fx), units: Math.round(units),
+        brand: brandLabel(r.brand),
+        _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
+        _drill_title: descMap[r.item_no] || r.item_no,
+      };
+    });
+    // Shopify-only items in this category (not in NAV results)
+    for (const itemNo of shopItemNos) {
+      if (navItemSet.has(itemNo) || !validShop.has(itemNo)) continue;
+      const s = shopByItem[itemNo];
+      if (Math.round(s.egp) < 100) continue;
+      merged.push({
+        item_no: itemNo,
+        description: descMap[itemNo] || itemNo,
+        egp: Math.round(s.egp), usd: Math.round(s.egp / fx), units: Math.round(s.units),
+        brand: "",
+        _drill_url:   dUrl({type:"item", item:itemNo}, from, to),
+        _drill_title: descMap[itemNo] || itemNo,
+      });
+    }
+    const drillRows = merged.sort((a,b) => b.egp - a.egp);
     return NextResponse.json({
       columns:[
         {key:"description",label:"Product",  type:"text"},
@@ -512,7 +559,7 @@ export async function GET(req: NextRequest) {
         {key:"units",      label:"Units",    type:"units"},
       ],
       rows: drillRows,
-      summary:[{label:"SKUs",value:String(rows.length)}],
+      summary:[{label:"SKUs",value:String(drillRows.length)}],
       fx,
     });
   }
