@@ -554,9 +554,9 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // ── Item → which stores sold it ──────────────────────────────────────────────
+  // ── Item → which stores sold it (incl. own website) ──────────────────────────
   if (type === "item") {
-    const [metaRows, storeRows] = await Promise.all([
+    const [metaRows, storeRows, shopItems, skuRows] = await Promise.all([
       navQuery<{description:string;brand:string;category:string}>(`
         SELECT TOP 1
           [Item No_] AS description,
@@ -576,20 +576,41 @@ export async function GET(req: NextRequest) {
         GROUP BY [Store No_]
         ORDER BY egp DESC
       `, { from, to, itemNo }),
+
+      getShopifyLineItems(from, to),
+      query<{sku:string}>("SELECT sku FROM shopify_item_map WHERE item_no = $1", [itemNo]),
     ]);
 
     const meta = metaRows[0] ?? {description:itemNo, brand:"", category:""};
-    const totalRev = storeRows.reduce((s,r) => s + Number(r.egp), 0);
 
     const drillRows = storeRows.map(r => ({
       store_display: sn(r.store_code),
       egp:           Math.round(Number(r.egp)),
       usd:           Math.round(Number(r.egp) / fx),
       units:         Math.round(Number(r.units)),
-      days:          Number(r.days),
-      _drill_url:    dUrl({type:"item-store", item:itemNo, store:r.store_code}, from, to),
+      days:          Number(r.days) as number | null,
+      _drill_url:    dUrl({type:"item-store", item:itemNo, store:r.store_code}, from, to) as string | undefined,
       _drill_title:  `${sn(r.store_code)} · ${meta.description || itemNo} · Daily`,
     }));
+
+    // Own-website (Shopify) sales of this item — NAV doesn't carry these.
+    const itemSkus = new Set(skuRows.map(r => r.sku));
+    let shopEgp = 0, shopUnits = 0;
+    for (const li of shopItems) if (itemSkus.has(li.sku)) { shopEgp += li.egp; shopUnits += li.quantity; }
+    if (Math.round(shopEgp) > 0) {
+      drillRows.push({
+        store_display: "Own Website",
+        egp:           Math.round(shopEgp),
+        usd:           Math.round(shopEgp / fx),
+        units:         Math.round(shopUnits),
+        days:          null,
+        _drill_url:    undefined, // item-store daily is NAV-only
+        _drill_title:  "",
+      });
+      drillRows.sort((a,b) => b.egp - a.egp);
+    }
+
+    const totalRev = drillRows.reduce((s,r) => s + r.egp, 0);
     return NextResponse.json({
       columns:[
         {key:"store_display",label:"Store",       type:"text"},
@@ -604,7 +625,7 @@ export async function GET(req: NextRequest) {
         {label:"category",value:meta.category || "—"},
         {label:"revenue", value:`EGP ${Math.round(totalRev).toLocaleString()}`},
         {label:"units",   value:drillRows.reduce((s,r)=>s+r.units,0).toLocaleString()},
-        {label:"stores",  value:String(storeRows.length)},
+        {label:"stores",  value:String(drillRows.length)},
       ],
       fx,
     });
