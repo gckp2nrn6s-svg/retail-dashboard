@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useCurrency, fmt } from "@/components/CurrencyToggle";
@@ -61,30 +61,38 @@ function StockContent() {
   const [loading, setLoading] = useState(true);
   const [catFilter, setCatFilter] = useState("");
 
+  const reqIdRef = useRef(0); // discard stale responses when switching tab/range/filter
+
   const loadOverview = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
     const r = await fetch("/api/stock/overview").then((x) => x.json());
+    if (myReq !== reqIdRef.current) return;
     setOverview(r);
   }, []);
 
   const loadMovers = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
     setLoading(true);
     try {
       const type = tab === "low" ? "low" : tab === "slow" ? "slow" : "fast";
       const url = `/api/stock/movers?type=${type}&range=${range}${catFilter ? `&category=${encodeURIComponent(catFilter)}` : ""}`;
       const r = await fetch(url).then((x) => x.json());
+      if (myReq !== reqIdRef.current) return;
       setMovers(r.items || []);
     } finally {
-      setLoading(false);
+      if (myReq === reqIdRef.current) setLoading(false);
     }
   }, [tab, range, catFilter]);
 
   const loadReorder = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
     setLoading(true);
     try {
       const r = await fetch("/api/stock/reorder").then(x => x.json());
+      if (myReq !== reqIdRef.current) return;
       setReorderItems(r.items || []);
     } finally {
-      setLoading(false);
+      if (myReq === reqIdRef.current) setLoading(false);
     }
   }, []);
 

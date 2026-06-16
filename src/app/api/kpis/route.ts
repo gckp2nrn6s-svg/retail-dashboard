@@ -50,15 +50,15 @@ export async function GET(req: NextRequest) {
     const [navResult, pgResult, shopCurResult, shopPrevResult, shopTodayResult] = await Promise.all([
       safeSource<NavBundle>("nav", async () => {
         const [current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow] = await Promise.all([
-          navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to`, { from, to }),
-          navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @prevFrom AND @prevTo`, { prevFrom, prevTo }),
-          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @yest`, { yest }),
-          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount])/7.0 AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @d7from AND @today`, { d7from, today }),
-          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount])/30.0 AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @d30from AND @today`, { d30from, today }),
-          navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @yoy_from AND @yoy_to`, { yoy_from, yoy_to }),
-          navQuery<CountRow>(`SELECT COUNT(DISTINCT [Store No_]) AS n FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to`, { from, to }),
-          navQuery<DayRev>(`SELECT CAST([Date] AS DATE) AS day, -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @sparkStart AND @today GROUP BY CAST([Date] AS DATE) ORDER BY day`, { sparkStart, today }),
-          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @today`, { today }),
+          navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'`, { from, to }),
+          navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @prevFrom AND @prevTo AND [Store No_] != 'ONLINE'`, { prevFrom, prevTo }),
+          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @yest AND [Store No_] != 'ONLINE'`, { yest }),
+          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount])/7.0 AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @d7from AND @today AND [Store No_] != 'ONLINE'`, { d7from, today }),
+          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount])/30.0 AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @d30from AND @today AND [Store No_] != 'ONLINE'`, { d30from, today }),
+          navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @yoy_from AND @yoy_to AND [Store No_] != 'ONLINE'`, { yoy_from, yoy_to }),
+          navQuery<CountRow>(`SELECT COUNT(DISTINCT [Store No_]) AS n FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'`, { from, to }),
+          navQuery<DayRev>(`SELECT CAST([Date] AS DATE) AS day, -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @sparkStart AND @today AND [Store No_] != 'ONLINE' GROUP BY CAST([Date] AS DATE) ORDER BY day`, { sparkStart, today }),
+          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @today AND [Store No_] != 'ONLINE'`, { today }),
         ]);
         return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow };
       }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [] }),

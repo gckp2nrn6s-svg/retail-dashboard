@@ -14,6 +14,7 @@ export async function fetchNavVelocity(days: number): Promise<Map<string, ItemVe
       -SUM([Net Amount]+[VAT Amount]) AS revenue
     FROM TransSalesEntry
     WHERE CAST([Date] AS DATE) >= CAST(DATEADD(day,-${days},GETDATE()) AS DATE)
+      AND [Store No_] != 'ONLINE'
     GROUP BY [Item No_]
   `);
   const map = new Map<string, ItemVelocity>();

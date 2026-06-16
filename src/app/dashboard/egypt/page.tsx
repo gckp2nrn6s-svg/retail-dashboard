@@ -53,8 +53,10 @@ export default function EgyptPage() {
   const [tab, setTab] = useState<"overview" | "stock" | "stores" | "trend">("overview");
 
   useEffect(() => {
+    let ignore = false; // discard a stale response if the range changes mid-flight
     setData(null);
-    fetch(`/api/egypt?from=${range.from}&to=${range.to}`).then(r => r.json()).then(setData);
+    fetch(`/api/egypt?from=${range.from}&to=${range.to}`).then(r => r.json()).then(d => { if (!ignore) setData(d); });
+    return () => { ignore = true; };
   }, [range.from, range.to]);
 
   const isAll = activeLine === "ALL";

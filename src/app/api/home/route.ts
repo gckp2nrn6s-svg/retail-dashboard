@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
               -SUM([Net Amount] + [VAT Amount]) AS egp,
               -SUM([Quantity])                  AS units
             FROM TransSalesEntry
-            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'
             GROUP BY [Item No_]
             ORDER BY egp DESC
           `, { from, to }),
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
               -SUM([Net Amount] + [VAT Amount]) AS egp,
               -SUM([Quantity])   AS units
             FROM TransSalesEntry
-            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'
             GROUP BY [Item Category Code]
             ORDER BY egp DESC
           `, { from, to }),
@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
               -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN @d7ago AND @today THEN [Net Amount] + [VAT Amount] ELSE 0 END) AS this7,
               -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN @d14ago AND @d8ago THEN [Net Amount] + [VAT Amount] ELSE 0 END) AS prev7
             FROM TransSalesEntry
-            WHERE CAST([Date] AS DATE) >= @d14ago
+            WHERE CAST([Date] AS DATE) >= @d14ago AND [Store No_] != 'ONLINE'
             GROUP BY [Store No_]
           `, { today, d7ago, d14ago, d8ago }),
           navQuery<MaxDateRow>(

@@ -69,6 +69,7 @@ async function buildInsights() {
           ELSE 0 END AS pct_change
       FROM TransSalesEntry
       WHERE CAST([Date] AS DATE) >= CAST(DATEADD(day,-14,GETDATE()) AS DATE)
+        AND [Store No_] != 'ONLINE'
       GROUP BY [Item No_]
       HAVING -SUM(CASE WHEN CAST([Date] AS DATE) >= CAST(DATEADD(day,-7,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END) >= 3
         AND -SUM(CASE WHEN CAST([Date] AS DATE) BETWEEN CAST(DATEADD(day,-14,GETDATE()) AS DATE) AND CAST(DATEADD(day,-8,GETDATE()) AS DATE) THEN [Quantity] ELSE 0 END) > 0
@@ -144,6 +145,7 @@ async function buildInsights() {
         -SUM([Quantity])                AS units_30d
       FROM TransSalesEntry
       WHERE CAST([Date] AS DATE) >= CAST(DATEADD(day,-30,GETDATE()) AS DATE)
+        AND [Store No_] != 'ONLINE'
       GROUP BY [Item No_]
       ORDER BY revenue_30d DESC
     `),

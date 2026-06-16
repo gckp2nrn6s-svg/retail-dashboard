@@ -66,18 +66,21 @@ export default function CataloguePage() {
     return `/api/catalogue?${params}`;
   }, [search, category, brand, colour, size, stock, sort]);
 
+  const reqIdRef = useRef(0); // discard out-of-order responses (fast typing / filter changes)
+
   const load = useCallback(async (p = 1, append = false) => {
+    const myReq = ++reqIdRef.current;
     if (append) setAppending(true);
     else setLoading(true);
     try {
       const res = await fetch(buildUrl(p)).then((x) => x.json());
+      if (myReq !== reqIdRef.current) return; // a newer search/filter superseded this
       setProducts(append ? (prev) => [...prev, ...res.items] : res.items);
       setTotal(res.total);
       setPage(p);
       setPages(res.pages);
     } finally {
-      setLoading(false);
-      setAppending(false);
+      if (myReq === reqIdRef.current) { setLoading(false); setAppending(false); }
     }
   }, [buildUrl]);
 

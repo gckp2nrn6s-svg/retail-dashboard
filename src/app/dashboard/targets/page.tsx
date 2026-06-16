@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useCurrency } from "@/components/CurrencyToggle";
 import { RadialBarChart, RadialBar, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -157,9 +157,13 @@ export default function TargetsPage() {
   const [data,  setData]  = useState<TargetsData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const reqIdRef = useRef(0); // discard a stale response when year/month changes mid-flight
+
   const load = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
     setLoading(true);
     const r = await fetch(`/api/targets?year=${year}&month=${month}`).then(x => x.json());
+    if (myReq !== reqIdRef.current) return;
     setData(r);
     setLoading(false);
   }, [year, month]);

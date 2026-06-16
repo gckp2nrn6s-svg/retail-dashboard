@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
             -SUM([Net Amount] + [VAT Amount]) AS revenue,
             -SUM([Quantity])   AS units
           FROM TransSalesEntry
-          WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+          WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'
           GROUP BY [Item Category Code]
           ORDER BY revenue DESC
         `, { from, to }),

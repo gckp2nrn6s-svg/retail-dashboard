@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
           -SUM([Quantity])   AS units
         FROM TransSalesEntry
         WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+          AND [Store No_] != 'ONLINE'
           ${storeWhere}
         GROUP BY ${truncExpr}
         ORDER BY ${truncExpr}

@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
           -SUM([Quantity])                AS units,
           COUNT(DISTINCT [Store No_])     AS stores
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF}
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF}
         GROUP BY CAST([Date] AS DATE)
         ORDER BY CAST([Date] AS DATE) DESC
       `, { from, to }),
@@ -180,7 +180,7 @@ export async function GET(req: NextRequest) {
           -SUM([Net Amount]+[VAT Amount]) AS egp,
           -SUM([Quantity])               AS units
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) = @d ${storeF}
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) = @d ${storeF}
         GROUP BY [Item No_], [Store No_]
         ORDER BY egp DESC
       `, { d }),
@@ -254,7 +254,7 @@ export async function GET(req: NextRequest) {
           -SUM([Quantity])                AS units,
           COUNT(DISTINCT CAST([Date] AS DATE)) AS days
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to
         GROUP BY [Store No_]
         ORDER BY egp DESC
       `, { from, to }),
@@ -327,7 +327,7 @@ export async function GET(req: NextRequest) {
           -SUM([Quantity])                AS units,
           COUNT(DISTINCT CAST([Date] AS DATE)) AS days
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${cf}
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to ${cf}
         GROUP BY [Store No_]
         ORDER BY egp DESC
       `, { from, to }),
@@ -402,7 +402,7 @@ export async function GET(req: NextRequest) {
         -SUM([Net Amount]+[VAT Amount]) AS egp,
         -SUM([Quantity])               AS units
       FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to
         AND [Store No_] = @store
       GROUP BY [Item No_]
       ORDER BY egp DESC
@@ -447,7 +447,7 @@ export async function GET(req: NextRequest) {
         -SUM([Net Amount]+[VAT Amount]) AS egp,
         -SUM([Quantity])               AS units
       FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to
         AND [Store No_] = @store
       GROUP BY CAST([Date] AS DATE)
       ORDER BY CAST([Date] AS DATE) DESC
@@ -490,7 +490,7 @@ export async function GET(req: NextRequest) {
           -SUM([Net Amount]+[VAT Amount]) AS egp,
           -SUM([Quantity])               AS units
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${catF} ${brandF}
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to ${catF} ${brandF}
         GROUP BY [Item No_]
         ORDER BY egp DESC
       `, { from, to }),
@@ -573,7 +573,7 @@ export async function GET(req: NextRequest) {
         -SUM([Quantity])                AS units,
         COUNT(DISTINCT [Item No_])      AS skus
       FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to
       GROUP BY [Item Category Code]
       ORDER BY egp DESC
     `, { from, to });
@@ -619,7 +619,7 @@ export async function GET(req: NextRequest) {
           -SUM([Quantity])                AS units,
           COUNT(DISTINCT CAST([Date] AS DATE)) AS days
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Item No_] = @itemNo
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to AND [Item No_] = @itemNo
         GROUP BY [Store No_]
         ORDER BY egp DESC
       `, { from, to, itemNo }),
@@ -686,7 +686,7 @@ export async function GET(req: NextRequest) {
         -SUM([Net Amount]+[VAT Amount]) AS egp,
         -SUM([Quantity])               AS units
       FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+      WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to
         AND [Item No_] = @itemNo AND [Store No_] = @store
       GROUP BY CAST([Date] AS DATE)
       ORDER BY CAST([Date] AS DATE) DESC
@@ -819,7 +819,7 @@ export async function GET(req: NextRequest) {
           -SUM([Net Amount]+[VAT Amount]) AS egp,
           -SUM([Quantity])               AS units
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF} ${catF} ${brandF}
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF} ${catF} ${brandF}
         GROUP BY [Item No_]
         ORDER BY egp DESC
       `, { from, to }),
@@ -951,7 +951,7 @@ export async function GET(req: NextRequest) {
           -SUM([Quantity])                AS units,
           COUNT(DISTINCT [Item No_])      AS skus
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to
           AND [Store No_] = @store
         GROUP BY [Product Group Code]
         ORDER BY egp DESC
@@ -1043,7 +1043,7 @@ export async function GET(req: NextRequest) {
           -SUM([Net Amount]+[VAT Amount]) AS egp,
           -SUM([Quantity])                AS units
         FROM TransSalesEntry
-        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        WHERE [Store No_] != 'ONLINE' AND CAST([Date] AS DATE) BETWEEN @from AND @to
           AND [Store No_] = @store ${catFilter}
         GROUP BY [Item No_]
       `, { from, to, store });
