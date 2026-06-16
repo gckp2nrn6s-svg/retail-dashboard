@@ -7,6 +7,8 @@ import { safeSource, isDegraded } from "@/lib/resilience";
 import { navDateToISO, lagDaysFrom } from "@/lib/dates";
 import type { ShopifyLineItemRow } from "@/lib/shopify";
 
+export const dynamic = "force-dynamic"; // always reflect live sources, never cache
+
 const STORE_NAMES: Record<string, string> = {
   ALMAZA:      "Almaza City Center",
   CCA:         "Alexandria",

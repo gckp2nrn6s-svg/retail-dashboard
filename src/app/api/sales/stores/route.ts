@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
 import { safeSource, isDegraded } from "@/lib/resilience";
 
+export const dynamic = "force-dynamic"; // always reflect live sources, never cache
+
 function groupOf(code: string) {
   if (["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"].includes(code)) return "Retail";
   if (["NOON","JUMIA"].includes(code)) return "Ecom"; // ONLINE excluded — use Shopify for own website

@@ -72,13 +72,24 @@ async function fetchBrandOrders(brand: ShopifyStore, from: string, to: string): 
       `https://${store}.myshopify.com/admin/api/2024-01/orders.json` +
       `?status=any&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
     const all: ShopifyOrder[] = [];
-    let pages = 0;
+    let pages = 0, retries = 0;
     while (url && pages < 60) { // 60-page safety cap = 15,000 orders
       const res: Response = await fetch(url, {
         headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
-        next: { revalidate: 60 },
+        // Live revenue must reflect Shopify in real time. Caching here made the
+        // dashboard show a stale snapshot (e.g. 54k while Shopify showed 68k).
+        cache: "no-store",
       });
+      // Respect Shopify's rate limit instead of silently truncating (which would
+      // reintroduce the undercount the pagination was added to fix).
+      if (res.status === 429 && retries < 6) {
+        const waitS = parseFloat(res.headers.get("retry-after") || "2");
+        await new Promise(r => setTimeout(r, Math.max(1, waitS) * 1000));
+        retries++;
+        continue; // retry the same page
+      }
       if (!res.ok) break;
+      retries = 0;
       const data = await res.json() as { orders: ShopifyOrder[] };
       all.push(...(data.orders ?? []));
       const link = res.headers.get("link") || "";

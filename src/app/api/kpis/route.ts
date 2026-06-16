@@ -4,6 +4,8 @@ import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
 import { safeSource, isDegraded, type SourceStatus } from "@/lib/resilience";
 
+export const dynamic = "force-dynamic"; // always reflect live sources, never cache
+
 function safeDate(val: string | null, fallback: string): string {
   if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
   return fallback;

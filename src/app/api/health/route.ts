@@ -5,6 +5,8 @@ import { getShopifyRevenue } from "@/lib/shopify";
 import { safeSource } from "@/lib/resilience";
 import { navDateToISO, lagDaysFrom } from "@/lib/dates";
 
+export const dynamic = "force-dynamic"; // always reflect live sources, never cache
+
 // One-curl answer to "is everything up?". Pings each data source independently.
 // GET /api/health
 export async function GET() {
