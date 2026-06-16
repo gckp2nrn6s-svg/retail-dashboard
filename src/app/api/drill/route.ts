@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
-import { getShopifyRevenueSplit, getShopifyLineItems } from "@/lib/shopify";
+import { getShopifyRevenueSplit, getShopifyLineItems, getShopifyDailyRevenue } from "@/lib/shopify";
 
 const RETAIL_STORES = ["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"];
 const ECOM_STORES   = ["NOON","JUMIA"]; // ONLINE excluded — Shopify is the source for own website
@@ -109,25 +109,42 @@ export async function GET(req: NextRequest) {
   if (type === "daily" || type === "kpi") {
     const storeF = store   ? `AND [Store No_] = '${store}'`
                  : channel ? channelInClause(channel) : "";
-    const rows = await navQuery<{date:string;egp:number;units:number;stores:number}>(`
-      SELECT
-        CONVERT(varchar(10), CAST([Date] AS DATE), 23) AS date,
-        -SUM([Net Amount]+[VAT Amount]) AS egp,
-        -SUM([Quantity])                AS units,
-        COUNT(DISTINCT [Store No_])     AS stores
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF}
-      GROUP BY CAST([Date] AS DATE)
-      ORDER BY CAST([Date] AS DATE) DESC
-    `, { from, to });
+    // Ecom / all-channel daily must include Shopify, else "today" is blank (NAV lags a day).
+    const includeShopify = !store && (!channel || channel === "all" || channel === "Ecom");
+    const [rows, shopDaily] = await Promise.all([
+      navQuery<{date:string;egp:number;units:number;stores:number}>(`
+        SELECT
+          CONVERT(varchar(10), CAST([Date] AS DATE), 23) AS date,
+          -SUM([Net Amount]+[VAT Amount]) AS egp,
+          -SUM([Quantity])                AS units,
+          COUNT(DISTINCT [Store No_])     AS stores
+        FROM TransSalesEntry
+        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${storeF}
+        GROUP BY CAST([Date] AS DATE)
+        ORDER BY CAST([Date] AS DATE) DESC
+      `, { from, to }),
+      includeShopify ? getShopifyDailyRevenue(from, to) : Promise.resolve({} as Record<string, { egp:number; units:number }>),
+    ]);
 
-    const totalRev = rows.reduce((s,r) => s + Number(r.egp), 0);
-    const drillRows = rows.map(r => ({
-      ...r,
-      egp:   Math.round(Number(r.egp)),
-      usd:   Math.round(Number(r.egp) / fx),
-      units: Math.round(Number(r.units)),
-      _drill_url:   dUrl({type:"daily-detail", date:r.date, ...(store?{store}:{})}, r.date, r.date),
+    // Merge NAV + Shopify by date so today's web orders show even with NAV behind.
+    const byDate: Record<string, { egp:number; units:number; stores:number }> = {};
+    for (const r of rows) byDate[r.date] = { egp:Number(r.egp), units:Number(r.units), stores:Number(r.stores) };
+    for (const [d, v] of Object.entries(shopDaily)) {
+      if (!byDate[d]) byDate[d] = { egp:0, units:0, stores:0 };
+      byDate[d].egp += v.egp; byDate[d].units += v.units; byDate[d].stores += 1; // website
+    }
+    const merged = Object.entries(byDate)
+      .map(([date, v]) => ({ date, ...v }))
+      .sort((a,b) => a.date < b.date ? 1 : -1);
+
+    const totalRev = merged.reduce((s,r) => s + r.egp, 0);
+    const drillRows = merged.map(r => ({
+      date:  r.date,
+      egp:   Math.round(r.egp),
+      usd:   Math.round(r.egp / fx),
+      units: Math.round(r.units),
+      stores: r.stores,
+      _drill_url:   dUrl({type:"daily-detail", date:r.date, ...(store?{store}:{}), ...(channel?{channel}:{})}, r.date, r.date),
       _drill_title: `${r.date} · All Items`,
     }));
     return NextResponse.json({
@@ -139,9 +156,9 @@ export async function GET(req: NextRequest) {
       ],
       rows: drillRows,
       summary:[
-        {label:"days",     value:String(rows.length)},
+        {label:"days",     value:String(merged.length)},
         {label:"total",    value:`EGP ${Math.round(totalRev).toLocaleString()}`},
-        {label:"daily avg",value:`EGP ${rows.length>0 ? Math.round(totalRev/rows.length).toLocaleString() : 0}`},
+        {label:"daily avg",value:`EGP ${merged.length>0 ? Math.round(totalRev/merged.length).toLocaleString() : 0}`},
       ],
       fx,
     });
@@ -151,24 +168,29 @@ export async function GET(req: NextRequest) {
   if (type === "daily-detail") {
     const d = datePm || from;
     const storeF = store ? `AND [Store No_] = '${store}'` : "";
-    const rows = await navQuery<{item_no:string;description:string;brand:string;category:string;store:string;egp:number;units:number}>(`
-      SELECT TOP 150
-        [Item No_]                     AS item_no,
-        [Item No_] AS description,
-        MAX([Item Category Code])      AS brand,
-        MAX([Product Group Code])      AS category,
-        [Store No_]                    AS store,
-        -SUM([Net Amount]+[VAT Amount]) AS egp,
-        -SUM([Quantity])               AS units
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) = @d ${storeF}
-      GROUP BY [Item No_], [Store No_]
-      ORDER BY egp DESC
-    `, { d });
+    const includeShopify = !store && (!channel || channel === "all" || channel === "Ecom");
+    const [rows, shopItems, skuMap] = await Promise.all([
+      navQuery<{item_no:string;description:string;brand:string;category:string;store:string;egp:number;units:number}>(`
+        SELECT TOP 150
+          [Item No_]                     AS item_no,
+          [Item No_] AS description,
+          MAX([Item Category Code])      AS brand,
+          MAX([Product Group Code])      AS category,
+          [Store No_]                    AS store,
+          -SUM([Net Amount]+[VAT Amount]) AS egp,
+          -SUM([Quantity])               AS units
+        FROM TransSalesEntry
+        WHERE CAST([Date] AS DATE) = @d ${storeF}
+        GROUP BY [Item No_], [Store No_]
+        ORDER BY egp DESC
+      `, { d }),
+      includeShopify ? getShopifyLineItems(d, d) : Promise.resolve([]),
+      includeShopify ? query<{sku:string;item_no:string}>("SELECT sku, item_no FROM shopify_item_map") : Promise.resolve([]),
+    ]);
 
     const drillRows = rows.map(r => ({
-      ...r,
-      description:  descMap[r.item_no] || r.item_no,
+      item_no:     r.item_no,
+      description: descMap[r.item_no] || r.item_no,
       egp:         Math.round(Number(r.egp)),
       usd:         Math.round(Number(r.egp) / fx),
       units:       Math.round(Number(r.units)),
@@ -177,6 +199,31 @@ export async function GET(req: NextRequest) {
       _drill_url:   dUrl({type:"item", item:r.item_no}, from, to),
       _drill_title: descMap[r.item_no] || r.item_no,
     }));
+
+    // Merge Shopify website line items sold that day (own website store row)
+    if (shopItems.length > 0) {
+      const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
+      const shopByItem: Record<string, { egp:number; units:number }> = {};
+      for (const li of shopItems) {
+        const itemNo = skuToItemNo[li.sku] || li.sku;
+        if (!shopByItem[itemNo]) shopByItem[itemNo] = { egp:0, units:0 };
+        shopByItem[itemNo].egp += li.egp; shopByItem[itemNo].units += li.quantity;
+      }
+      for (const [itemNo, v] of Object.entries(shopByItem)) {
+        drillRows.push({
+          item_no:     itemNo,
+          description: descMap[itemNo] || itemNo,
+          egp:         Math.round(v.egp),
+          usd:         Math.round(v.egp / fx),
+          units:       Math.round(v.units),
+          store:       "Own Website",
+          brand:       "",
+          _drill_url:   dUrl({type:"item", item:itemNo}, from, to),
+          _drill_title: descMap[itemNo] || itemNo,
+        });
+      }
+      drillRows.sort((a,b) => b.egp - a.egp);
+    }
     const totalRev = drillRows.reduce((s,r) => s + r.egp, 0);
     return NextResponse.json({
       columns:[
@@ -189,7 +236,7 @@ export async function GET(req: NextRequest) {
       rows: drillRows,
       summary:[
         {label:"date",   value:d},
-        {label:"SKUs",   value:String(rows.length)},
+        {label:"SKUs",   value:String(drillRows.length)},
         {label:"revenue",value:`EGP ${totalRev.toLocaleString()}`},
         {label:"units",  value:drillRows.reduce((s,r)=>s+r.units,0).toLocaleString()},
       ],
@@ -199,31 +246,58 @@ export async function GET(req: NextRequest) {
 
   // ── Channel=all → all stores ranked ─────────────────────────────────────────
   if (type === "channel" && (!channel || channel === "all")) {
-    const rows = await navQuery<{store_code:string;egp:number;units:number;days:number}>(`
-      SELECT
-        [Store No_]                     AS store_code,
-        -SUM([Net Amount]+[VAT Amount]) AS egp,
-        -SUM([Quantity])                AS units,
-        COUNT(DISTINCT CAST([Date] AS DATE)) AS days
-      FROM TransSalesEntry
-      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
-      GROUP BY [Store No_]
-      ORDER BY egp DESC
-    `, { from, to });
+    const [rows, shopifySplit] = await Promise.all([
+      navQuery<{store_code:string;egp:number;units:number;days:number}>(`
+        SELECT
+          [Store No_]                     AS store_code,
+          -SUM([Net Amount]+[VAT Amount]) AS egp,
+          -SUM([Quantity])                AS units,
+          COUNT(DISTINCT CAST([Date] AS DATE)) AS days
+        FROM TransSalesEntry
+        WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        GROUP BY [Store No_]
+        ORDER BY egp DESC
+      `, { from, to }),
+      getShopifyRevenueSplit(from, to),
+    ]);
 
-    const total = rows.reduce((s,r) => s + Number(r.egp), 0);
-    const drillRows = rows.map(r => ({
-      store_code:    r.store_code,
-      store_display: sn(r.store_code),
-      group:         groupOf(r.store_code),
-      egp:           Math.round(Number(r.egp)),
-      usd:           Math.round(Number(r.egp) / fx),
-      units:         Math.round(Number(r.units)),
-      days:          Number(r.days),
-      pct:           total > 0 ? Math.round(Number(r.egp)*100/total) : 0,
-      _drill_url:    dUrl({type:"store-category", store:r.store_code}, from, to),
-      _drill_title:  `${sn(r.store_code)} · Categories`,
-    }));
+    // Shopify websites are real Ecom stores but absent from NAV — add them.
+    const shopStores = [
+      { store_code:"SHOPIFY-SAM", label:"Samsonite Website", ...shopifySplit.samsonite },
+      { store_code:"SHOPIFY-AMT", label:"American Tourister Website", ...shopifySplit.americanTourister },
+    ].filter(s => Math.round(s.egp) > 0);
+
+    const navTotal = rows.reduce((s,r) => s + Number(r.egp), 0);
+    const shopTotal = shopStores.reduce((s,r) => s + r.egp, 0);
+    const total = navTotal + shopTotal;
+
+    const drillRows = [
+      ...rows.map(r => ({
+        store_code:    r.store_code,
+        store_display: sn(r.store_code),
+        group:         groupOf(r.store_code),
+        egp:           Math.round(Number(r.egp)),
+        usd:           Math.round(Number(r.egp) / fx),
+        units:         Math.round(Number(r.units)),
+        days:          Number(r.days),
+        pct:           total > 0 ? Math.round(Number(r.egp)*100/total) : 0,
+        _drill_url:    dUrl({type:"store-category", store:r.store_code}, from, to),
+        _drill_title:  `${sn(r.store_code)} · Categories`,
+      })),
+      ...shopStores.map(s => ({
+        store_code:    s.store_code,
+        store_display: s.label,
+        group:         "Ecom",
+        egp:           Math.round(s.egp),
+        usd:           Math.round(s.egp / fx),
+        units:         Math.round(s.units),
+        days:          null as number | null,
+        pct:           total > 0 ? Math.round(s.egp*100/total) : 0,
+        _drill_url:    dUrl({type:"store-category", store:s.store_code}, from, to),
+        _drill_title:  `${s.label} · Categories`,
+      })),
+    ].sort((a,b) => b.egp - a.egp);
+
     return NextResponse.json({
       columns:[
         {key:"store_display",label:"Store",        type:"text"},
@@ -235,7 +309,7 @@ export async function GET(req: NextRequest) {
       ],
       rows: drillRows,
       summary:[
-        {label:"stores", value:String(rows.length)},
+        {label:"stores", value:String(drillRows.length)},
         {label:"revenue",value:`EGP ${Math.round(total).toLocaleString()}`},
       ],
       fx,

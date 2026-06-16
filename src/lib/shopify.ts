@@ -140,6 +140,25 @@ function ordersToRevenue(orders: ShopifyOrder[]): { egp: number; units: number }
   return { egp, units };
 }
 
+/** Shopify revenue + units grouped by Egypt-local calendar day (for daily drills).
+ *  Keys are YYYY-MM-DD, aligned to NAV's [Date] (Egypt local, UTC+3). */
+export async function getShopifyDailyRevenue(
+  from: string, to: string
+): Promise<Record<string, { egp: number; units: number }>> {
+  const [samOrders, amtOrders] = await Promise.all([
+    fetchBrandOrders("samsonite", from, to),
+    fetchBrandOrders("american-tourister", from, to),
+  ]);
+  const byDay: Record<string, { egp: number; units: number }> = {};
+  for (const o of [...samOrders, ...amtOrders]) {
+    const day = new Date(new Date(o.created_at).getTime() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+    if (!byDay[day]) byDay[day] = { egp: 0, units: 0 };
+    byDay[day].egp += parseFloat(o.total_price);
+    byDay[day].units += o.line_items.reduce((s, i) => s + i.quantity, 0);
+  }
+  return byDay;
+}
+
 /** Fetch revenue + units for both Shopify stores combined. */
 export async function getShopifyRevenue(from: string, to: string): Promise<{ egp: number; units: number }> {
   const [samOrders, amtOrders] = await Promise.all([
