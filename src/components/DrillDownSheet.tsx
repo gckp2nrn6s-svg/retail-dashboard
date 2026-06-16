@@ -81,6 +81,27 @@ function computeHighlights(columns: Col[], rows: Row[], fx: number, currency: st
   return hl.slice(0,3);
 }
 
+// Build the "sales list" drill for whatever context the current view represents,
+// so the Units stat can expand into the actual line-item sales at any stage.
+// Preserves the active filters (store / category / channel / brand / size + dates)
+// and re-points them at the items view. Returns null when the current view is
+// already a granular sales/item list (nothing more to expand).
+function buildUnitsDrill(endpoint: string, title: string): DrillParams | null {
+  try {
+    const p = new URL(endpoint, "http://x").searchParams;
+    const type = p.get("type") || "";
+    if (["items", "store-subcat", "item", "daily-detail"].includes(type)) return null;
+    const np = new URLSearchParams({ type: "items" });
+    for (const k of ["store", "category", "channel", "brand", "size", "from", "to"]) {
+      const v = p.get(k);
+      if (v) np.set(k, v);
+    }
+    return { title: `${title} · Sales`, endpoint: `/api/drill?${np.toString()}` };
+  } catch {
+    return null;
+  }
+}
+
 // ── Level: one drill view in the stack ──────────────────────────────────────
 function DrillLevel({
   params, onDrill, isTop,
@@ -123,6 +144,7 @@ function DrillLevel({
 
   const fx         = data?.fx || 52;
   const highlights = data ? computeHighlights(visibleCols, data.rows, fx, currency) : [];
+  const unitsDrill = data ? buildUnitsDrill(params.endpoint, params.title) : null;
 
   const SortIcon = ({col}:{col:Col}) => {
     if (sortKey!==col.key) return <ArrowUpDown size={10} style={{opacity:0.3}} />;
@@ -139,18 +161,35 @@ function DrillLevel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Highlights */}
+      {/* Highlights — the Units card expands into the underlying sales list */}
       {highlights.length > 0 && (
         <div style={{ padding: "12px 20px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {highlights.map((h,i) => (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:6, background:"var(--surface3)", borderRadius:10, padding:"6px 12px" }}>
-              <span style={{fontSize:"0.75rem"}}>{h.icon}</span>
-              <div>
-                <p style={{fontSize:"0.58rem", color:"var(--text3)", fontWeight:600}}>{h.label}</p>
-                <p style={{fontSize:"0.72rem", fontWeight:800, color:"var(--text)"}}>{h.value}</p>
+          {highlights.map((h,i) => {
+            const clickable = h.label === "Units" && !!unitsDrill;
+            return (
+              <div key={i}
+                onClick={clickable ? () => onDrill(unitsDrill!) : undefined}
+                title={clickable ? "View the sales behind these units" : undefined}
+                style={{
+                  display:"flex", alignItems:"center", gap:6,
+                  background: clickable ? "var(--action-light)" : "var(--surface3)",
+                  borderRadius:10, padding:"6px 12px",
+                  border: clickable ? "1px solid var(--action)" : "1px solid transparent",
+                  cursor: clickable ? "pointer" : "default",
+                  transition:"background 0.1s",
+                }}
+              >
+                <span style={{fontSize:"0.75rem"}}>{h.icon}</span>
+                <div>
+                  <p style={{fontSize:"0.58rem", color:"var(--text3)", fontWeight:600}}>
+                    {h.label}{clickable ? " · tap to view sales" : ""}
+                  </p>
+                  <p style={{fontSize:"0.72rem", fontWeight:800, color:"var(--text)"}}>{h.value}</p>
+                </div>
+                {clickable && <ChevronRight size={13} style={{color:"var(--action)"}}/>}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

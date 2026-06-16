@@ -578,10 +578,17 @@ export async function GET(req: NextRequest) {
 
   // ── Items: top products with optional filters ────────────────────────────────
   if (type === "items") {
-    // SHOPIFY virtual store: show only Shopify line items (no NAV query for SHOPIFY store)
-    if (store === "SHOPIFY") {
+    // SHOPIFY virtual stores: show only Shopify line items (no NAV query).
+    // Handles the combined store and each brand-specific website.
+    if (store === "SHOPIFY" || store === "SHOPIFY-SAM" || store === "SHOPIFY-AMT") {
+      const shopBrand = store === "SHOPIFY-SAM" ? "samsonite" as const
+                      : store === "SHOPIFY-AMT" ? "american-tourister" as const
+                      : undefined;
+      const shopLabel = store === "SHOPIFY-SAM" ? "Samsonite Website"
+                      : store === "SHOPIFY-AMT" ? "American Tourister Website"
+                      : "Own Website (Shopify)";
       const [shopifyItems, skuMap] = await Promise.all([
-        getShopifyLineItems(from, to),
+        getShopifyLineItems(from, to, shopBrand),
         query<{ sku: string; item_no: string }>("SELECT sku, item_no FROM shopify_item_map"),
       ]);
       const skuToItemNo = Object.fromEntries(skuMap.map(r => [r.sku, r.item_no]));
@@ -645,7 +652,7 @@ export async function GET(req: NextRequest) {
         ],
         rows: drillRows,
         summary: [
-          { label: "source",  value: "Own Website (Shopify)" },
+          { label: "source",  value: shopLabel },
           { label: "SKUs",    value: String(drillRows.length) },
           { label: "revenue", value: `EGP ${Math.round(drillRows.reduce((s,r)=>s+r.egp,0)).toLocaleString()}` },
         ],
