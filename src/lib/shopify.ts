@@ -62,11 +62,31 @@ interface ShopifyOrder {
 
 async function fetchBrandOrders(brand: ShopifyStore, from: string, to: string): Promise<ShopifyOrder[]> {
   try {
-    const fromDateTime = `${from}T00:00:00+03:00`;
-    const toDateTime   = `${to}T23:59:59+03:00`;
-    const params = `?status=any&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
-    const data = await shopifyFetch<{ orders: ShopifyOrder[] }>(brand, `orders.json${params}`);
-    return (data.orders ?? []).filter(o => o.financial_status !== "voided" && o.financial_status !== "refunded");
+    const { store, token } = getConfig(brand);
+    const fromDateTime = encodeURIComponent(`${from}T00:00:00+03:00`);
+    const toDateTime   = encodeURIComponent(`${to}T23:59:59+03:00`);
+    // Cursor-paginate via the Link header — Shopify caps each page at 250 orders.
+    // Without this, any range with >250 orders was silently truncated (e.g. a
+    // full month of one store ran ~1700 orders → ~80% of revenue dropped).
+    let url: string | null =
+      `https://${store}.myshopify.com/admin/api/2024-01/orders.json` +
+      `?status=any&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
+    const all: ShopifyOrder[] = [];
+    let pages = 0;
+    while (url && pages < 60) { // 60-page safety cap = 15,000 orders
+      const res: Response = await fetch(url, {
+        headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+        next: { revalidate: 60 },
+      });
+      if (!res.ok) break;
+      const data = await res.json() as { orders: ShopifyOrder[] };
+      all.push(...(data.orders ?? []));
+      const link = res.headers.get("link") || "";
+      const next = link.match(/<([^>]+)>;\s*rel="next"/);
+      url = next ? next[1] : null;
+      pages++;
+    }
+    return all.filter(o => o.financial_status !== "voided" && o.financial_status !== "refunded");
   } catch {
     return [];
   }
