@@ -60,7 +60,35 @@ interface ShopifyOrder {
   line_items: ShopifyLineItem[];
 }
 
-async function fetchBrandOrders(brand: ShopifyStore, from: string, to: string): Promise<ShopifyOrder[]> {
+// ── Live-but-safe dedup layer ────────────────────────────────────────────────
+// "Live" without this means every dashboard load re-fetches the same orders many
+// times (home + kpis×3 + sales, each × 2 brands × N pages) → ~70 Shopify calls
+// per load, which trips Shopify's rate limit and is slow. This in-process layer
+// fetches each brand+range at most once per SHORT window and shares the result
+// across all routes loading together. Effectively live (≤30s) but ~6 calls/load.
+//
+// Railway runs a single long-lived Node process, so this module-level Map is
+// shared across requests. A genuinely-empty or failed fetch is cached only
+// briefly so a transient blip can't pin the dashboard to 0.
+const ORDER_TTL_MS = 30_000;
+const EMPTY_TTL_MS = 3_000;
+const orderCache = new Map<string, { at: number; ttl: number; promise: Promise<ShopifyOrder[]> }>();
+
+function fetchBrandOrders(brand: ShopifyStore, from: string, to: string): Promise<ShopifyOrder[]> {
+  const key = `${brand}:${from}:${to}`;
+  const hit = orderCache.get(key);
+  if (hit && Date.now() - hit.at < hit.ttl) return hit.promise;
+
+  const promise = fetchBrandOrdersUncached(brand, from, to);
+  const entry = { at: Date.now(), ttl: ORDER_TTL_MS, promise };
+  orderCache.set(key, entry);
+  // fetchBrandOrdersUncached never rejects (returns [] on error). Empty results
+  // (error OR a store with no orders) expire fast so they can't stick.
+  promise.then(orders => { if (orderCache.get(key) === entry && orders.length === 0) entry.ttl = EMPTY_TTL_MS; });
+  return promise;
+}
+
+async function fetchBrandOrdersUncached(brand: ShopifyStore, from: string, to: string): Promise<ShopifyOrder[]> {
   try {
     const { store, token } = getConfig(brand);
     const fromDateTime = encodeURIComponent(`${from}T00:00:00+03:00`);
