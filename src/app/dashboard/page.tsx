@@ -147,8 +147,14 @@ export default function HomePage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const rangeRef = useRef(range);
   rangeRef.current = range;
+  // Guards against stale-response races: the page loads MTD first (initial state),
+  // then re-loads when the saved preset (e.g. Today) is restored. If the first
+  // request resolves LAST (it's slower — more Shopify pages), it must not overwrite
+  // the newer one. Only the latest request id is allowed to commit.
+  const reqIdRef = useRef(0);
 
   const load = useCallback(async (from: string, to: string, silent = false) => {
+    const myReq = ++reqIdRef.current;
     if (!silent) { setLoading(true); setHomeLoading(true); }
     setError(null);
     try {
@@ -159,13 +165,16 @@ export default function HomePage() {
         fetch(`/api/sales/chart?range=${cr}&from=${from}&to=${to}`).then(x => x.json()),
         fetch(`/api/home?from=${from}&to=${to}`).then(x => x.json()),
       ]);
+      if (myReq !== reqIdRef.current) return; // superseded by a newer load
       setKpi(kpiRes);
       setChart(chartRes.series || []);
       setHome(homeRes);
       setLastUpdated(new Date());
     } catch (e) {
-      setError("Failed to load data. Check your connection.");
-    } finally { setLoading(false); setHomeLoading(false); setRefreshing(false); }
+      if (myReq === reqIdRef.current) setError("Failed to load data. Check your connection.");
+    } finally {
+      if (myReq === reqIdRef.current) { setLoading(false); setHomeLoading(false); setRefreshing(false); }
+    }
   }, []);
 
   const loadInsights = useCallback(async () => {

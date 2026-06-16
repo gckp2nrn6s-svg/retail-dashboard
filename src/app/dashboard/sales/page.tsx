@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -89,7 +89,10 @@ function SalesContent() {
   const days = Math.ceil((new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000);
   const chartRange = days <= 8 ? "7d" : days <= 32 ? "30d" : days <= 92 ? "90d" : "12m";
 
+  const reqIdRef = useRef(0); // discards stale-response races (MTD load resolving after Today)
+
   const load = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
     setLoading(true);
     setLoadError(false);
     try {
@@ -97,6 +100,7 @@ function SalesContent() {
         fetch(`/api/sales/chart?range=${chartRange}&group=${group}&from=${range.from}&to=${range.to}`).then(x => x.json()),
         fetch(`/api/sales/stores?range=${chartRange}&from=${range.from}&to=${range.to}`).then(x => x.json()),
       ]);
+      if (myReq !== reqIdRef.current) return; // superseded by a newer load
       setChartData(chartRes.series || []);
       const allStores = storesRes.stores || [];
       const filtered = group === "all" ? allStores : allStores.filter((s: Store) => s.group.toLowerCase() === group);
@@ -107,8 +111,8 @@ function SalesContent() {
       setFx(storesRes.fx || 52);
       setNavOffline(storesRes.sources?.nav === "offline");
     } catch {
-      setLoadError(true);
-    } finally { setLoading(false); }
+      if (myReq === reqIdRef.current) setLoadError(true);
+    } finally { if (myReq === reqIdRef.current) setLoading(false); }
   }, [range.from, range.to, group, chartRange]);
 
   useEffect(() => { load(); }, [load]);
