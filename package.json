@@ -7,7 +7,8 @@
     "build": "prisma generate && next build",
     "clean": "rimraf .next",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "audit": "node scripts/audit-reconcile.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
