@@ -82,53 +82,72 @@ function fetchBrandOrders(brand: ShopifyStore, from: string, to: string): Promis
   const promise = fetchBrandOrdersUncached(brand, from, to);
   const entry = { at: Date.now(), ttl: ORDER_TTL_MS, promise };
   orderCache.set(key, entry);
-  // fetchBrandOrdersUncached never rejects (returns [] on error). Empty results
-  // (error OR a store with no orders) expire fast so they can't stick.
-  promise.then(orders => { if (orderCache.get(key) === entry && orders.length === 0) entry.ttl = EMPTY_TTL_MS; });
+  promise.then(
+    // A genuinely-empty result (store had no orders) expires fast so it can't stick.
+    orders => { if (orderCache.get(key) === entry && orders.length === 0) entry.ttl = EMPTY_TTL_MS; },
+    // A FAILURE must not be cached — evict so the next call can retry, and so a
+    // transient outage doesn't pin a rejected promise for the whole TTL.
+    () => { if (orderCache.get(key) === entry) orderCache.delete(key); },
+  );
   return promise;
 }
 
+// Throws on a genuine fetch/HTTP failure (logged), so callers can tell a real
+// outage apart from a store that legitimately had zero orders. A swallowed []
+// here is what made a Shopify outage look like "0 sales".
 async function fetchBrandOrdersUncached(brand: ShopifyStore, from: string, to: string): Promise<ShopifyOrder[]> {
-  try {
-    const { store, token } = getConfig(brand);
-    const fromDateTime = encodeURIComponent(`${from}T00:00:00+03:00`);
-    const toDateTime   = encodeURIComponent(`${to}T23:59:59+03:00`);
-    // Cursor-paginate via the Link header — Shopify caps each page at 250 orders.
-    // Without this, any range with >250 orders was silently truncated (e.g. a
-    // full month of one store ran ~1700 orders → ~80% of revenue dropped).
-    let url: string | null =
-      `https://${store}.myshopify.com/admin/api/2024-01/orders.json` +
-      `?status=any&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
-    const all: ShopifyOrder[] = [];
-    let pages = 0, retries = 0;
-    while (url && pages < 60) { // 60-page safety cap = 15,000 orders
-      const res: Response = await fetch(url, {
+  const { store, token } = getConfig(brand);
+  if (!store || !token) {
+    console.error(`[shopify:${brand}] missing store/token env — cannot fetch orders`);
+    throw new Error(`Shopify ${brand}: missing store/token`);
+  }
+  const fromDateTime = encodeURIComponent(`${from}T00:00:00+03:00`);
+  const toDateTime   = encodeURIComponent(`${to}T23:59:59+03:00`);
+  // Cursor-paginate via the Link header — Shopify caps each page at 250 orders.
+  // Without this, any range with >250 orders was silently truncated (e.g. a
+  // full month of one store ran ~1700 orders → ~80% of revenue dropped).
+  let url: string | null =
+    `https://${store}.myshopify.com/admin/api/2024-01/orders.json` +
+    `?status=any&created_at_min=${fromDateTime}&created_at_max=${toDateTime}&limit=250`;
+  const all: ShopifyOrder[] = [];
+  let pages = 0, retries = 0;
+  while (url && pages < 60) { // 60-page safety cap = 15,000 orders
+    let res: Response;
+    try {
+      res = await fetch(url, {
         headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
         // Live revenue must reflect Shopify in real time. Caching here made the
         // dashboard show a stale snapshot (e.g. 54k while Shopify showed 68k).
         cache: "no-store",
       });
-      // Respect Shopify's rate limit instead of silently truncating (which would
-      // reintroduce the undercount the pagination was added to fix).
-      if (res.status === 429 && retries < 6) {
-        const waitS = parseFloat(res.headers.get("retry-after") || "2");
-        await new Promise(r => setTimeout(r, Math.max(1, waitS) * 1000));
-        retries++;
-        continue; // retry the same page
-      }
-      if (!res.ok) break;
-      retries = 0;
-      const data = await res.json() as { orders: ShopifyOrder[] };
-      all.push(...(data.orders ?? []));
-      const link = res.headers.get("link") || "";
-      const next = link.match(/<([^>]+)>;\s*rel="next"/);
-      url = next ? next[1] : null;
-      pages++;
+    } catch (e) {
+      console.error(`[shopify:${brand}] network error: ${e instanceof Error ? e.message : e}`);
+      throw e instanceof Error ? e : new Error(`Shopify ${brand}: network error`);
     }
-    return all.filter(o => o.financial_status !== "voided" && o.financial_status !== "refunded");
-  } catch {
-    return [];
+    // Respect Shopify's rate limit instead of silently truncating (which would
+    // reintroduce the undercount the pagination was added to fix).
+    if (res.status === 429 && retries < 6) {
+      const waitS = parseFloat(res.headers.get("retry-after") || "2");
+      await new Promise(r => setTimeout(r, Math.max(1, waitS) * 1000));
+      retries++;
+      continue; // retry the same page
+    }
+    // Any other non-OK is a real failure (401 bad token, 5xx, etc.) — throw so it
+    // surfaces as "offline" instead of returning a partial/empty list as if real.
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[shopify:${brand}] HTTP ${res.status} ${res.statusText}: ${body.slice(0, 200)}`);
+      throw new Error(`Shopify ${brand}: HTTP ${res.status}`);
+    }
+    retries = 0;
+    const data = await res.json() as { orders: ShopifyOrder[] };
+    all.push(...(data.orders ?? []));
+    const link = res.headers.get("link") || "";
+    const next = link.match(/<([^>]+)>;\s*rel="next"/);
+    url = next ? next[1] : null;
+    pages++;
   }
+  return all.filter(o => o.financial_status !== "voided" && o.financial_status !== "refunded");
 }
 
 function ordersToRevenue(orders: ShopifyOrder[]): { egp: number; units: number } {
@@ -145,10 +164,17 @@ function ordersToRevenue(orders: ShopifyOrder[]): { egp: number; units: number }
 export async function getShopifyDailyRevenue(
   from: string, to: string
 ): Promise<Record<string, { egp: number; units: number }>> {
-  const [samOrders, amtOrders] = await Promise.all([
-    fetchBrandOrders("samsonite", from, to),
-    fetchBrandOrders("american-tourister", from, to),
-  ]);
+  let samOrders: ShopifyOrder[], amtOrders: ShopifyOrder[];
+  try {
+    [samOrders, amtOrders] = await Promise.all([
+      fetchBrandOrders("samsonite", from, to),
+      fetchBrandOrders("american-tourister", from, to),
+    ]);
+  } catch (e) {
+    // Drill helper (no safeSource) — degrade to NAV-only, but log so it's visible.
+    console.error(`[shopify:daily] failed, drill will show NAV only: ${e instanceof Error ? e.message : e}`);
+    return {};
+  }
   const byDay: Record<string, { egp: number; units: number }> = {};
   for (const o of [...samOrders, ...amtOrders]) {
     const day = new Date(new Date(o.created_at).getTime() + 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -175,14 +201,20 @@ export async function getShopifyRevenueSplit(from: string, to: string): Promise<
   samsonite: { egp: number; units: number };
   americanTourister: { egp: number; units: number };
 }> {
-  const [samOrders, amtOrders] = await Promise.all([
-    fetchBrandOrders("samsonite", from, to),
-    fetchBrandOrders("american-tourister", from, to),
-  ]);
-  return {
-    samsonite:        ordersToRevenue(samOrders),
-    americanTourister: ordersToRevenue(amtOrders),
-  };
+  try {
+    const [samOrders, amtOrders] = await Promise.all([
+      fetchBrandOrders("samsonite", from, to),
+      fetchBrandOrders("american-tourister", from, to),
+    ]);
+    return {
+      samsonite:        ordersToRevenue(samOrders),
+      americanTourister: ordersToRevenue(amtOrders),
+    };
+  } catch (e) {
+    // Drill helper (no safeSource) — degrade to NAV-only, but log so it's visible.
+    console.error(`[shopify:split] failed, drill will show NAV only: ${e instanceof Error ? e.message : e}`);
+    return { samsonite: { egp: 0, units: 0 }, americanTourister: { egp: 0, units: 0 } };
+  }
 }
 
 export interface ShopifyLineItemRow {
@@ -223,7 +255,14 @@ export async function getShopifyLineItems(
   brand?: ShopifyStore
 ): Promise<ShopifyLineItemRow[]> {
   const brands: ShopifyStore[] = brand ? [brand] : ["samsonite", "american-tourister"];
-  const orderGroups = await Promise.all(brands.map(b => fetchBrandOrders(b, from, to)));
+  let orderGroups: ShopifyOrder[][];
+  try {
+    orderGroups = await Promise.all(brands.map(b => fetchBrandOrders(b, from, to)));
+  } catch (e) {
+    // Drill helper (no safeSource) — degrade to NAV-only items, but log so it's visible.
+    console.error(`[shopify:lineItems] failed, drill will show NAV only: ${e instanceof Error ? e.message : e}`);
+    return [];
+  }
   const rows: ShopifyLineItemRow[] = [];
   for (const orders of orderGroups) {
     for (const o of orders) {
