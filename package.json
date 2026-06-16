@@ -13,10 +13,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
     "@auth/prisma-adapter": "^2.11.2",
+    "@panva/hkdf": "^1.2.1",
     "@prisma/adapter-pg": "^7.8.0",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.4.0",
+    "jose": "^4.15.9",
     "lucide-react": "^1.18.0",
     "mssql": "^12.5.5",
     "next": "16.2.9",

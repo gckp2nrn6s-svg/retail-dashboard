@@ -27,6 +27,9 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { randomUUID } from "crypto";
+import { EncryptJWT } from "jose";
+import hkdf from "@panva/hkdf";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -46,7 +49,19 @@ const ROOT = path.join(__dirname, "..");
 })();
 
 const BASE   = process.argv[2] || "http://localhost:3000";
-const COOKIE = "next-auth.session-token=audit"; // middleware checks presence only
+// The proxy now validates the session JWT, so the harness authenticates legitimately
+// by minting a real next-auth v4 token with the app's own NEXTAUTH_SECRET (it has
+// repo/.env.local access). This is not a bypass — it's signing in with the app key.
+let COOKIE = ""; // set in main() once the secret is loaded
+async function mintSessionToken(secret) {
+  const key = await hkdf("sha256", secret, "", "NextAuth.js Generated Encryption Key", 32);
+  return await new EncryptJWT({ name: "audit", email: "audit@local", role: "admin" })
+    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .setJti(randomUUID())
+    .encrypt(key);
+}
 const PROXY  = process.env.NAV_PROXY_URL || "https://coat-excluding-worsening.ngrok-free.dev";
 const SECRET = process.env.PROXY_SECRET || "nav-proxy-secret-2024";
 const SHOPS  = [
@@ -144,6 +159,10 @@ async function main() {
   const serverShopifyOk = health?.sources?.shopify?.status === "ok";
   console.log(`server sources: nav=${health.sources.nav.status} shopify=${health.sources.shopify.status} pg=${health.sources.postgres.status}`);
   if (!serverShopifyOk) console.log("⚠ server reports Shopify offline → Shopify-dependent invariants will be SKIPPED\n");
+
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret) { console.error("✖ NEXTAUTH_SECRET missing in .env.local — cannot authenticate to the protected APIs."); process.exit(2); }
+  COOKIE = `next-auth.session-token=${await mintSessionToken(secret)}`;
 
   for (const R of RANGES) {
     console.log(`\n===== ${R.label}  (${R.from}..${R.to}) =====`);
