@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { navQuery } from "@/lib/navdb";
+import { navQuery as navQueryRaw } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenueSplit, getShopifyLineItems, getShopifyDailyRevenue } from "@/lib/shopify";
+
+// Fault isolation for the whole drill route: NAV going offline (the laptop tunnel
+// dropping) must NEVER hard-fail a drill — it should degrade to whatever non-NAV
+// data exists (e.g. the Ecom drill still shows the Shopify websites). Shadowing the
+// import means every navQuery call below is automatically safe: on NAV error it
+// returns [] (logged) instead of throwing and 500-ing the whole sheet.
+async function navQuery<T = Record<string, unknown>>(
+  q: string,
+  params?: Record<string, string | number | Date>,
+): Promise<T[]> {
+  try {
+    return await navQueryRaw<T>(q, params);
+  } catch (e) {
+    console.error(`[drill] NAV query failed, degrading to non-NAV data: ${e instanceof Error ? e.message : e}`);
+    return [];
+  }
+}
 
 const RETAIL_STORES = ["ALMAZA","CCA","CF-HOS","CSTARS","P90","MOA","MOE","HIS","MC"];
 const ECOM_STORES   = ["NOON","JUMIA"]; // ONLINE excluded — Shopify is the source for own website
@@ -84,6 +101,20 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 export async function GET(req: NextRequest) {
+  try {
+    return await handleDrill(req);
+  } catch (e) {
+    // Final safety net — a drill must never return a hard 500 (which the sheet
+    // shows as "Failed to load data"). Degrade to a soft empty state instead.
+    console.error(`[drill] fatal: ${e instanceof Error ? e.message : e}`);
+    return NextResponse.json(
+      { columns: [], rows: [], summary: [{ label: "status", value: "Data temporarily unavailable" }], fx: 52, degraded: true },
+      { status: 200 },
+    );
+  }
+}
+
+async function handleDrill(req: NextRequest) {
   const p       = new URL(req.url).searchParams;
   const typeRaw = p.get("type") || "daily";
   const type    = ALLOWED_TYPES.has(typeRaw) ? typeRaw : "daily";
