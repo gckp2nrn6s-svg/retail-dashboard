@@ -1,3 +1,5 @@
+import { query } from "@/lib/db";
+
 export type ShopifyStore = "samsonite" | "american-tourister";
 
 interface ShopifyConfig {
@@ -54,10 +56,19 @@ interface ShopifyLineItem {
 
 interface ShopifyOrder {
   created_at: string;
-  total_price: string;
+  updated_at?: string;          // bumped on any change incl. refunds (used to catch late returns)
+  total_price: string;          // original order total
+  current_total_price?: string; // total NET of refunds — the correct revenue figure
   currency: string;
   financial_status: string;
   line_items: ShopifyLineItem[];
+}
+
+// Net order revenue: current_total_price (after refunds) when present, else total_price.
+// Returns here are tracked via the refunds array (current_total_price < total_price)
+// while status stays pending/paid — so total_price alone overcounts refunded orders.
+function netTotal(o: ShopifyOrder): number {
+  return parseFloat(o.current_total_price ?? o.total_price);
 }
 
 // ── Live-but-safe dedup layer ────────────────────────────────────────────────
@@ -153,47 +164,208 @@ async function fetchBrandOrdersUncached(brand: ShopifyStore, from: string, to: s
 function ordersToRevenue(orders: ShopifyOrder[]): { egp: number; units: number } {
   let egp = 0, units = 0;
   for (const o of orders) {
-    egp += parseFloat(o.total_price);
+    egp += netTotal(o);
     units += o.line_items.reduce((s, i) => s + i.quantity, 0);
   }
   return { egp, units };
 }
 
-/** Shopify revenue + units grouped by Egypt-local calendar day (for daily drills).
- *  Keys are YYYY-MM-DD, aligned to NAV's [Date] (Egypt local, UTC+3). */
-export async function getShopifyDailyRevenue(
-  from: string, to: string
-): Promise<Record<string, { egp: number; units: number }>> {
-  let samOrders: ShopifyOrder[], amtOrders: ShopifyOrder[];
-  try {
-    [samOrders, amtOrders] = await Promise.all([
-      fetchBrandOrders("samsonite", from, to),
-      fetchBrandOrders("american-tourister", from, to),
-    ]);
-  } catch (e) {
-    // Drill helper (no safeSource) — degrade to NAV-only, but log so it's visible.
-    console.error(`[shopify:daily] failed, drill will show NAV only: ${e instanceof Error ? e.message : e}`);
-    return {};
+// ══ Daily revenue rollup (perf) ═══════════════════════════════════════════════
+// Long ranges were slow because each load paginated thousands of live orders
+// (1 month ≈ 14 pages/13s; a year ≈ 80 pages/60s → request timeout). The rollup
+// stores per-day, per-brand NET revenue (current_total_price) in Postgres, so a
+// range read becomes one fast SUM instead of thousands of API calls.
+//   • "today" is always fetched LIVE (1 day, fast) → real-time.
+//   • the trailing 30 days are recomputed at most every 15 min — the window where
+//     refunds still land (measured max lag 17d), so a late return lowers its
+//     original day.
+//   • days older than 30 are frozen (computed once, cached forever).
+// Seed history once: scripts/backfill-shopify-rollup.mjs. Any rollup error falls
+// back to the live path, so this can only speed reads up — never break them.
+const ROLLUP_SETTLE_DAYS = 30;
+const ROLLUP_TTL_MIN = 15;
+const DAY_MS = 86400000;
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const egDay = (iso: string) => isoDay(new Date(new Date(iso).getTime() + 3 * 3600 * 1000));
+const addDays = (day: string, n: number) => isoDay(new Date(Date.parse(day + "T00:00:00Z") + n * DAY_MS));
+
+let rollupTableReady = false;
+async function ensureRollupTable(): Promise<void> {
+  if (rollupTableReady) return;
+  await query(`CREATE TABLE IF NOT EXISTS shopify_daily (
+    sale_date date NOT NULL,
+    brand     text NOT NULL,
+    egp       numeric(14,2) NOT NULL DEFAULT 0,
+    units     integer NOT NULL DEFAULT 0,
+    built_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (sale_date, brand)
+  )`);
+  rollupTableReady = true;
+}
+
+const rollupRefreshInFlight = new Map<string, Promise<void>>();
+
+/** Fetch [from,to] live and (re)write a complete day×brand grid into shopify_daily. */
+async function refreshShopifyDaily(from: string, to: string): Promise<void> {
+  const key = `${from}:${to}`;
+  const inflight = rollupRefreshInFlight.get(key);
+  if (inflight) return inflight;
+  const run = (async () => {
+    await ensureRollupTable();
+    const brands: ShopifyStore[] = ["samsonite", "american-tourister"];
+    const agg: Record<string, { egp: number; units: number }> = {};
+    for (const brand of brands) {
+      const orders = await fetchBrandOrders(brand, from, to);
+      for (const o of orders) {
+        const k = `${egDay(o.created_at)}|${brand}`;
+        (agg[k] ??= { egp: 0, units: 0 });
+        agg[k].egp += netTotal(o);
+        agg[k].units += o.line_items.reduce((s, i) => s + i.quantity, 0);
+      }
+    }
+    // Complete grid so empty days persist as 0 (freshness trackable, not "missing").
+    const tuples: string[] = []; const vals: (string | number)[] = []; let i = 1;
+    for (let day = from; day <= to; day = addDays(day, 1)) {
+      for (const brand of brands) {
+        const a = agg[`${day}|${brand}`] ?? { egp: 0, units: 0 };
+        tuples.push(`($${i++},$${i++},$${i++},$${i++},now())`);
+        vals.push(day, brand, Math.round(a.egp * 100) / 100, Math.round(a.units));
+      }
+    }
+    if (tuples.length) {
+      await query(
+        `INSERT INTO shopify_daily (sale_date,brand,egp,units,built_at) VALUES ${tuples.join(",")}
+         ON CONFLICT (sale_date,brand) DO UPDATE SET egp=EXCLUDED.egp, units=EXCLUDED.units, built_at=now()`,
+        vals,
+      );
+    }
+  })().finally(() => rollupRefreshInFlight.delete(key));
+  rollupRefreshInFlight.set(key, run);
+  return run;
+}
+
+/** Ensure the rollup covers historical [from,to] (≤ yesterday): block-backfill any
+ *  missing frozen days; refresh the trailing 30d if stale (async when it already has
+ *  data, so steady-state reads never block). */
+async function ensureRollupCovered(from: string, to: string): Promise<void> {
+  await ensureRollupTable();
+  if (from > to) return;
+  const today = isoDay(new Date());
+  const cutoff = addDays(today, -ROLLUP_SETTLE_DAYS);
+  const expected = Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS) + 1;
+
+  const stat = (await query<{ days: string; trailing: string; fresh: string }>(
+    `SELECT COUNT(DISTINCT sale_date) AS days,
+            COUNT(DISTINCT sale_date) FILTER (WHERE sale_date >= $3) AS trailing,
+            COUNT(DISTINCT sale_date) FILTER (WHERE sale_date >= $3 AND built_at > now() - ($4 || ' minutes')::interval) AS fresh
+       FROM shopify_daily WHERE sale_date BETWEEN $1 AND $2`,
+    [from, to, cutoff, String(ROLLUP_TTL_MIN)],
+  ))[0] ?? { days: "0", trailing: "0", fresh: "0" };
+
+  const frozenTo = addDays(cutoff, -1);
+  const frozenExpected = frozenTo >= from ? Math.round((Date.parse(frozenTo) - Date.parse(from)) / DAY_MS) + 1 : 0;
+  const trailingFrom = cutoff > from ? cutoff : from;
+  const trailingExpected = expected - frozenExpected;
+
+  if (frozenExpected > 0 && (Number(stat.days) - Number(stat.trailing)) < frozenExpected) {
+    await refreshShopifyDaily(from, frozenTo);            // one-time backfill of the frozen gap
   }
+  if (trailingExpected > 0 && Number(stat.fresh) < trailingExpected) {
+    if (Number(stat.trailing) > 0) {
+      void refreshShopifyDaily(trailingFrom, to).catch(e => console.error(`[shopify:rollup] bg: ${e instanceof Error ? e.message : e}`));
+    } else {
+      await refreshShopifyDaily(trailingFrom, to);
+    }
+  }
+}
+
+// Live (un-rolled) fetch — used for "today" and as the fallback if the rollup errors.
+async function liveRevenueRange(from: string, to: string): Promise<{ egp: number; units: number }> {
+  const [sam, amt] = await Promise.all([
+    fetchBrandOrders("samsonite", from, to),
+    fetchBrandOrders("american-tourister", from, to),
+  ]);
+  const s = ordersToRevenue(sam), a = ordersToRevenue(amt);
+  return { egp: s.egp + a.egp, units: s.units + a.units };
+}
+
+async function liveDailyRange(from: string, to: string): Promise<Record<string, { egp: number; units: number }>> {
+  const [sam, amt] = await Promise.all([
+    fetchBrandOrders("samsonite", from, to),
+    fetchBrandOrders("american-tourister", from, to),
+  ]);
   const byDay: Record<string, { egp: number; units: number }> = {};
-  for (const o of [...samOrders, ...amtOrders]) {
-    const day = new Date(new Date(o.created_at).getTime() + 3 * 3600 * 1000).toISOString().slice(0, 10);
-    if (!byDay[day]) byDay[day] = { egp: 0, units: 0 };
-    byDay[day].egp += parseFloat(o.total_price);
+  for (const o of [...sam, ...amt]) {
+    const day = egDay(o.created_at);
+    (byDay[day] ??= { egp: 0, units: 0 });
+    byDay[day].egp += netTotal(o);
     byDay[day].units += o.line_items.reduce((s, i) => s + i.quantity, 0);
   }
   return byDay;
 }
 
-/** Fetch revenue + units for both Shopify stores combined. */
+/** Per-day net revenue (for daily drills) — historical from the rollup, today live. */
+export async function getShopifyDailyRevenue(
+  from: string, to: string
+): Promise<Record<string, { egp: number; units: number }>> {
+  try {
+    const today = isoDay(new Date());
+    const byDay: Record<string, { egp: number; units: number }> = {};
+    const histTo = to >= today ? addDays(today, -1) : to;
+    if (histTo >= from) {
+      await ensureRollupCovered(from, histTo);
+      const rows = await query<{ d: string; egp: string; units: string }>(
+        `SELECT to_char(sale_date,'YYYY-MM-DD') AS d, SUM(egp) AS egp, SUM(units) AS units
+           FROM shopify_daily WHERE sale_date BETWEEN $1 AND $2 GROUP BY sale_date`,
+        [from, histTo],
+      );
+      for (const r of rows) {
+        const e = Math.round(Number(r.egp)), u = Math.round(Number(r.units));
+        if (e !== 0 || u !== 0) byDay[r.d] = { egp: e, units: u };
+      }
+    }
+    if (to >= today) {
+      try { Object.assign(byDay, await liveDailyRange(today, today)); }
+      catch (e) { console.error(`[shopify:daily] today live failed, historical only: ${e instanceof Error ? e.message : e}`); }
+    }
+    return byDay;
+  } catch (e) {
+    // Drill helper (no safeSource) — degrade to NAV-only, but log so it's visible.
+    console.error(`[shopify:daily] failed, drill will show NAV only: ${e instanceof Error ? e.message : e}`);
+    return {};
+  }
+}
+
+/** Combined Shopify net revenue + units — historical from the rollup (instant),
+ *  today live (real-time). Falls back to the full live path on any rollup error. */
 export async function getShopifyRevenue(from: string, to: string): Promise<{ egp: number; units: number }> {
-  const [samOrders, amtOrders] = await Promise.all([
-    fetchBrandOrders("samsonite", from, to),
-    fetchBrandOrders("american-tourister", from, to),
-  ]);
-  const sam = ordersToRevenue(samOrders);
-  const amt = ordersToRevenue(amtOrders);
-  return { egp: sam.egp + amt.egp, units: sam.units + amt.units };
+  try {
+    const today = isoDay(new Date());
+    let egp = 0, units = 0;
+    const histTo = to >= today ? addDays(today, -1) : to;
+    if (histTo >= from) {
+      await ensureRollupCovered(from, histTo);
+      const r = (await query<{ egp: string; units: string }>(
+        `SELECT COALESCE(SUM(egp),0) AS egp, COALESCE(SUM(units),0) AS units FROM shopify_daily WHERE sale_date BETWEEN $1 AND $2`,
+        [from, histTo],
+      ))[0];
+      egp += Math.round(Number(r?.egp || 0)); units += Math.round(Number(r?.units || 0));
+    }
+    if (to >= today) {
+      try {
+        const t = await liveRevenueRange(today, today);
+        egp += Math.round(t.egp); units += Math.round(t.units);
+      } catch (e) {
+        // Today's live fetch failed — keep the rollup historical, just skip today.
+        console.error(`[shopify:revenue] today live failed, historical only: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    return { egp, units };
+  } catch (e) {
+    // Only here if the ROLLUP read itself failed (DB issue) → full live fallback.
+    console.error(`[shopify:revenue] rollup failed, live fallback: ${e instanceof Error ? e.message : e}`);
+    return liveRevenueRange(from, to);
+  }
 }
 
 /** Fetch revenue + units split by brand. */
@@ -201,15 +373,35 @@ export async function getShopifyRevenueSplit(from: string, to: string): Promise<
   samsonite: { egp: number; units: number };
   americanTourister: { egp: number; units: number };
 }> {
+  const out = { samsonite: { egp: 0, units: 0 }, americanTourister: { egp: 0, units: 0 } };
   try {
-    const [samOrders, amtOrders] = await Promise.all([
-      fetchBrandOrders("samsonite", from, to),
-      fetchBrandOrders("american-tourister", from, to),
-    ]);
-    return {
-      samsonite:        ordersToRevenue(samOrders),
-      americanTourister: ordersToRevenue(amtOrders),
-    };
+    const today = isoDay(new Date());
+    const histTo = to >= today ? addDays(today, -1) : to;
+    if (histTo >= from) {
+      await ensureRollupCovered(from, histTo);
+      const rows = await query<{ brand: string; egp: string; units: string }>(
+        `SELECT brand, SUM(egp) AS egp, SUM(units) AS units FROM shopify_daily WHERE sale_date BETWEEN $1 AND $2 GROUP BY brand`,
+        [from, histTo],
+      );
+      for (const r of rows) {
+        const k = r.brand === "samsonite" ? "samsonite" : "americanTourister";
+        out[k].egp += Math.round(Number(r.egp)); out[k].units += Math.round(Number(r.units));
+      }
+    }
+    if (to >= today) {
+      try {
+        const [sam, amt] = await Promise.all([
+          fetchBrandOrders("samsonite", today, today),
+          fetchBrandOrders("american-tourister", today, today),
+        ]);
+        const s = ordersToRevenue(sam), a = ordersToRevenue(amt);
+        out.samsonite.egp += Math.round(s.egp); out.samsonite.units += Math.round(s.units);
+        out.americanTourister.egp += Math.round(a.egp); out.americanTourister.units += Math.round(a.units);
+      } catch (e) {
+        console.error(`[shopify:split] today live failed, historical only: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    return out;
   } catch (e) {
     // Drill helper (no safeSource) — degrade to NAV-only, but log so it's visible.
     console.error(`[shopify:split] failed, drill will show NAV only: ${e instanceof Error ? e.message : e}`);
@@ -232,20 +424,18 @@ export async function getShopifyRevenueAndItems(
   from: string,
   to: string
 ): Promise<{ egp: number; units: number; items: ShopifyLineItemRow[] }> {
-  const [samOrders, amtOrders] = await Promise.all([
-    fetchBrandOrders("samsonite", from, to),
-    fetchBrandOrders("american-tourister", from, to),
-  ]);
-  const sam = ordersToRevenue(samOrders);
-  const amt = ordersToRevenue(amtOrders);
-  const items: ShopifyLineItemRow[] = [];
-  for (const o of [...samOrders, ...amtOrders]) {
-    for (const li of o.line_items) {
-      if (!li.sku) continue;
-      items.push({ sku: li.sku.trim(), title: li.title, quantity: li.quantity, egp: parseFloat(li.price) * li.quantity });
-    }
-  }
-  return { egp: sam.egp + amt.egp, units: sam.units + amt.units, items };
+  // Total: rollup-backed (instant + accurate). Items are only used for the home
+  // top-products merge, and fetching every line item over a long range is exactly
+  // what made home slow — so bound the line-item fetch to a recent window. NAV
+  // still supplies the full-range top products; this just adds Shopify's recent
+  // bestsellers. (A per-SKU rollup would make this full-range + instant — follow-up.)
+  const ITEMS_WINDOW_DAYS = 7;
+  const { egp, units } = await getShopifyRevenue(from, to);
+  const cap = addDays(isoDay(new Date()), -ITEMS_WINDOW_DAYS);
+  const itemsFrom = from < cap ? cap : from;
+  let items: ShopifyLineItemRow[] = [];
+  try { items = await getShopifyLineItems(itemsFrom, to); } catch { items = []; }
+  return { egp, units, items };
 }
 
 /** Fetch all line items. Pass brand to restrict to one store ("samsonite" | "american-tourister"). */
