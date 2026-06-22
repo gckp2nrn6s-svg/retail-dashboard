@@ -267,12 +267,17 @@ async function ensureRollupCovered(from: string, to: string): Promise<void> {
   const trailingFrom = cutoff > from ? cutoff : from;
   const trailingExpected = expected - frozenExpected;
 
+  // Frozen gap (months of history) — fill in the BACKGROUND, never block the read on
+  // a huge live fetch. A persistent gap means the backfill script should be run.
   if (frozenExpected > 0 && (Number(stat.days) - Number(stat.trailing)) < frozenExpected) {
-    await refreshShopifyDaily(from, frozenTo);            // one-time backfill of the frozen gap
+    console.error(`[shopify:rollup] frozen gap ${from}..${frozenTo} (have ${Number(stat.days) - Number(stat.trailing)}/${frozenExpected}) — filling in background; run scripts/backfill-shopify-rollup.mjs if persistent`);
+    void refreshShopifyDaily(from, frozenTo).catch(e => console.error(`[shopify:rollup] frozen bg: ${e instanceof Error ? e.message : e}`));
   }
+  // Trailing window (≤30 days, bounded) — refresh if stale; async once it has data
+  // so steady-state reads never block, block only on the very first seed.
   if (trailingExpected > 0 && Number(stat.fresh) < trailingExpected) {
     if (Number(stat.trailing) > 0) {
-      void refreshShopifyDaily(trailingFrom, to).catch(e => console.error(`[shopify:rollup] bg: ${e instanceof Error ? e.message : e}`));
+      void refreshShopifyDaily(trailingFrom, to).catch(e => console.error(`[shopify:rollup] trailing bg: ${e instanceof Error ? e.message : e}`));
     } else {
       await refreshShopifyDaily(trailingFrom, to);
     }
