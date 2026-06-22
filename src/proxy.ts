@@ -50,6 +50,7 @@ export const config = {
     "/api/home/:path*",
     "/api/kpis/:path*",
     "/api/sales/:path*",
+    "/api/marketplace/:path*",
     "/api/drill/:path*",
     "/api/insights/:path*",
     "/api/stock/:path*",

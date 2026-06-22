@@ -97,7 +97,7 @@ function parseColor(desc: string): string {
 const ALLOWED_TYPES = new Set([
   "daily","kpi","store","store-daily","channel","category","brand",
   "item","item-store","items","daily-detail",
-  "store-category","store-subcat",
+  "store-category","store-subcat","marketplace-items",
 ]);
 
 export async function GET(req: NextRequest) {
@@ -127,6 +127,7 @@ async function handleDrill(req: NextRequest) {
   const brand   = safeStr(p.get("brand"));
   const size    = safeStr(p.get("size"));
   const itemNo  = safeStr(p.get("item"));
+  const staff   = safeStr(p.get("staff"));
   const datePm  = safeDate(p.get("date"), today);
 
   const [fxRow, descRows] = await Promise.all([
@@ -135,6 +136,54 @@ async function handleDrill(req: NextRequest) {
   ]);
   const fx = parseFloat(fxRow[0]?.egp_per_usd || "52");
   const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
+
+  // ── Marketplace → products (NAV ONLINE store, one marketplace by [Staff ID]) ──
+  if (type === "marketplace-items" && staff) {
+    const rows = await navQuery<{item_no:string;egp:number;units:number}>(`
+      SELECT [Item No_] AS item_no,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])                AS units
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to
+        AND [Store No_] = 'ONLINE' AND [Staff ID] = @staff
+      GROUP BY [Item No_]
+      ORDER BY egp DESC
+    `, { from, to, staff });
+    const total = rows.reduce((s, r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => {
+      const desc = descMap[r.item_no] || r.item_no;
+      const sz = parseSize(desc);
+      return {
+        item_no:     r.item_no,
+        description: desc,
+        size:        sz !== "Other" ? sz : "",
+        color:       parseColor(desc),
+        egp:         Math.round(Number(r.egp)),
+        usd:         Math.round(Number(r.egp) / fx),
+        units:       Math.round(Number(r.units)),
+        pct:         total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
+        _drill_url:   dUrl({ type: "item", item: r.item_no }, from, to),
+        _drill_title: desc,
+      };
+    });
+    return NextResponse.json({
+      columns: [
+        { key: "description", label: "Product",          type: "text" },
+        { key: "size",        label: "Size",             type: "text" },
+        { key: "color",       label: "Colour",           type: "text" },
+        { key: "egp",         label: "Revenue",          type: "currency" },
+        { key: "units",       label: "Units",            type: "units" },
+        { key: "pct",         label: "% of marketplace", type: "number" },
+      ],
+      rows: drillRows,
+      summary: [
+        { label: "products", value: String(drillRows.length) },
+        { label: "revenue",  value: `EGP ${Math.round(total).toLocaleString()}` },
+        { label: "units",    value: drillRows.reduce((s, r) => s + r.units, 0).toLocaleString() },
+      ],
+      fx,
+    });
+  }
 
   // ── Daily trend ──────────────────────────────────────────────────────────────
   if (type === "daily" || type === "kpi") {
