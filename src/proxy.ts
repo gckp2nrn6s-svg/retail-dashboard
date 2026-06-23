@@ -51,6 +51,7 @@ export const config = {
     "/api/kpis/:path*",
     "/api/sales/:path*",
     "/api/marketplace/:path*",
+    "/api/b2b/:path*",
     "/api/live/:path*",
     "/api/drill/:path*",
     "/api/insights/:path*",

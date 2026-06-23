@@ -98,7 +98,7 @@ function parseColor(desc: string): string {
 const ALLOWED_TYPES = new Set([
   "daily","kpi","store","store-daily","channel","category","brand",
   "item","item-store","items","daily-detail",
-  "store-category","store-subcat","marketplace-items","store-brand",
+  "store-category","store-subcat","marketplace-items","store-brand","b2b-customer-items",
 ]);
 
 export async function GET(req: NextRequest) {
@@ -129,6 +129,7 @@ async function handleDrill(req: NextRequest) {
   const size    = safeStr(p.get("size"));
   const itemNo  = safeStr(p.get("item"));
   const staff   = safeStr(p.get("staff"));
+  const customer= safeStr(p.get("customer"));
   const datePm  = safeDate(p.get("date"), today);
 
   // FX + product descriptions live in Postgres. They're enrichment, not the
@@ -230,6 +231,41 @@ async function handleDrill(req: NextRequest) {
       summary: [
         { label: "store",   value: sn(store) },
         { label: "revenue", value: `EGP ${Math.round(total).toLocaleString()}` },
+      ],
+      fx,
+    });
+  }
+
+  // ── B2B customer → their products (HO invoices net of credit memos) ──────────
+  if (type === "b2b-customer-items" && customer) {
+    const rows = await navQuery<{item_no:string;description:string;egp:number;units:number}>(`
+      SELECT item_no, MAX(description) AS description, SUM(egp) AS egp, SUM(units) AS units FROM (
+        SELECT [No_] AS item_no, [Description] AS description, [Amount Including VAT] AS egp, [Quantity] AS units
+          FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] = @customer
+        UNION ALL
+        SELECT [No_], [Description], -[Amount Including VAT], -[Quantity]
+          FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] = @customer
+      ) t GROUP BY item_no HAVING SUM(egp) <> 0 ORDER BY egp DESC
+    `, { from, to, customer });
+    const total = rows.reduce((s, r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => ({
+      product: descMap[r.item_no] || (r.description && String(r.description).trim()) || r.item_no,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      pct:   total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
+    }));
+    return NextResponse.json({
+      columns: [
+        { key: "product", label: "Product",        type: "text" },
+        { key: "egp",     label: "Revenue",        type: "currency" },
+        { key: "units",   label: "Units",          type: "units" },
+        { key: "pct",     label: "% of customer",  type: "number" },
+      ],
+      rows: drillRows,
+      summary: [
+        { label: "products", value: String(drillRows.length) },
+        { label: "revenue",  value: `EGP ${Math.round(total).toLocaleString()}` },
       ],
       fx,
     });
