@@ -130,10 +130,19 @@ async function handleDrill(req: NextRequest) {
   const staff   = safeStr(p.get("staff"));
   const datePm  = safeDate(p.get("date"), today);
 
-  const [fxRow, descRows] = await Promise.all([
-    query<{egp_per_usd:string}>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"),
-    query<{item_no:string;description:string}>("SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"),
-  ]);
+  // FX + product descriptions live in Postgres. They're enrichment, not the
+  // drill's core data (which is NAV) — so a Postgres blip must NOT sink the whole
+  // drill. Degrade gracefully: fx→52 fallback, descriptions→item numbers.
+  let fxRow: { egp_per_usd: string }[] = [];
+  let descRows: { item_no: string; description: string }[] = [];
+  try {
+    [fxRow, descRows] = await Promise.all([
+      query<{egp_per_usd:string}>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"),
+      query<{item_no:string;description:string}>("SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"),
+    ]);
+  } catch (e) {
+    console.error(`[drill] Postgres lookup (fx/desc) failed, degrading to NAV-only: ${e instanceof Error ? e.message : e}`);
+  }
   const fx = parseFloat(fxRow[0]?.egp_per_usd || "52");
   const descMap = Object.fromEntries(descRows.map(r => [r.item_no, r.description]));
 
