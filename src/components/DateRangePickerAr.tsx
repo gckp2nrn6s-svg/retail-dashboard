@@ -7,7 +7,8 @@ export interface LiveRange { preset: DatePreset; from: string; to: string; label
 
 // Arabic labels for the same presets used everywhere else in the dashboard.
 const AR_LABEL: Record<DatePreset, string> = {
-  today:  "اليوم",
+  today:     "اليوم",
+  yesterday: "أمس",
   mtd:    "هذا الشهر",
   "7d":   "آخر 7 أيام",
   "30d":  "آخر 30 يوم",

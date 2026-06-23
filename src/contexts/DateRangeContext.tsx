@@ -2,7 +2,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { todayCairo, cairoDaysAgo, cairoStartOfMonth, cairoStartOfYear, CAIRO_TZ } from "@/lib/dates";
 
-export type DatePreset = "today" | "mtd" | "7d" | "30d" | "90d" | "ytd" | "custom";
+export type DatePreset = "today" | "yesterday" | "mtd" | "7d" | "30d" | "90d" | "ytd" | "custom";
 
 export interface DateRange {
   from: string; // YYYY-MM-DD
@@ -22,7 +22,8 @@ function mtdLabel() {
 }
 
 export const PRESETS: { key: DatePreset; label: string; from: () => string; to: () => string }[] = [
-  { key: "today",  label: "Today",                from: today,               to: today },
+  { key: "today",     label: "Today",             from: today,               to: today },
+  { key: "yesterday", label: "Yesterday",         from: () => daysAgo(1),    to: () => daysAgo(1) },
   { key: "mtd",    label: `MTD · ${mtdLabel()}`, from: startOfMonth,        to: today },
   { key: "7d",     label: "Last 7 days",          from: () => daysAgo(7),    to: today },
   { key: "30d",    label: "Last 30 days",          from: () => daysAgo(30),   to: today },
