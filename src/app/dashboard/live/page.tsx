@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useCurrency, fmt } from "@/components/CurrencyToggle";
 import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
 import { DateRangePickerAr, arRange, LiveRange } from "@/components/DateRangePickerAr";
+import { todayCairo } from "@/lib/dates";
 import { ChevronLeft, RotateCcw } from "lucide-react";
 
 interface LiveStore { code: string; name: string; group: string; egp: number; units: number }
@@ -38,7 +39,7 @@ export default function LiveSalesPage() {
   const [updatedAt, setUpdatedAt] = useState<string>("");
   const reqIdRef = useRef(0);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayCairo();
   const isLive = range.to >= todayStr; // range includes today → keep auto-refreshing
 
   const load = useCallback(async (silent = false) => {
@@ -92,7 +93,7 @@ export default function LiveSalesPage() {
 
         <p style={{ color: "rgba(255,255,255,0.42)", fontSize: "0.66rem", margin: "7px 0 12px" }}>
           {isLive
-            ? `اليوم · ${new Date(todayStr).toLocaleDateString("ar-EG-u-nu-latn", { weekday: "long", day: "numeric", month: "long" })} · يُحدّث كل دقيقة`
+            ? `اليوم · ${new Date(todayStr).toLocaleDateString("ar-EG-u-nu-latn", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" })} · يُحدّث كل دقيقة`
             : `${range.from} ← ${range.to}`}
         </p>
 

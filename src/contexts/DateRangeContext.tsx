@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { todayCairo, cairoDaysAgo, cairoStartOfMonth, cairoStartOfYear, CAIRO_TZ } from "@/lib/dates";
 
 export type DatePreset = "today" | "mtd" | "7d" | "30d" | "90d" | "ytd" | "custom";
 
@@ -10,18 +11,14 @@ export interface DateRange {
   label: string;
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
-function daysAgo(n: number) {
-  const d = new Date(); d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
-}
-function startOfYear()  { return `${new Date().getFullYear()}-01-01`; }
-function startOfMonth() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
+// All dates are Cairo-local — the business runs on Egypt time. Using UTC here made
+// "today" roll over 2–3h late (showing yesterday past Cairo-midnight). See src/lib/dates.ts.
+const today = todayCairo;
+const daysAgo = cairoDaysAgo;
+const startOfYear = cairoStartOfYear;
+const startOfMonth = cairoStartOfMonth;
 function mtdLabel() {
-  return new Date().toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  return new Date().toLocaleDateString("en-GB", { timeZone: CAIRO_TZ, month: "short", year: "numeric" });
 }
 
 export const PRESETS: { key: DatePreset; label: string; from: () => string; to: () => string }[] = [

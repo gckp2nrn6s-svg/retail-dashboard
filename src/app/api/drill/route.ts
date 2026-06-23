@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery as navQueryRaw } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenueSplit, getShopifyLineItems, getShopifyDailyRevenue } from "@/lib/shopify";
+import { todayCairo } from "@/lib/dates";
 
 // Fault isolation for the whole drill route: NAV going offline (the laptop tunnel
 // dropping) must NEVER hard-fail a drill — it should degrade to whatever non-NAV
@@ -118,7 +119,7 @@ async function handleDrill(req: NextRequest) {
   const p       = new URL(req.url).searchParams;
   const typeRaw = p.get("type") || "daily";
   const type    = ALLOWED_TYPES.has(typeRaw) ? typeRaw : "daily";
-  const today   = new Date().toISOString().slice(0,10);
+  const today   = todayCairo();
   const from    = safeDate(p.get("from"), "2026-01-01");
   const to      = safeDate(p.get("to"),   today);
   const store   = safeStr(p.get("store"));

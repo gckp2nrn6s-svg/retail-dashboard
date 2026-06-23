@@ -3,6 +3,7 @@ import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
 import { safeSource, isDegraded } from "@/lib/resilience";
+import { todayCairo } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ interface FxRow { egp_per_usd: string }
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export async function GET(req: Request) {
-  const today = iso(new Date());
+  const today = todayCairo();
   const sp = new URL(req.url).searchParams;
   const from = sp.get("from") || today;
   const to   = sp.get("to")   || today;
