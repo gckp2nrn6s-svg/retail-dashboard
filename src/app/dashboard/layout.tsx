@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, TrendingUp, Package, Grid3X3, MessageCircle, Zap, Target, Flag, MoreHorizontal, X, Megaphone, ShoppingBag } from "lucide-react";
+import { LayoutDashboard, TrendingUp, Package, Grid3X3, MessageCircle, Zap, Target, Flag, MoreHorizontal, X, Megaphone, ShoppingBag, Activity } from "lucide-react";
 import { CurrencyProvider } from "@/components/CurrencyToggle";
 import { DateRangeProvider } from "@/contexts/DateRangeContext";
 import { useState } from "react";
 
 const tabs = [
   { href: "/dashboard",           label: "Home",       icon: LayoutDashboard },
+  { href: "/dashboard/live",      label: "Live",       icon: Activity },
   { href: "/dashboard/sales",     label: "Sales",      icon: TrendingUp },
   { href: "/dashboard/marketplace", label: "Marketplace", icon: ShoppingBag },
   { href: "/dashboard/stock",     label: "Stock",      icon: Package },

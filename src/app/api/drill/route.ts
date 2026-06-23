@@ -97,7 +97,7 @@ function parseColor(desc: string): string {
 const ALLOWED_TYPES = new Set([
   "daily","kpi","store","store-daily","channel","category","brand",
   "item","item-store","items","daily-detail",
-  "store-category","store-subcat","marketplace-items",
+  "store-category","store-subcat","marketplace-items","store-brand",
 ]);
 
 export async function GET(req: NextRequest) {
@@ -180,6 +180,46 @@ async function handleDrill(req: NextRequest) {
         { label: "products", value: String(drillRows.length) },
         { label: "revenue",  value: `EGP ${Math.round(total).toLocaleString()}` },
         { label: "units",    value: drillRows.reduce((s, r) => s + r.units, 0).toLocaleString() },
+      ],
+      fx,
+    });
+  }
+
+  // ── Store → brand split (Samsonite vs American Tourister) ────────────────────
+  if (type === "store-brand" && store) {
+    const rows = await navQuery<{code:string;egp:number;units:number;skus:number}>(`
+      SELECT [Item Category Code] AS code,
+        -SUM([Net Amount]+[VAT Amount]) AS egp,
+        -SUM([Quantity])                AS units,
+        COUNT(DISTINCT [Item No_])      AS skus
+      FROM TransSalesEntry
+      WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] = @store
+      GROUP BY [Item Category Code]
+      ORDER BY egp DESC
+    `, { from, to, store });
+    const total = rows.reduce((s, r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => ({
+      brand: brandLabel(r.code),
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      skus:  Number(r.skus),
+      pct:   total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
+      _drill_url:   dUrl({ type: "items", store, brand: r.code }, from, to),
+      _drill_title: `${sn(store)} · ${brandLabel(r.code)} · Items`,
+    }));
+    return NextResponse.json({
+      columns: [
+        { key: "brand", label: "Brand",       type: "text" },
+        { key: "egp",   label: "Revenue",     type: "currency" },
+        { key: "units", label: "Units",       type: "units" },
+        { key: "skus",  label: "SKUs",        type: "number" },
+        { key: "pct",   label: "% of store",  type: "number" },
+      ],
+      rows: drillRows,
+      summary: [
+        { label: "store",   value: sn(store) },
+        { label: "revenue", value: `EGP ${Math.round(total).toLocaleString()}` },
       ],
       fx,
     });
