@@ -377,11 +377,19 @@ export function DrillDownSheet({ stack, onClose, onPush, variant = "table", rtl 
   const onBack = useCallback(() => onPush({ title: "__back__", endpoint: "" }), [onPush]);
 
   // Lock the page behind the sheet so touch-scrolling the list scrolls the list,
-  // not the background (mobile scroll-chaining). Restored on close.
+  // not the background (mobile scroll-chaining). The real scroller in the dashboard
+  // layout is <main class="main-content">, NOT document.body — lock both. Restored
+  // on close (overflow:hidden preserves scrollTop, so no jump).
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    const main = document.querySelector(".main-content") as HTMLElement | null;
+    const prevBody = document.body.style.overflow;
+    const prevMain = main?.style.overflow ?? "";
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    if (main) main.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBody;
+      if (main) main.style.overflow = prevMain;
+    };
   }, []);
 
   const current = stack[stack.length - 1];
