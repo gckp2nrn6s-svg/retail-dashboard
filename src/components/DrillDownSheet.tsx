@@ -1,9 +1,19 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { X, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, RotateCcw } from "lucide-react";
+import { X, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronLeft, RotateCcw } from "lucide-react";
 import { useCurrency } from "@/components/CurrencyToggle";
 
 export interface DrillParams { title: string; endpoint: string }
+export type DrillVariant = "table" | "cards";
+
+// Arabic labels for the common drill columns — used in the big "cards" view so the
+// Live board's drill reads in Arabic for the (older) user. Falls back to col.label.
+const AR_COL: Record<string, string> = {
+  brand: "العلامة", egp: "الإيراد", revenue: "الإيراد", units: "القطع", skus: "الأصناف",
+  pct: "النسبة", description: "المنتج", product: "المنتج", size: "المقاس",
+  color: "اللون", colour: "اللون", store_display: "المتجر", store: "المتجر", days: "الأيام", date: "التاريخ",
+};
+const colLabel = (col: Col, rtl: boolean) => (rtl && AR_COL[col.key]) ? AR_COL[col.key] : col.label;
 
 interface Row { [key: string]: string | number | null }
 interface Col  {
@@ -31,6 +41,7 @@ const STORE_NAMES: Record<string,string> = {
 
 function displayVal(val: string|number|null, col: Col, currency: string, fx: number): string {
   if (val === null || val === undefined || val === "") return "—";
+  if (col.key === "pct") return `${Math.round(Number(val))}%`;
   if (col.key === "store_code" || col.key === "store") return STORE_NAMES[String(val)] ?? String(val);
   if (col.type === "currency") {
     const n = typeof val === "string" ? parseFloat(val) : val;
@@ -61,22 +72,22 @@ function exportCSV(columns: Col[], rows: Row[], title: string) {
   a.download = `${title.replace(/\s+/g,"-").toLowerCase()}.csv`; a.click();
 }
 
-function computeHighlights(columns: Col[], rows: Row[], fx: number, currency: string) {
+function computeHighlights(columns: Col[], rows: Row[], fx: number, currency: string, rtl: boolean) {
   if (!rows.length) return [];
   const revCol  = columns.find(c => c.type === "currency");
   const unitCol = columns.find(c => c.type === "units");
-  const hl: {icon:string; label:string; value:string}[] = [];
+  const hl: {icon:string; label:string; value:string; key:string}[] = [];
   if (revCol) {
     const vals = rows.map(r => parseFloat(String(r[revCol.key]??0)));
     const total = vals.reduce((s,v)=>s+v,0);
     const topIdx = vals.indexOf(Math.max(...vals));
     const nameCol = columns.find(c => c.type==="text"||c.type==="date");
-    hl.push({ icon:"💰", label:"Total", value: currency==="USD" ? `$${Math.round(total/fx).toLocaleString()}` : `EGP ${Math.round(total).toLocaleString()}` });
-    if (nameCol) hl.push({ icon:"🏆", label:`Top`, value: displayVal(rows[topIdx][nameCol.key], nameCol, currency, fx) });
+    hl.push({ key:"total", icon:"💰", label: rtl?"الإجمالي":"Total", value: currency==="USD" ? `$${Math.round(total/fx).toLocaleString()}` : `EGP ${Math.round(total).toLocaleString()}` });
+    if (nameCol) hl.push({ key:"top", icon:"🏆", label: rtl?"الأعلى":"Top", value: displayVal(rows[topIdx][nameCol.key], nameCol, currency, fx) });
   }
   if (unitCol) {
     const total = rows.reduce((s,r)=>s+parseFloat(String(r[unitCol.key]??0)),0);
-    hl.push({ icon:"📦", label:"Units", value: total.toLocaleString() });
+    hl.push({ key:"units", icon:"📦", label: rtl?"القطع":"Units", value: total.toLocaleString() });
   }
   return hl.slice(0,3);
 }
@@ -104,11 +115,13 @@ function buildUnitsDrill(endpoint: string, title: string): DrillParams | null {
 
 // ── Level: one drill view in the stack ──────────────────────────────────────
 function DrillLevel({
-  params, onDrill, isTop,
+  params, onDrill, isTop, variant = "table", rtl = false,
 }: {
   params: DrillParams;
   onDrill: (p: DrillParams) => void;
   isTop: boolean;
+  variant?: DrillVariant;
+  rtl?: boolean;
 }) {
   const { currency } = useCurrency();
   const [data, setData]       = useState<DrillData|null>(null);
@@ -133,6 +146,12 @@ function DrillLevel({
   };
 
   const visibleCols = (data?.columns ?? []).filter(c => !c.hidden && !c.key.startsWith("_"));
+  // For the big "cards" view: the name (text/date) headlines each card, the first
+  // currency column is the big number, everything else becomes a chip.
+  const nameCol  = visibleCols.find(c => c.type === "text" || c.type === "date");
+  const revCol   = visibleCols.find(c => c.type === "currency");
+  const otherCols = visibleCols.filter(c => c !== nameCol && c !== revCol);
+  const Chevron = rtl ? ChevronLeft : ChevronRight;
 
   const sortedRows = data ? [...data.rows].sort((a,b) => {
     if (!sortKey) return 0;
@@ -143,7 +162,7 @@ function DrillLevel({
   }) : [];
 
   const fx         = data?.fx || 52;
-  const highlights = data ? computeHighlights(visibleCols, data.rows, fx, currency) : [];
+  const highlights = data ? computeHighlights(visibleCols, data.rows, fx, currency, rtl) : [];
   const unitsDrill = data ? buildUnitsDrill(params.endpoint, params.title) : null;
 
   const SortIcon = ({col}:{col:Col}) => {
@@ -163,9 +182,10 @@ function DrillLevel({
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Highlights — the Units card expands into the underlying sales list */}
       {highlights.length > 0 && (
-        <div style={{ padding: "12px 20px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div dir={rtl ? "rtl" : undefined} style={{ padding: "12px 20px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
           {highlights.map((h,i) => {
-            const clickable = h.label === "Units" && !!unitsDrill;
+            const clickable = h.key === "units" && !!unitsDrill;
+            const big = variant === "cards";
             return (
               <div key={i}
                 onClick={clickable ? () => onDrill(unitsDrill!) : undefined}
@@ -173,20 +193,20 @@ function DrillLevel({
                 style={{
                   display:"flex", alignItems:"center", gap:6,
                   background: clickable ? "var(--action-light)" : "var(--surface3)",
-                  borderRadius:10, padding:"6px 12px",
+                  borderRadius:10, padding: big ? "9px 15px" : "6px 12px",
                   border: clickable ? "1px solid var(--action)" : "1px solid transparent",
                   cursor: clickable ? "pointer" : "default",
                   transition:"background 0.1s",
                 }}
               >
-                <span style={{fontSize:"0.75rem"}}>{h.icon}</span>
+                <span style={{fontSize: big ? "0.95rem" : "0.75rem"}}>{h.icon}</span>
                 <div>
-                  <p style={{fontSize:"0.58rem", color:"var(--text3)", fontWeight:600}}>
-                    {h.label}{clickable ? " · tap to view sales" : ""}
+                  <p style={{fontSize: big ? "0.66rem" : "0.58rem", color:"var(--text3)", fontWeight:600}}>
+                    {h.label}{clickable ? (rtl ? " · اضغط للتفاصيل" : " · tap to view sales") : ""}
                   </p>
-                  <p style={{fontSize:"0.72rem", fontWeight:800, color:"var(--text)"}}>{h.value}</p>
+                  <p style={{fontSize: big ? "1rem" : "0.72rem", fontWeight:800, color:"var(--text)"}}>{h.value}</p>
                 </div>
-                {clickable && <ChevronRight size={13} style={{color:"var(--action)"}}/>}
+                {clickable && <Chevron size={big ? 16 : 13} style={{color:"var(--action)"}}/>}
               </div>
             );
           })}
@@ -213,17 +233,52 @@ function DrillLevel({
         ) : error ? (
           <div style={{padding:60, textAlign:"center"}}>
             <p style={{fontSize:"1.8rem", marginBottom:12}}>⚠️</p>
-            <p style={{fontSize:"0.85rem", fontWeight:700, color:"var(--text2)"}}>Failed to load data</p>
-            <p style={{fontSize:"0.72rem", color:"var(--text3)", marginTop:4, marginBottom:16}}>Check your connection and try again</p>
-            <button onClick={fetchData} style={{display:"inline-flex", alignItems:"center", gap:6, padding:"8px 18px", borderRadius:10, border:"1px solid var(--border)", background:"var(--surface3)", cursor:"pointer", fontSize:"0.75rem", color:"var(--text)", fontWeight:600}}>
-              <RotateCcw size={13}/> Retry
+            <p style={{fontSize:"0.9rem", fontWeight:700, color:"var(--text2)"}}>{rtl ? "تعذّر تحميل البيانات" : "Failed to load data"}</p>
+            <p style={{fontSize:"0.75rem", color:"var(--text3)", marginTop:4, marginBottom:16}}>{rtl ? "تحقّق من الاتصال وحاول مجددًا" : "Check your connection and try again"}</p>
+            <button onClick={fetchData} style={{display:"inline-flex", alignItems:"center", gap:6, padding:"9px 20px", borderRadius:10, border:"1px solid var(--border)", background:"var(--surface3)", cursor:"pointer", fontSize:"0.8rem", color:"var(--text)", fontWeight:600}}>
+              <RotateCcw size={14}/> {rtl ? "إعادة المحاولة" : "Retry"}
             </button>
           </div>
         ) : !data || data.rows.length === 0 ? (
           <div style={{padding:60, textAlign:"center"}}>
             <p style={{fontSize:"1.8rem", marginBottom:12}}>📭</p>
-            <p style={{fontSize:"0.85rem", fontWeight:700, color:"var(--text2)"}}>No data for this period</p>
-            <p style={{fontSize:"0.72rem", color:"var(--text3)", marginTop:4}}>Try widening your date range</p>
+            <p style={{fontSize:"0.95rem", fontWeight:700, color:"var(--text2)"}}>{rtl ? "لا توجد بيانات في هذه الفترة" : "No data for this period"}</p>
+            <p style={{fontSize:"0.78rem", color:"var(--text3)", marginTop:4}}>{rtl ? "جرّب توسيع الفترة" : "Try widening your date range"}</p>
+          </div>
+        ) : variant === "cards" ? (
+          <div dir={rtl ? "rtl" : "ltr"} style={{display:"flex", flexDirection:"column", gap:12, padding:"14px 16px"}}>
+            {sortedRows.map((row, i) => {
+              const drillable = isDrillable(row);
+              return (
+                <button key={i} onClick={drillable ? () => handleRowClick(row) : undefined} style={{
+                  width:"100%", textAlign: rtl ? "right" : "left", border:"1px solid var(--border)",
+                  background:"var(--surface3)", borderRadius:18, padding:"16px 18px",
+                  cursor: drillable ? "pointer" : "default", display:"flex", flexDirection:"column", gap:10,
+                }}>
+                  <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", gap:12}}>
+                    <span style={{fontSize:"1.15rem", fontWeight:800, color:"var(--text)", lineHeight:1.25, overflow:"hidden", textOverflow:"ellipsis"}}>
+                      {nameCol ? displayVal(row[nameCol.key], nameCol, currency, fx) : `#${i + 1}`}
+                    </span>
+                    {drillable && <Chevron size={22} style={{color:"var(--action)", flexShrink:0}}/>}
+                  </div>
+                  {revCol && (
+                    <div style={{fontSize:"1.75rem", fontWeight:900, color:"var(--text)", letterSpacing:"-0.02em", lineHeight:1}}>
+                      {displayVal(row[revCol.key], revCol, currency, fx)}
+                    </div>
+                  )}
+                  {otherCols.length > 0 && (
+                    <div style={{display:"flex", flexWrap:"wrap", gap:8, marginTop:2}}>
+                      {otherCols.map(col => (
+                        <span key={col.key} style={{fontSize:"0.92rem", fontWeight:700, color:"var(--text)", background:"var(--surface)", border:"1px solid var(--border)", borderRadius:12, padding:"6px 13px"}}>
+                          <span style={{color:"var(--text3)", fontWeight:600}}>{colLabel(col, rtl)} </span>
+                          {displayVal(row[col.key], col, currency, fx)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         ) : (
           <table style={{width:"100%", borderCollapse:"collapse", fontSize:"0.78rem"}}>
@@ -300,10 +355,10 @@ function DrillLevel({
 
       {/* CSV */}
       {data && data.rows.length > 0 && (
-        <div style={{padding:"10px 20px", borderTop:"1px solid var(--border)"}}>
+        <div dir={rtl ? "rtl" : undefined} style={{padding:"10px 20px", borderTop:"1px solid var(--border)"}}>
           <button onClick={() => exportCSV(visibleCols, data.rows, params.title)}
-            style={{display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:10, border:"1px solid var(--border)", background:"var(--surface3)", cursor:"pointer", fontSize:"0.68rem", color:"var(--text2)", fontWeight:600}}>
-            <Download size={13}/> Export CSV ({data.rows.length} rows)
+            style={{display:"flex", alignItems:"center", gap:5, padding:"7px 14px", borderRadius:10, border:"1px solid var(--border)", background:"var(--surface3)", cursor:"pointer", fontSize:"0.7rem", color:"var(--text2)", fontWeight:600}}>
+            <Download size={13}/> {rtl ? `تصدير (${data.rows.length})` : `Export CSV (${data.rows.length} rows)`}
           </button>
         </div>
       )}
@@ -312,10 +367,12 @@ function DrillLevel({
 }
 
 // ── Main DrillDownSheet — manages the navigation stack ───────────────────────
-export function DrillDownSheet({ stack, onClose, onPush }: {
+export function DrillDownSheet({ stack, onClose, onPush, variant = "table", rtl = false }: {
   stack: DrillParams[];
   onClose: () => void;
   onPush:  (p: DrillParams) => void;
+  variant?: DrillVariant;
+  rtl?: boolean;
 }) {
   const onBack = useCallback(() => onPush({ title: "__back__", endpoint: "" }), [onPush]);
   const current = stack[stack.length - 1];
@@ -327,10 +384,10 @@ export function DrillDownSheet({ stack, onClose, onPush }: {
     <>
       <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:200, backdropFilter:"blur(4px)" }} />
 
-      <div className="drill-sheet" style={{
+      <div className={`drill-sheet ${variant === "cards" ? "drill-sheet-cards" : ""}`} style={{
         position:"fixed", bottom:0, left:0, right:0, zIndex:201,
         background:"var(--surface)", borderRadius:"22px 22px 0 0",
-        maxHeight:"90vh", display:"flex", flexDirection:"column",
+        maxHeight: variant === "cards" ? "94vh" : "90vh", display:"flex", flexDirection:"column",
         boxShadow:"0 -12px 60px rgba(0,0,0,0.25)",
       }}>
 
@@ -340,7 +397,7 @@ export function DrillDownSheet({ stack, onClose, onPush }: {
         </div>
 
         {/* Header — breadcrumb + title + close */}
-        <div style={{padding:"4px 20px 12px", borderBottom:"1px solid var(--border)"}}>
+        <div dir={rtl ? "rtl" : undefined} style={{padding:"4px 20px 12px", borderBottom:"1px solid var(--border)"}}>
 
           {/* Breadcrumb trail */}
           {stack.length > 1 && (
@@ -362,11 +419,11 @@ export function DrillDownSheet({ stack, onClose, onPush }: {
             <div style={{display:"flex", alignItems:"center", gap:8, flex:1, minWidth:0}}>
               {canGoBack && (
                 <button onClick={onBack}
-                  style={{padding:"5px 10px", borderRadius:8, border:"1px solid var(--border)", background:"var(--surface3)", cursor:"pointer", fontSize:"0.68rem", color:"var(--text2)", fontWeight:600, flexShrink:0}}>
-                  ← Back
+                  style={{padding:"6px 12px", borderRadius:8, border:"1px solid var(--border)", background:"var(--surface3)", cursor:"pointer", fontSize: variant === "cards" ? "0.8rem" : "0.68rem", color:"var(--text2)", fontWeight:600, flexShrink:0, whiteSpace:"nowrap"}}>
+                  {rtl ? "رجوع ←" : "← Back"}
                 </button>
               )}
-              <p style={{fontWeight:800, fontSize:"1rem", color:"var(--text)", letterSpacing:"-0.02em", lineHeight:1.25, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
+              <p style={{fontWeight:800, fontSize: variant === "cards" ? "1.2rem" : "1rem", color:"var(--text)", letterSpacing:"-0.02em", lineHeight:1.25, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>
                 {current.title}
               </p>
             </div>
@@ -388,7 +445,7 @@ export function DrillDownSheet({ stack, onClose, onPush }: {
 
         {/* Content for current level */}
         <div style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
-          <DrillLevel key={current.endpoint} params={current} onDrill={onPush} isTop={true} />
+          <DrillLevel key={current.endpoint} params={current} onDrill={onPush} isTop={true} variant={variant} rtl={rtl} />
         </div>
       </div>
 
@@ -403,6 +460,7 @@ export function DrillDownSheet({ stack, onClose, onPush }: {
             border-radius: 0 !important;
             max-height: 100vh !important;
           }
+          .drill-sheet-cards { width: min(76vw, 920px) !important; }
         }
       `}</style>
     </>

@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { todayCairo } from "@/lib/dates";
 
 export type ShopifyStore = "samsonite" | "american-tourister";
 
@@ -250,7 +251,7 @@ async function refreshShopifyDaily(from: string, to: string): Promise<void> {
 async function ensureRollupCovered(from: string, to: string): Promise<void> {
   await ensureRollupTable();
   if (from > to) return;
-  const today = isoDay(new Date());
+  const today = todayCairo(); // Cairo day — Shopify boundaries are +03:00, so "today" must be too
   const cutoff = addDays(today, -ROLLUP_SETTLE_DAYS);
   const expected = Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS) + 1;
 
@@ -314,7 +315,7 @@ export async function getShopifyDailyRevenue(
   from: string, to: string
 ): Promise<Record<string, { egp: number; units: number }>> {
   try {
-    const today = isoDay(new Date());
+    const today = todayCairo(); // Cairo day — Shopify boundaries are +03:00, so "today" must be too
     const byDay: Record<string, { egp: number; units: number }> = {};
     const histTo = to >= today ? addDays(today, -1) : to;
     if (histTo >= from) {
@@ -345,7 +346,7 @@ export async function getShopifyDailyRevenue(
  *  today live (real-time). Falls back to the full live path on any rollup error. */
 export async function getShopifyRevenue(from: string, to: string): Promise<{ egp: number; units: number }> {
   try {
-    const today = isoDay(new Date());
+    const today = todayCairo(); // Cairo day — Shopify boundaries are +03:00, so "today" must be too
     let egp = 0, units = 0;
     const histTo = to >= today ? addDays(today, -1) : to;
     if (histTo >= from) {
@@ -380,7 +381,7 @@ export async function getShopifyRevenueSplit(from: string, to: string): Promise<
 }> {
   const out = { samsonite: { egp: 0, units: 0 }, americanTourister: { egp: 0, units: 0 } };
   try {
-    const today = isoDay(new Date());
+    const today = todayCairo(); // Cairo day — Shopify boundaries are +03:00, so "today" must be too
     const histTo = to >= today ? addDays(today, -1) : to;
     if (histTo >= from) {
       await ensureRollupCovered(from, histTo);
@@ -436,7 +437,7 @@ export async function getShopifyRevenueAndItems(
   // bestsellers. (A per-SKU rollup would make this full-range + instant — follow-up.)
   const ITEMS_WINDOW_DAYS = 7;
   const { egp, units } = await getShopifyRevenue(from, to);
-  const cap = addDays(isoDay(new Date()), -ITEMS_WINDOW_DAYS);
+  const cap = addDays(todayCairo(), -ITEMS_WINDOW_DAYS);
   const itemsFrom = from < cap ? cap : from;
   let items: ShopifyLineItemRow[] = [];
   try { items = await getShopifyLineItems(itemsFrom, to); } catch { items = []; }
