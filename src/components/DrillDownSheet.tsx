@@ -179,7 +179,7 @@ function DrillLevel({
   const isDrillable = (row: Row) => !!row["_drill_url"];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       {/* Highlights — the Units card expands into the underlying sales list */}
       {highlights.length > 0 && (
         <div dir={rtl ? "rtl" : undefined} style={{ padding: "12px 20px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -225,7 +225,7 @@ function DrillLevel({
       )}
 
       {/* Table */}
-      <div style={{ flex:1, overflowY:"auto", overflowX:"auto", marginTop:8 }}>
+      <div style={{ flex:1, minHeight:0, overflowY:"auto", overflowX:"auto", marginTop:8, overscrollBehavior:"contain", WebkitOverflowScrolling:"touch" }}>
         {loading ? (
           <div style={{padding:20, display:"flex", flexDirection:"column", gap:8}}>
             {[1,2,3,4,5,6].map(i => <div key={i} className="skeleton" style={{height:44, borderRadius:10}} />)}
@@ -375,6 +375,15 @@ export function DrillDownSheet({ stack, onClose, onPush, variant = "table", rtl 
   rtl?: boolean;
 }) {
   const onBack = useCallback(() => onPush({ title: "__back__", endpoint: "" }), [onPush]);
+
+  // Lock the page behind the sheet so touch-scrolling the list scrolls the list,
+  // not the background (mobile scroll-chaining). Restored on close.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
   const current = stack[stack.length - 1];
   if (!current) return null;
 
@@ -444,7 +453,7 @@ export function DrillDownSheet({ stack, onClose, onPush, variant = "table", rtl 
         </div>
 
         {/* Content for current level */}
-        <div style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
+        <div style={{flex:1, minHeight:0, display:"flex", flexDirection:"column", overflow:"hidden"}}>
           <DrillLevel key={current.endpoint} params={current} onDrill={onPush} isTop={true} variant={variant} rtl={rtl} />
         </div>
       </div>
