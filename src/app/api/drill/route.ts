@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery as navQueryRaw } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenueSplit, getShopifyLineItems, getShopifyDailyRevenue } from "@/lib/shopify";
+import { B2B_CUST_FILTER } from "@/lib/b2b-revenue";
 import { todayCairo } from "@/lib/dates";
 
 // Fault isolation for the whole drill route: NAV going offline (the laptop tunnel
@@ -488,10 +489,10 @@ async function handleDrill(req: NextRequest) {
     const custRows = await navQuery<{cust:string;egp:number;units:number;txns:number}>(`
       SELECT cust, SUM(egp) AS egp, SUM(units) AS units, COUNT(DISTINCT doc) AS txns FROM (
         SELECT [Sell-to Customer No_] AS cust, [Amount Including VAT] AS egp, [Quantity] AS units, [Document No_] AS doc
-          FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+          FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
         UNION ALL
         SELECT [Sell-to Customer No_], -[Amount Including VAT], -[Quantity], [Document No_]
-          FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+          FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
       ) t GROUP BY cust HAVING SUM(egp) <> 0 ORDER BY egp DESC
     `, { from, to });
     let nameRows: { code: string; name: string }[] = [];

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { safeSource, isDegraded } from "@/lib/resilience";
+import { B2B_CUST_FILTER } from "@/lib/b2b-revenue";
 import { todayCairo, cairoStartOfMonth } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -17,19 +18,19 @@ interface NameRow { code: string; name: string }
 const CUST_TOTALS = `
   SELECT cust, SUM(egp) AS egp, SUM(units) AS units, COUNT(DISTINCT doc) AS txns FROM (
     SELECT [Sell-to Customer No_] AS cust, [Amount Including VAT] AS egp, [Quantity] AS units, [Document No_] AS doc
-      FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+      FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
     UNION ALL
     SELECT [Sell-to Customer No_], -[Amount Including VAT], -[Quantity], [Document No_]
-      FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+      FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
   ) t GROUP BY cust HAVING SUM(egp) <> 0 ORDER BY egp DESC`;
 
 const CUST_SERIES = `
   SELECT date, SUM(egp) AS egp, SUM(units) AS units FROM (
     SELECT CONVERT(varchar(10), CAST([Posting Date] AS DATE), 23) AS date, [Amount Including VAT] AS egp, [Quantity] AS units
-      FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+      FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
     UNION ALL
     SELECT CONVERT(varchar(10), CAST([Posting Date] AS DATE), 23), -[Amount Including VAT], -[Quantity]
-      FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+      FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
   ) t GROUP BY date ORDER BY date`;
 
 // Strip trailing account-number noise from CEO-list names (e.g. "CARREFOUR 200/185/128"

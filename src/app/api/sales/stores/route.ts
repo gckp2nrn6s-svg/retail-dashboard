@@ -76,7 +76,8 @@ export async function GET(req: NextRequest) {
     const shopifyUnits = Math.round(shopify.units);
     const b2bEgp      = Math.round(b2b?.egp ?? 0);
     const b2bUnits    = Math.round(b2b?.units ?? 0);
-    const grandTotal  = navTotal + shopifyEgp + b2bEgp;
+    // Headline = Retail + Ecom only. B2B shown as a channel card but kept out of the total.
+    const grandTotal  = navTotal + shopifyEgp;
 
     const stores = storeRows.map((r) => {
       const rev = Number(r.revenue);

@@ -183,7 +183,9 @@ export async function GET(req: NextRequest) {
     const shopifyUnits = Math.round(shopify.units);
     const b2bEgp       = Math.round(b2b?.egp ?? 0);
     const b2bUnits     = Math.round(b2b?.units ?? 0);
-    const grandTotal   = totalRev + shopifyEgp + b2bEgp;
+    // Headline = Retail + Ecom only. B2B (wholesale) is shown as a channel card but
+    // kept OUT of the total (like Marketplace) — its pct reads as a share of core.
+    const grandTotal   = totalRev + shopifyEgp;
 
     const channelTotals = ["Retail","Ecom","B2B"].map(grp => {
       const filtered = stores.filter(s => s.group === grp);
@@ -261,7 +263,7 @@ export async function GET(req: NextRequest) {
       brands:     [],
       categories,
       products,
-      totalRev:   Math.round(totalRev + shopifyEgp + b2bEgp),
+      totalRev:   Math.round(totalRev + shopifyEgp),
       fx,
       sources,
       degraded:   isDegraded(sources),
