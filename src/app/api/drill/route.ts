@@ -483,6 +483,53 @@ async function handleDrill(req: NextRequest) {
   }
 
   // ── Channel → stores breakdown ───────────────────────────────────────────────
+  // B2B channel drills into CUSTOMERS (HO invoices), not POS stores (which are empty).
+  if (type === "channel" && channel === "B2B") {
+    const custRows = await navQuery<{cust:string;egp:number;units:number;txns:number}>(`
+      SELECT cust, SUM(egp) AS egp, SUM(units) AS units, COUNT(DISTINCT doc) AS txns FROM (
+        SELECT [Sell-to Customer No_] AS cust, [Amount Including VAT] AS egp, [Quantity] AS units, [Document No_] AS doc
+          FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+        UNION ALL
+        SELECT [Sell-to Customer No_], -[Amount Including VAT], -[Quantity], [Document No_]
+          FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to AND [Sell-to Customer No_] <> ''
+      ) t GROUP BY cust HAVING SUM(egp) <> 0 ORDER BY egp DESC
+    `, { from, to });
+    let nameRows: { code: string; name: string }[] = [];
+    try { nameRows = await query<{ code: string; name: string }>("SELECT code, name FROM b2b_customers"); } catch { /* names are enrichment — degrade to codes */ }
+    const nameMap = Object.fromEntries(nameRows.map(r => [r.code, r.name]));
+    const cleanName = (raw?: string) => { if (!raw) return ""; const c = raw.replace(/[\s\d/_.\-]+$/u, "").trim(); return c || raw; };
+    const total = custRows.reduce((s, r) => s + Number(r.egp), 0);
+    const drillRows = custRows.map(r => {
+      const nm = nameMap[r.cust];
+      const display = nm ? (cleanName(nm) || nm) : r.cust;
+      return {
+        customer: display,
+        code:     r.cust,
+        egp:      Math.round(Number(r.egp)),
+        usd:      Math.round(Number(r.egp) / fx),
+        units:    Math.round(Number(r.units)),
+        pct:      total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
+        _drill_url:   dUrl({ type: "b2b-customer-items", customer: r.cust }, from, to),
+        _drill_title: `${display} · Products`,
+      };
+    });
+    return NextResponse.json({
+      columns: [
+        { key: "customer", label: "Customer",  type: "text" },
+        { key: "code",     label: "Code",      type: "text" },
+        { key: "egp",      label: "Revenue",   type: "currency" },
+        { key: "units",    label: "Units",     type: "units" },
+        { key: "pct",      label: "% of B2B",  type: "number" },
+      ],
+      rows: drillRows,
+      summary: [
+        { label: "customers", value: String(drillRows.length) },
+        { label: "revenue",   value: `EGP ${Math.round(total).toLocaleString()}` },
+      ],
+      fx,
+    });
+  }
+
   if (type === "channel") {
     const cf = channelInClause(channel);
     const [rows, shopifySplit] = await Promise.all([

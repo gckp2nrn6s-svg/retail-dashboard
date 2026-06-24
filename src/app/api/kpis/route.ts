@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
+import { getB2BRevenue } from "@/lib/b2b-revenue";
 import { safeSource, isDegraded, type SourceStatus } from "@/lib/resilience";
 
 export const dynamic = "force-dynamic"; // always reflect live sources, never cache
@@ -21,6 +22,7 @@ type NavBundle = {
   current: RevUnits[]; previous: RevUnits[]; yest_row: Rev[];
   d7_row: Rev[]; d30_row: Rev[]; yoy_row: RevUnits[];
   storeCount: CountRow[]; sparkRows: DayRev[]; todayNavRow: Rev[];
+  b2bCur: { egp: number; units: number }; b2bPrev: { egp: number; units: number };
 };
 type ShopRev = { egp: number; units: number };
 
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
   try {
     const [navResult, pgResult, shopCurResult, shopPrevResult, shopTodayResult] = await Promise.all([
       safeSource<NavBundle>("nav", async () => {
-        const [current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow] = await Promise.all([
+        const [current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, b2bCur, b2bPrev] = await Promise.all([
           navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'`, { from, to }),
           navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @prevFrom AND @prevTo AND [Store No_] != 'ONLINE'`, { prevFrom, prevTo }),
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @yest AND [Store No_] != 'ONLINE'`, { yest }),
@@ -59,9 +61,11 @@ export async function GET(req: NextRequest) {
           navQuery<CountRow>(`SELECT COUNT(DISTINCT [Store No_]) AS n FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'`, { from, to }),
           navQuery<DayRev>(`SELECT CAST([Date] AS DATE) AS day, -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @sparkStart AND @today AND [Store No_] != 'ONLINE' GROUP BY CAST([Date] AS DATE) ORDER BY day`, { sparkStart, today }),
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @today AND [Store No_] != 'ONLINE'`, { today }),
+          getB2BRevenue(from, to),           // HO invoices — real B2B, not in POS
+          getB2BRevenue(prevFrom, prevTo),   // …and the comparison period
         ]);
-        return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow };
-      }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [] }),
+        return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, b2bCur, b2bPrev };
+      }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [], b2bCur: { egp: 0, units: 0 }, b2bPrev: { egp: 0, units: 0 } }),
 
       safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"), []),
 
@@ -79,10 +83,10 @@ export async function GET(req: NextRequest) {
     const shopStatus: SourceStatus = (shopCurResult.status === "ok" && shopPrevResult.status === "ok" && shopTodayResult.status === "ok") ? "ok" : "offline";
     const sources = { nav: navResult.status, shopify: shopStatus, pg: pgResult.status };
 
-    const rev       = Number(nav.current[0]?.revenue  ?? 0) + shopifyCurrent.egp;
-    const units     = Number(nav.current[0]?.units    ?? 0) + shopifyCurrent.units;
-    const prevRev   = Number(nav.previous[0]?.revenue ?? 0) + shopifyPrev.egp;
-    const prevUnits = Number(nav.previous[0]?.units   ?? 0) + shopifyPrev.units;
+    const rev       = Number(nav.current[0]?.revenue  ?? 0) + shopifyCurrent.egp + (nav.b2bCur?.egp   ?? 0);
+    const units     = Number(nav.current[0]?.units    ?? 0) + shopifyCurrent.units + (nav.b2bCur?.units ?? 0);
+    const prevRev   = Number(nav.previous[0]?.revenue ?? 0) + shopifyPrev.egp + (nav.b2bPrev?.egp   ?? 0);
+    const prevUnits = Number(nav.previous[0]?.units   ?? 0) + shopifyPrev.units + (nav.b2bPrev?.units ?? 0);
     const d30Rev    = Number(nav.d30_row[0]?.revenue  ?? 0); // daily avg
     const fx        = parseFloat(fxRow[0]?.egp_per_usd || "50");
 

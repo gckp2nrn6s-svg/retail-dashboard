@@ -4,6 +4,7 @@ import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenueAndItems } from "@/lib/shopify";
 import { safeSource, isDegraded } from "@/lib/resilience";
+import { getB2BRevenue } from "@/lib/b2b-revenue";
 import { navDateToISO, lagDaysFrom } from "@/lib/dates";
 import type { ShopifyLineItemRow } from "@/lib/shopify";
 
@@ -49,6 +50,7 @@ type NavBundle = {
   catRows: CatRow[];
   storeWoW: WoWRow[];
   navMaxDateRows: MaxDateRow[];
+  b2b: { egp: number; units: number };
 };
 type PgBundle = { fxRow: FxRow[]; descRows: DescRow[]; skuMap: SkuRow[] };
 type ShopBundle = { egp: number; units: number; items: ShopifyLineItemRow[] };
@@ -68,7 +70,7 @@ export async function GET(req: NextRequest) {
     // zeroes Shopify or Postgres — Shopify revenue always renders.
     const [navResult, pgResult, shopResult] = await Promise.all([
       safeSource<NavBundle>("nav", async () => {
-        const [storeRows, topProducts, catRows, storeWoW, navMaxDateRows] = await Promise.all([
+        const [storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b] = await Promise.all([
           navQuery<StoreRow>(`
             SELECT
               [Store No_]        AS store,
@@ -120,9 +122,10 @@ export async function GET(req: NextRequest) {
           navQuery<MaxDateRow>(
             "SELECT MAX(CAST([Date] AS DATE)) AS max_date FROM TransSalesEntry", {}
           ),
+          getB2BRevenue(from, to), // HO invoices — the real B2B channel (not in POS)
         ]);
-        return { storeRows, topProducts, catRows, storeWoW, navMaxDateRows };
-      }, { storeRows: [], topProducts: [], catRows: [], storeWoW: [], navMaxDateRows: [] }),
+        return { storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b };
+      }, { storeRows: [], topProducts: [], catRows: [], storeWoW: [], navMaxDateRows: [], b2b: { egp: 0, units: 0 } }),
 
       safeSource<PgBundle>("pg", async () => {
         const [fxRow, descRows, skuMap] = await Promise.all([
@@ -137,7 +140,7 @@ export async function GET(req: NextRequest) {
         { egp: 0, units: 0, items: [] }),
     ]);
 
-    const { storeRows, topProducts, catRows, storeWoW, navMaxDateRows } = navResult.value;
+    const { storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b } = navResult.value;
     const { fxRow, descRows, skuMap } = pgResult.value;
     const shopify = shopResult.value;
     const shopifyItems = shopify.items;
@@ -178,16 +181,17 @@ export async function GET(req: NextRequest) {
 
     const shopifyEgp   = Math.round(shopify.egp);
     const shopifyUnits = Math.round(shopify.units);
-    const grandTotal   = totalRev + shopifyEgp;
+    const b2bEgp       = Math.round(b2b?.egp ?? 0);
+    const b2bUnits     = Math.round(b2b?.units ?? 0);
+    const grandTotal   = totalRev + shopifyEgp + b2bEgp;
 
     const channelTotals = ["Retail","Ecom","B2B"].map(grp => {
       const filtered = stores.filter(s => s.group === grp);
       const navEgp   = filtered.reduce((s, r) => s + r.egp, 0);
-      // Shopify own-website orders are Ecom, not in NAV
-      const egp      = grp === "Ecom" ? navEgp + shopifyEgp : navEgp;
-      const units    = grp === "Ecom"
-        ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
-        : filtered.reduce((s, r) => s + r.units, 0);
+      const navUnits = filtered.reduce((s, r) => s + r.units, 0);
+      // Shopify own-website orders are Ecom (not in NAV); B2B is HO invoices (not in POS).
+      const egp   = grp === "Ecom" ? navEgp + shopifyEgp : grp === "B2B" ? navEgp + b2bEgp : navEgp;
+      const units = grp === "Ecom" ? navUnits + shopifyUnits : grp === "B2B" ? navUnits + b2bUnits : navUnits;
       return {
         group:      grp,
         egp,
@@ -257,7 +261,7 @@ export async function GET(req: NextRequest) {
       brands:     [],
       categories,
       products,
-      totalRev:   Math.round(totalRev + shopifyEgp),
+      totalRev:   Math.round(totalRev + shopifyEgp + b2bEgp),
       fx,
       sources,
       degraded:   isDegraded(sources),

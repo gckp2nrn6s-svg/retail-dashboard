@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
+import { getB2BRevenue } from "@/lib/b2b-revenue";
 import { safeSource, isDegraded } from "@/lib/resilience";
 
 export const dynamic = "force-dynamic"; // always reflect live sources, never cache
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   try {
     // Each source is isolated: a NAV outage no longer zeroes Shopify or FX.
     const [navResult, pgResult, shopResult] = await Promise.all([
-      safeSource<[StoreRow[], CatRow[]]>("nav", () => Promise.all([
+      safeSource<[StoreRow[], CatRow[], { egp: number; units: number }]>("nav", () => Promise.all([
         navQuery<StoreRow>(`
           SELECT
             [Store No_]        AS store,
@@ -54,7 +55,8 @@ export async function GET(req: NextRequest) {
           GROUP BY [Item Category Code]
           ORDER BY revenue DESC
         `, { from, to }),
-      ]), [[], []]),
+        getB2BRevenue(from, to), // HO invoices — the real B2B channel (not in POS)
+      ]), [[], [], { egp: 0, units: 0 }]),
 
       safeSource<FxRow[]>("pg", () => query<FxRow>(
         "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
@@ -63,7 +65,7 @@ export async function GET(req: NextRequest) {
       safeSource("shopify", () => getShopifyRevenue(from, to), { egp: 0, units: 0 }),
     ]);
 
-    const [storeRows, categoryRows] = navResult.value;
+    const [storeRows, categoryRows, b2b] = navResult.value;
     const fxRow   = pgResult.value;
     const shopify = shopResult.value;
     const sources = { nav: navResult.status, shopify: shopResult.status, pg: pgResult.status };
@@ -72,7 +74,9 @@ export async function GET(req: NextRequest) {
     const navTotal    = storeRows.reduce((s, r) => s + Number(r.revenue), 0);
     const shopifyEgp  = Math.round(shopify.egp);
     const shopifyUnits = Math.round(shopify.units);
-    const grandTotal  = navTotal + shopifyEgp;
+    const b2bEgp      = Math.round(b2b?.egp ?? 0);
+    const b2bUnits    = Math.round(b2b?.units ?? 0);
+    const grandTotal  = navTotal + shopifyEgp + b2bEgp;
 
     const stores = storeRows.map((r) => {
       const rev = Number(r.revenue);
@@ -88,10 +92,9 @@ export async function GET(req: NextRequest) {
     const channelTotals = ["Retail", "Ecom", "B2B"].map((grp) => {
       const filtered  = stores.filter((s) => s.group === grp);
       const navRev    = filtered.reduce((s, r) => s + r.revenue.egp, 0);
-      const rev       = grp === "Ecom" ? navRev + shopifyEgp : navRev;
-      const units     = grp === "Ecom"
-        ? filtered.reduce((s, r) => s + r.units, 0) + shopifyUnits
-        : filtered.reduce((s, r) => s + r.units, 0);
+      const navUnits  = filtered.reduce((s, r) => s + r.units, 0);
+      const rev       = grp === "Ecom" ? navRev + shopifyEgp : grp === "B2B" ? navRev + b2bEgp : navRev;
+      const units     = grp === "Ecom" ? navUnits + shopifyUnits : grp === "B2B" ? navUnits + b2bUnits : navUnits;
       return {
         group:   grp,
         revenue: { egp: rev, usd: Math.round(rev / fx) },
