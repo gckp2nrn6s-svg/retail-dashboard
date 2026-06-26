@@ -47,9 +47,6 @@ export async function GET(req: NextRequest) {
     const fx = parseFloat(pgResult.value[0]?.egp_per_usd || "50");
     const sources = { nav: navResult.status, pg: pgResult.status };
 
-    const total = staffRows.reduce((s, r) => s + Number(r.egp), 0);
-    const totalUnits = staffRows.reduce((s, r) => s + Number(r.units), 0);
-
     const marketplaces = staffRows
       .map(r => {
         const egp = Math.round(Number(r.egp));
@@ -60,10 +57,14 @@ export async function GET(req: NextRequest) {
           usd:   Math.round(egp / fx),
           units: Math.round(Number(r.units)),
           txns:  Number(r.txns),
-          pct:   total > 0 ? Math.round((Number(r.egp) / total) * 100) : 0,
+          pct:   0,
         };
       })
       .sort((a, b) => b.egp - a.egp);
+    // Total from the rounded rows so the cards always sum exactly to the header.
+    const total = marketplaces.reduce((s, m) => s + m.egp, 0);
+    const totalUnits = marketplaces.reduce((s, m) => s + m.units, 0);
+    for (const m of marketplaces) m.pct = total > 0 ? Math.round((m.egp / total) * 100) : 0;
 
     const series = dayRows.map(r => ({
       date:  String(r.date).slice(0, 10),

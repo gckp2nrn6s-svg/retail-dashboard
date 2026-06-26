@@ -61,9 +61,6 @@ export async function GET(req: NextRequest) {
     const nameMap = Object.fromEntries(nameResult.value.map(r => [r.code, r.name]));
     const sources = { nav: navResult.status, pg: fxResult.status };
 
-    const total = custRows.reduce((s, r) => s + Number(r.egp), 0);
-    const totalUnits = custRows.reduce((s, r) => s + Number(r.units), 0);
-
     const customers = custRows.map(r => {
       const egp = Math.round(Number(r.egp));
       const mapped = nameMap[r.cust];
@@ -75,9 +72,13 @@ export async function GET(req: NextRequest) {
         usd:     Math.round(egp / fx),
         units:   Math.round(Number(r.units)),
         txns:    Number(r.txns),
-        pct:     total > 0 ? Math.round((Number(r.egp) / total) * 100) : 0,
+        pct:     0,
       };
     });
+    // Total from the rounded rows so the cards always sum exactly to the header.
+    const total = customers.reduce((s, c) => s + c.egp, 0);
+    const totalUnits = customers.reduce((s, c) => s + c.units, 0);
+    for (const c of customers) c.pct = total > 0 ? Math.round((c.egp / total) * 100) : 0;
 
     const series = dayRows.map(r => ({ date: String(r.date).slice(0, 10), egp: Math.round(Number(r.egp)), units: Math.round(Number(r.units)) }));
     const through = series.length ? series[series.length - 1].date : null;
