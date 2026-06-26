@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenue } from "@/lib/shopify";
+import { todayCairo } from "@/lib/dates";
 import { safeSource, isDegraded, type SourceStatus } from "@/lib/resilience";
 
 export const dynamic = "force-dynamic"; // always reflect live sources, never cache
@@ -21,6 +22,7 @@ type NavBundle = {
   current: RevUnits[]; previous: RevUnits[]; yest_row: Rev[];
   d7_row: Rev[]; d30_row: Rev[]; yoy_row: RevUnits[];
   storeCount: CountRow[]; sparkRows: DayRev[]; todayNavRow: Rev[];
+  prevWeek: Rev[]; prevYear: Rev[];
 };
 type ShopRev = { egp: number; units: number };
 
@@ -46,10 +48,16 @@ export async function GET(req: NextRequest) {
   const yoy_to    = new Date(toDate.getFullYear()   - 1, toDate.getMonth(),   toDate.getDate()).toISOString().slice(0, 10);
   const sparkStart = d30from;
 
+  // Single-day views (Today / Yesterday) show THREE comparisons: vs the day before,
+  // vs the same weekday last week, and vs the same date last year.
+  const isSingleDay   = from === to;
+  const prevWeekDate  = new Date(fromDate.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  const prevYearDate  = `${fromDate.getUTCFullYear() - 1}-${String(fromDate.getUTCMonth() + 1).padStart(2, "0")}-${String(fromDate.getUTCDate()).padStart(2, "0")}`;
+
   try {
-    const [navResult, pgResult, shopCurResult, shopPrevResult, shopTodayResult] = await Promise.all([
+    const [navResult, pgResult, shopCurResult, shopPrevResult, shopTodayResult, shopPrevWeekResult, shopPrevYearResult] = await Promise.all([
       safeSource<NavBundle>("nav", async () => {
-        const [current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow] = await Promise.all([
+        const [current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, prevWeek, prevYear] = await Promise.all([
           navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'`, { from, to }),
           navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @prevFrom AND @prevTo AND [Store No_] != 'ONLINE'`, { prevFrom, prevTo }),
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @yest AND [Store No_] != 'ONLINE'`, { yest }),
@@ -59,15 +67,19 @@ export async function GET(req: NextRequest) {
           navQuery<CountRow>(`SELECT COUNT(DISTINCT [Store No_]) AS n FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'`, { from, to }),
           navQuery<DayRev>(`SELECT CAST([Date] AS DATE) AS day, -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @sparkStart AND @today AND [Store No_] != 'ONLINE' GROUP BY CAST([Date] AS DATE) ORDER BY day`, { sparkStart, today }),
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @today AND [Store No_] != 'ONLINE'`, { today }),
+          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @prevWeekDate AND [Store No_] != 'ONLINE'`, { prevWeekDate }),
+          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @prevYearDate AND [Store No_] != 'ONLINE'`, { prevYearDate }),
         ]);
-        return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow };
-      }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [] }),
+        return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, prevWeek, prevYear };
+      }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [], prevWeek: [], prevYear: [] }),
 
       safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"), []),
 
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(from, to), { egp: 0, units: 0 }),
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(prevFrom, prevTo), { egp: 0, units: 0 }),
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(today, today), { egp: 0, units: 0 }),
+      safeSource<ShopRev>("shopify", () => getShopifyRevenue(prevWeekDate, prevWeekDate), { egp: 0, units: 0 }),
+      safeSource<ShopRev>("shopify", () => getShopifyRevenue(prevYearDate, prevYearDate), { egp: 0, units: 0 }),
     ]);
 
     const nav = navResult.value;
@@ -88,6 +100,17 @@ export async function GET(req: NextRequest) {
 
     function pct(a: number, b: number) { return b > 0 ? ((a - b) / b) * 100 : 0; }
 
+    // Three-way comparison shown on single-day views (Today / Yesterday).
+    const prevWeekRev = Number(nav.prevWeek[0]?.revenue ?? 0) + shopPrevWeekResult.value.egp;
+    const prevYearRev = Number(nav.prevYear[0]?.revenue ?? 0) + shopPrevYearResult.value.egp;
+    const isTodaySel  = from === todayCairo();
+    const mkCmp = (label: string, prev: number) => ({ label, change: prev > 0 ? pct(rev, prev) : null, prevEgp: Math.round(prev) });
+    const dayComparisons = isSingleDay ? [
+      mkCmp(isTodaySel ? "vs yesterday" : "vs prev day", prevRev),
+      mkCmp("vs last week", prevWeekRev),
+      mkCmp("vs last year", prevYearRev),
+    ] : null;
+
     const dailyTarget = d30Rev * 1.1;
     const todayRev = Number(nav.todayNavRow[0]?.revenue ?? 0) + shopifyToday.egp;
     const paceToTarget = dailyTarget > 0 ? (todayRev / dailyTarget) * 100 : null;
@@ -97,6 +120,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       revenue:      { egp: rev, usd: rev / fx },
       revChange:    prevRev > 0 ? pct(rev, prevRev) : null,
+      dayComparisons,
       units,
       unitsChange:  prevUnits > 0 ? pct(units, prevUnits) : null,
       avgTicket:    { egp: units > 0 ? rev / units : 0, usd: units > 0 ? rev / units / fx : 0 },

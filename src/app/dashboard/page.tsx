@@ -21,6 +21,7 @@ interface KPI {
   avgTicket: { egp: number; usd: number };
   activeStores: number;
   revChange: number | null;
+  dayComparisons?: { label: string; change: number | null; prevEgp: number }[] | null;
   unitsChange: number | null;
   fx: number;
   sources?: Sources;
@@ -294,11 +295,24 @@ export default function HomePage() {
               <p className="num-hero" style={{ color: "white", textShadow: "0 0 80px rgba(96,165,250,0.2)" }}>
                 {kpi ? fmtKpi(kpi.revenue) : "—"}
               </p>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-                <Delta v={kpi?.revChange ?? null} large dark />
-                <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>vs previous period</span>
-                {kpi && <><span style={{ color: "rgba(255,255,255,0.15)" }}>·</span><span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>{altKpi(kpi.revenue)}</span></>}
-              </div>
+              {kpi?.dayComparisons && kpi.dayComparisons.length > 0 ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
+                  {kpi.dayComparisons.map((c, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <Delta v={c.change} dark showNa />
+                      <span style={{ fontSize: "0.62rem", color: "rgba(255,255,255,0.32)", fontWeight: 600 }}>{c.label}</span>
+                    </div>
+                  ))}
+                  <span style={{ color: "rgba(255,255,255,0.12)" }}>·</span>
+                  <span style={{ fontSize: "0.62rem", color: "rgba(255,255,255,0.28)" }}>{altKpi(kpi.revenue)}</span>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+                  <Delta v={kpi?.revChange ?? null} large dark />
+                  <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>vs previous period</span>
+                  {kpi && <><span style={{ color: "rgba(255,255,255,0.15)" }}>·</span><span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>{altKpi(kpi.revenue)}</span></>}
+                </div>
+              )}
             </div>
           )}
         </div>
