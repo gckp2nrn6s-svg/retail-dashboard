@@ -29,7 +29,7 @@ function LoginForm() {
     if (res?.ok) {
       router.push(callbackUrl);
     } else {
-      setError("Invalid email or password");
+      setError("Invalid username or password");
     }
   }
 
@@ -77,11 +77,11 @@ function LoginForm() {
             <div>
               <label style={{ display:"block", fontSize:"0.65rem", fontWeight:700,
                 textTransform:"uppercase", letterSpacing:"0.08em",
-                color:"rgba(255,255,255,0.4)", marginBottom:6 }}>Email</label>
+                color:"rgba(255,255,255,0.4)", marginBottom:6 }}>Username or email</label>
               <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)}
-                required autoFocus autoComplete="email"
-                placeholder="you@lesouverain.com"
+                type="text" value={email} onChange={e => setEmail(e.target.value)}
+                required autoFocus autoComplete="username"
+                placeholder="username or you@email.com"
                 style={{ width:"100%", padding:"11px 14px", borderRadius:12, fontSize:"0.85rem",
                   border:"1px solid rgba(255,255,255,0.1)",
                   background:"rgba(255,255,255,0.06)", color:"white", outline:"none",
