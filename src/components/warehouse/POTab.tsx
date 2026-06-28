@@ -4,7 +4,12 @@ import { Card, CopyButton, Spinner, Empty, DateFilter, fmtInt, WH_ACCENT, storeN
 import { Download, ChevronDown, ChevronRight, Check, ArrowLeft, AlertTriangle, X } from "lucide-react";
 
 interface TLine { item_no: string; description: string | null; qty: number }
-interface Transfer { doc_no: string; store: string; status: string; shipment_date: string | null; lines: TLine[]; total_qty: number }
+interface Transfer { doc_no: string; store: string; status: string; retail_status: string | null; shipment_date: string | null; lines: TLine[]; total_qty: number }
+
+// Prefer the custom Retail Status word (New/Sent/…); fall back to the standard
+// NAV status spelled out (the raw 0/1 should never reach the user).
+const STD_STATUS: Record<string, string> = { "0": "Open", "1": "Released" };
+const statusLabel = (t: Transfer) => t.retail_status ?? STD_STATUS[t.status] ?? t.status;
 interface POLine { item_no: string; description: string | null; transfer_qty: number; ho_qty: number; po_qty: number }
 interface PO { lines: POLine[]; totals: { transfer_qty: number; po_qty: number; items: number }; copyText: string }
 
@@ -266,7 +271,7 @@ export default function POTab() {
                     <p style={{ fontSize: "0.84rem", fontWeight: 700, color: "var(--text)" }}>{t.doc_no} <span style={{ color: "var(--text3)", fontWeight: 500 }}>→ {storeName(t.store)}</span></p>
                     <p style={{ fontSize: "0.64rem", color: "var(--text3)", marginTop: 1 }}>{t.lines.length} items · {fmtInt(t.total_qty)} units{t.shipment_date ? ` · ${t.shipment_date}` : ""}</p>
                   </div>
-                  <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "var(--text2)", background: "var(--surface3)", padding: "3px 9px", borderRadius: 7 }}>{t.status}</span>
+                  <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "var(--text2)", background: "var(--surface3)", padding: "3px 9px", borderRadius: 7, whiteSpace: "nowrap" }}>{statusLabel(t)}</span>
                   <button onClick={() => toggleExp(t.doc_no)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text4)", padding: 4 }}>{exp ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>
                 </div>
                 {exp && (

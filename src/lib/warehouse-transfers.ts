@@ -37,7 +37,8 @@ export interface TransferLine {
 export interface OpenTransfer {
   doc_no: string;
   store: string;
-  status: string;
+  status: string;             // standard NAV status ("0" Open / "1" Released)
+  retail_status: string | null; // custom Retail Status word (New / Sent / ...)
   shipment_date: string | null;
   lines: TransferLine[];
   total_qty: number;
@@ -75,11 +76,22 @@ const MOCK_TRANSFER_LINES = `
     FROM nav_transfers_mock
    WHERE transfer_from = 'HO'`;
 
-/** All HO transfer lines + which source answered. Tries NAV, falls back to mock. */
+// The NAV tables are a 15-min replica reached cross-continent from Railway, so a
+// short in-memory cache cuts the round-trip on every page load / 60s poll without
+// any meaningful staleness. Only successful NAV reads are cached (a mock fallback
+// is never cached, so the next call retries NAV).
+const NAV_CACHE_TTL = 120_000; // 2 minutes
+let _linesCache: { at: number; val: { rows: TransferLineRaw[]; source: TransferSource } } | null = null;
+let _hoCache: { at: number; rows: { item_no: string; qty: number }[] } | null = null;
+
+/** All HO transfer lines + which source answered. Tries NAV (cached), falls back to mock. */
 async function readTransferLines(): Promise<{ rows: TransferLineRaw[]; source: TransferSource }> {
+  if (_linesCache && Date.now() - _linesCache.at < NAV_CACHE_TTL) return _linesCache.val;
   try {
     const rows = await navQuery<TransferLineRaw>(NAV_TRANSFER_LINES);
-    return { rows: normalizeLines(rows), source: "nav" };
+    const val = { rows: normalizeLines(rows), source: "nav" as TransferSource };
+    _linesCache = { at: Date.now(), val };
+    return val;
   } catch (e) {
     console.error("[warehouse-transfers] NAV transfer read failed, using mock:", e instanceof Error ? e.message : e);
     const rows = await query<TransferLineRaw>(MOCK_TRANSFER_LINES);
@@ -181,7 +193,7 @@ export async function getOpenTransfers(
   for (const r of kept) {
     let g = byDoc.get(r.doc_no);
     if (!g) {
-      g = { doc_no: r.doc_no, store: r.transfer_to, status: r.status, shipment_date: r.shipment_date, lines: [], total_qty: 0, _items: new Map() };
+      g = { doc_no: r.doc_no, store: r.transfer_to, status: r.status, retail_status: r.retail_status, shipment_date: r.shipment_date, lines: [], total_qty: 0, _items: new Map() };
       byDoc.set(r.doc_no, g);
     }
     g._items.set(r.item_no, (g._items.get(r.item_no) || 0) + r.qty);
@@ -192,6 +204,7 @@ export async function getOpenTransfers(
     doc_no: g.doc_no,
     store: g.store,
     status: g.status,
+    retail_status: g.retail_status,
     shipment_date: g.shipment_date,
     total_qty: g.total_qty,
     lines: [...g._items.entries()].map(([item_no, qty]) => ({
@@ -226,13 +239,18 @@ export async function getHOOnHand(
 ): Promise<{ map: Map<string, number>; source: TransferSource }> {
   let rows: { item_no: string; qty: number }[];
   let source: TransferSource;
-  try {
-    rows = await navQuery<{ item_no: string; qty: number }>(NAV_HO_ONHAND);
-    source = "nav";
-  } catch (e) {
-    console.error("[warehouse-transfers] NAV on-hand read failed, using mock:", e instanceof Error ? e.message : e);
-    rows = await query<{ item_no: string; qty: number }>(MOCK_HO_ONHAND);
-    source = "mock";
+  if (_hoCache && Date.now() - _hoCache.at < NAV_CACHE_TTL) {
+    rows = _hoCache.rows; source = "nav";
+  } else {
+    try {
+      rows = await navQuery<{ item_no: string; qty: number }>(NAV_HO_ONHAND);
+      source = "nav";
+      _hoCache = { at: Date.now(), rows };
+    } catch (e) {
+      console.error("[warehouse-transfers] NAV on-hand read failed, using mock:", e instanceof Error ? e.message : e);
+      rows = await query<{ item_no: string; qty: number }>(MOCK_HO_ONHAND);
+      source = "mock";
+    }
   }
   const want = itemNos && itemNos.length ? new Set(itemNos.map(String)) : null;
   const map = new Map<string, number>();
