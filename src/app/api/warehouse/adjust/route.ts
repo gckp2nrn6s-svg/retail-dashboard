@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { resolveCodes } from "@/lib/warehouse";
+import { canWh } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 // 'deduct' bumps out_qty and drops in_stock (like a transfer-out). Records the
 // before/after per item in wh_adjustment_lines for a full audit trail.
 export async function POST(req: NextRequest) {
+  if (!(await canWh("adjust"))) return NextResponse.json({ error: "You don't have permission to adjust stock." }, { status: 403 });
   let body: { direction?: string; reason?: string; lines?: { item_no?: string; qty?: number }[] };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
 

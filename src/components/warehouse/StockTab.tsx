@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Search } from "lucide-react";
-import { Card, Spinner, Empty, fmtInt } from "@/components/warehouse/shared";
+import { Card, Spinner, Empty, fmtInt, DownloadButton, downloadCsv } from "@/components/warehouse/shared";
 
 interface Row {
   item_no: string; description: string; in_stock: number; quantity: number;
@@ -69,6 +69,7 @@ export default function StockTab() {
             <input type="checkbox" checked={zero} onChange={e => setZero(e.target.checked)} style={{ accentColor: "#0D9488", width: 15, height: 15, cursor: "pointer" }} />
             Show zero-stock
           </label>
+          <DownloadButton disabled={rows.length === 0} onClick={() => downloadCsv(`warehouse-stock-${new Date().toISOString().slice(0, 10)}`, ["Item no", "Description", "On hand"], rows.map(r => [r.item_no, r.description, Math.round(r.in_stock)]))} />
         </div>
 
         {/* Totals strip */}

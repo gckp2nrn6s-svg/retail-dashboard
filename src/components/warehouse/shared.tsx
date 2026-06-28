@@ -1,6 +1,26 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Copy, Check, Loader2 } from "lucide-react";
+import { Copy, Check, Loader2, Download } from "lucide-react";
+
+// ── CSV / Excel export ───────────────────────────────────────────────────────
+// Prepends a UTF-8 BOM so Excel renders Arabic descriptions correctly.
+export function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+  const esc = (c: string | number | null | undefined) => `"${String(c ?? "").replace(/"/g, '""')}"`;
+  const csv = [headers, ...rows].map(r => r.map(esc).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+export function DownloadButton({ onClick, label = "Excel", disabled }: { onClick: () => void; label?: string; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface3)", cursor: disabled ? "default" : "pointer", fontSize: "0.78rem", fontWeight: 700, color: disabled ? "var(--text4)" : "var(--text)", opacity: disabled ? 0.5 : 1 }}>
+      <Download size={14} /> {label}
+    </button>
+  );
+}
 
 // ── Design tokens (consistent with the rest of the dashboard) ────────────────
 export const WH_ACCENT = "#0D9488"; // teal — warehousing

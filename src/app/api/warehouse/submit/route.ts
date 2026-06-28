@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getTransfersByDocs, consolidatePo, type TransferLineRaw } from "@/lib/warehouse-transfers";
+import { canWh } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 // (warehouse_stock) by the consolidated transfer qty per item. The docs then
 // move to the "to be received" tracking state.
 export async function POST(req: NextRequest) {
+  if (!(await canWh("submit"))) return NextResponse.json({ error: "You don't have permission to submit transfers." }, { status: 403 });
   let body: { docNos?: unknown; note?: string; poLines?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
 

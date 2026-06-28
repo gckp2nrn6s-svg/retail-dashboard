@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, Spinner, Empty, DateFilter, fmtInt, WH_ACCENT, storeName } from "@/components/warehouse/shared";
+import { Card, Spinner, Empty, DateFilter, fmtInt, WH_ACCENT, storeName, DownloadButton, downloadCsv } from "@/components/warehouse/shared";
 import { Check } from "lucide-react";
 
 export interface TBRRow {
@@ -45,6 +45,7 @@ export default function ToBeReceivedTab() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text2)" }}>Submitted transfers · live NAV status</p>
         <DateFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
+        <DownloadButton disabled={rows.length === 0} onClick={() => downloadCsv(`to-be-received-${from}_${to}`, ["Transfer", "Store", "Status", "Stock deducted", "Shipped", "Paper checked", "Done"], rows.map(r => [r.doc_no, storeName(r.store), r.current_status || r.status_at_submit || "", r.stock_deducted ? "Yes" : "No", r.nav_received ? "Yes" : "No", r.paper_checked ? "Yes" : "No", r.done ? "Yes" : "No"]))} />
         {rows.length > 0 && <span style={{ marginLeft: "auto", fontSize: "0.72rem", color: "var(--text3)" }}><strong style={{ color: "#10B981" }}>{doneCount}</strong> / {rows.length} done</span>}
       </div>
       {loading ? (

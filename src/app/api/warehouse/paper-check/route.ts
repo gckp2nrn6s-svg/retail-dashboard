@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { canWh } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
 // POST /api/warehouse/paper-check { transferId }
 // Tick the manual paper-check on a submitted transfer (sets paper_checked_at).
 export async function POST(req: NextRequest) {
+  if (!(await canWh("papercheck"))) return NextResponse.json({ error: "You don't have permission to paper-check." }, { status: 403 });
   let body: { transferId?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
 

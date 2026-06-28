@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { resolveCodes } from "@/lib/warehouse";
+import { canWh } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
 
 // POST { kind:'factory'|'outside', reference?, note?, lines:[{item_no,qty}] }
 // Records a receipt and ADDS the quantities to HO stock (quantity + in_stock).
 export async function POST(req: NextRequest) {
+  if (!(await canWh("receive"))) return NextResponse.json({ error: "You don't have permission to receive stock." }, { status: 403 });
   let body: { kind?: string; reference?: string; note?: string; lines?: { item_no?: string; qty?: number }[] };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
 

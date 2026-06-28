@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback, Fragment } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Card, DateFilter, Spinner, Empty, fmtInt } from "@/components/warehouse/shared";
+import { Card, DateFilter, Spinner, Empty, fmtInt, DownloadButton, downloadCsv } from "@/components/warehouse/shared";
 
 interface Receipt {
   id: number | string; kind: "outside" | "factory"; reference: string | null;
@@ -93,7 +93,10 @@ export default function HistoryTab() {
               {loading ? "Loading…" : error ? <span style={{ color: "#EF4444" }}>Couldn't load.</span> : `${rows.length} ${rows.length === 1 ? "receipt" : "receipts"}`}
             </p>
           </div>
-          <DateFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <DownloadButton disabled={rows.length === 0} onClick={() => downloadCsv(`receipt-history-${from}_${to}`, ["Date", "Type", "Reference", "Lines", "Units", "Note"], rows.map(r => [fmtDate(r.created_at), r.kind, r.reference || "", r.lines, r.units, r.note || ""]))} />
+            <DateFilter from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
+          </div>
         </div>
 
         {/* Table */}

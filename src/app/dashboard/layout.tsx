@@ -1,32 +1,48 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, TrendingUp, Package, Grid3X3, MessageCircle, Zap, Target, Flag, MoreHorizontal, X, Megaphone, ShoppingBag, Activity, Building2, Warehouse } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LayoutDashboard, TrendingUp, Package, Grid3X3, MessageCircle, Zap, Target, Flag, MoreHorizontal, X, Megaphone, ShoppingBag, Activity, Building2, Warehouse, Users } from "lucide-react";
 import { CurrencyProvider } from "@/components/CurrencyToggle";
 import { DateRangeProvider } from "@/contexts/DateRangeContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { canSeeTab, type Permissions } from "@/lib/permissions";
 
 const tabs = [
-  { href: "/dashboard",           label: "Home",       icon: LayoutDashboard },
-  { href: "/dashboard/live",      label: "Live",       icon: Activity },
-  { href: "/dashboard/sales",     label: "Sales",      icon: TrendingUp },
-  { href: "/dashboard/marketplace", label: "Marketplace", icon: ShoppingBag },
-  { href: "/dashboard/b2b",       label: "B2B",        icon: Building2 },
-  { href: "/dashboard/warehouse", label: "Warehousing", icon: Warehouse },
-  { href: "/dashboard/stock",     label: "Stock",      icon: Package },
-  { href: "/dashboard/targets",   label: "Targets",    icon: Target },
-  { href: "/dashboard/catalogue", label: "Products",   icon: Grid3X3 },
-  { href: "/dashboard/egypt",     label: "Made in EG", icon: Flag },
-  { href: "/dashboard/marketing",  label: "Marketing",  icon: Megaphone },
-  { href: "/dashboard/ask",        label: "Ask AI",     icon: MessageCircle },
+  { key: "home",        href: "/dashboard",           label: "Home",       icon: LayoutDashboard },
+  { key: "live",        href: "/dashboard/live",      label: "Live",       icon: Activity },
+  { key: "sales",       href: "/dashboard/sales",     label: "Sales",      icon: TrendingUp },
+  { key: "marketplace", href: "/dashboard/marketplace", label: "Marketplace", icon: ShoppingBag },
+  { key: "b2b",         href: "/dashboard/b2b",       label: "B2B",        icon: Building2 },
+  { key: "warehouse",   href: "/dashboard/warehouse", label: "Warehousing", icon: Warehouse },
+  { key: "stock",       href: "/dashboard/stock",     label: "Stock",      icon: Package },
+  { key: "targets",     href: "/dashboard/targets",   label: "Targets",    icon: Target },
+  { key: "catalogue",   href: "/dashboard/catalogue", label: "Products",   icon: Grid3X3 },
+  { key: "egypt",       href: "/dashboard/egypt",     label: "Made in EG", icon: Flag },
+  { key: "marketing",   href: "/dashboard/marketing",  label: "Marketing",  icon: Megaphone },
+  { key: "ask",         href: "/dashboard/ask",        label: "Ask AI",     icon: MessageCircle },
+  { key: "users",       href: "/dashboard/users",      label: "Users",      icon: Users },
 ];
-
-const mobilePrimary = tabs.slice(0, 4);
-const mobileMore = tabs.slice(4);
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [showMore, setShowMore] = useState(false);
+  const { data: session, status } = useSession();
+  const role  = (session?.user as { role?: string } | undefined)?.role;
+  const perms = (session?.user as { permissions?: Permissions } | undefined)?.permissions ?? null;
+
+  // Members only see their granted tabs; admins see everything.
+  const visible = tabs.filter(t => canSeeTab(role, perms, t.key));
+  const mobilePrimary = visible.slice(0, 4);
+  const mobileMore = visible.slice(4);
+
+  // Deep-link guard: bounce off a tab the user isn't allowed to open.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const current = tabs.find(t => pathname === t.href || (t.href !== "/dashboard" && pathname.startsWith(t.href)));
+    if (current && !canSeeTab(role, perms, current.key)) router.replace(visible[0]?.href || "/dashboard");
+  }, [status, pathname, role, perms]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <DateRangeProvider><CurrencyProvider>
@@ -53,7 +69,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Nav */}
           <nav style={{ flex: 1, padding: "4px 10px" }}>
-            {tabs.map(({ href, label, icon: Icon }) => {
+            {visible.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
               return (
                 <Link key={href} href={href} style={{
