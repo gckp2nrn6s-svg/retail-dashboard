@@ -342,7 +342,7 @@ export default function EgyptPage() {
               return (
                 <div key={s.store_code} style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text)" }}>{s.storeName}</span>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text)" }}>{s.storeName}{s.store_code?.startsWith("FD:") && <span style={{ fontSize: "0.5rem", fontWeight: 700, color: "#0D9488", background: "rgba(13,148,136,0.14)", padding: "1px 5px", borderRadius: 5, marginLeft: 5, verticalAlign: "middle" }}>factory</span>}</span>
                     <div style={{ textAlign: "right" }}>
                       <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>EGP {fmtM(s.revenue_period)}</span>
                       <span style={{ fontSize: "0.65rem", color: "var(--text3)", marginLeft: 6 }}>{Math.round(s.units_period)} units</span>
@@ -362,7 +362,7 @@ export default function EgyptPage() {
               return (
                 <div key={`all-${s.store_code}`} style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text)" }}>{s.storeName}</span>
+                    <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text)" }}>{s.storeName}{s.store_code?.startsWith("FD:") && <span style={{ fontSize: "0.5rem", fontWeight: 700, color: "#0D9488", background: "rgba(13,148,136,0.14)", padding: "1px 5px", borderRadius: 5, marginLeft: 5, verticalAlign: "middle" }}>factory</span>}</span>
                     <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)" }}>EGP {fmtM(s.revenue_all)}</span>
                   </div>
                   <div style={{ height: 5, background: "var(--border)", borderRadius: 3 }}>

@@ -37,6 +37,35 @@ const MIE_CASE = `
   END
 `;
 
+// Same 5 made-in-Egypt lines, but matched on the factory sheet's sku/description
+// (e.g. sku 'AG9-09-003' → PRESTON). Used to fold factory-direct sales into MIE.
+const FD_LINE_CASE = `
+  CASE
+    WHEN f.sku ILIKE 'HZ9%' OR f.description ILIKE '%HZ9%' THEN 'SKYTRAC'
+    WHEN f.sku ILIKE 'HC0%' OR f.description ILIKE '%HC0%' THEN 'SKY PARK'
+    WHEN f.sku ILIKE 'GE3%' OR f.description ILIKE '%GE3%' THEN 'BRICKLANE'
+    WHEN (f.sku ILIKE 'AG9%' OR f.description ILIKE '%AG9%') AND f.description NOT ILIKE '%BLOCKED%' THEN 'PRESTON'
+    WHEN f.sku ILIKE 'QC6%' OR f.description ILIKE '%QC6%' THEN 'TWIST WAVES'
+  END
+`;
+// Factory-direct sales reshaped to the (line, store_code, sale_date, units, revenue)
+// shape so it can UNION with the all_sales-based MIE rows. store_code = 'FD:<client>'.
+const FD_UNIFIED = `
+  SELECT fd.line, fd.store_code, fd.sale_date, fd.units, fd.revenue FROM (
+    SELECT ${FD_LINE_CASE} AS line, 'FD:'||UPPER(TRIM(f.client)) AS store_code,
+           f.sale_date, f.qty AS units, f.total_sales AS revenue
+    FROM factory_direct_sales f
+  ) fd WHERE fd.line IS NOT NULL`;
+// Shared source: all_sales MIE rows + factory-direct MIE rows, one shape.
+const UNIFIED_CTE = `
+  WITH mie AS (SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%'),
+  unified AS (
+    SELECT m.line, a.store_code, a.sale_date, a.units, a.revenue
+    FROM all_sales a JOIN mie m ON a.item_no = m.item_no WHERE m.line IS NOT NULL
+    UNION ALL
+    ${FD_UNIFIED}
+  )`;
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const now = new Date();
@@ -47,37 +76,33 @@ export async function GET(req: NextRequest) {
 
   const [summary, monthly, byStore, skus] = await Promise.all([
     query<{ line: string; revenue_all: string; revenue_period: string; units_all: string; units_period: string; }>(`
-      WITH mie AS (SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%')
-      SELECT m.line,
-        ROUND(SUM(a.revenue))::text AS revenue_all,
-        ROUND(SUM(CASE WHEN a.sale_date BETWEEN '${from}' AND '${to}' THEN a.revenue ELSE 0 END))::text AS revenue_period,
-        SUM(a.units)::text AS units_all,
-        SUM(CASE WHEN a.sale_date BETWEEN '${from}' AND '${to}' THEN a.units ELSE 0 END)::text AS units_period
-      FROM all_sales a JOIN mie m ON a.item_no = m.item_no
-      WHERE m.line IS NOT NULL
-      GROUP BY m.line ORDER BY revenue_period DESC
+      ${UNIFIED_CTE}
+      SELECT line,
+        ROUND(SUM(revenue))::text AS revenue_all,
+        ROUND(SUM(CASE WHEN sale_date BETWEEN '${from}' AND '${to}' THEN revenue ELSE 0 END))::text AS revenue_period,
+        SUM(units)::text AS units_all,
+        SUM(CASE WHEN sale_date BETWEEN '${from}' AND '${to}' THEN units ELSE 0 END)::text AS units_period
+      FROM unified GROUP BY line ORDER BY revenue_period DESC
     `),
 
     query<{ line: string; month: string; units: string; revenue: string; }>(`
-      WITH mie AS (SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%')
-      SELECT m.line, TO_CHAR(DATE_TRUNC('month', a.sale_date), 'YYYY-MM') AS month,
-        SUM(a.units)::text AS units, ROUND(SUM(a.revenue))::text AS revenue
-      FROM all_sales a JOIN mie m ON a.item_no = m.item_no
-      WHERE a.sale_date >= '2024-01-01' AND m.line IS NOT NULL
-      GROUP BY m.line, DATE_TRUNC('month', a.sale_date)
-      ORDER BY m.line, month
+      ${UNIFIED_CTE}
+      SELECT line, TO_CHAR(DATE_TRUNC('month', sale_date), 'YYYY-MM') AS month,
+        SUM(units)::text AS units, ROUND(SUM(revenue))::text AS revenue
+      FROM unified
+      WHERE sale_date >= '2024-01-01'
+      GROUP BY line, DATE_TRUNC('month', sale_date)
+      ORDER BY line, month
     `),
 
     query<{ line: string; store_code: string; units_period: string; revenue_period: string; units_all: string; revenue_all: string; }>(`
-      WITH mie AS (SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%')
-      SELECT m.line, a.store_code,
-        SUM(CASE WHEN a.sale_date BETWEEN '${from}' AND '${to}' THEN a.units ELSE 0 END)::text AS units_period,
-        ROUND(SUM(CASE WHEN a.sale_date BETWEEN '${from}' AND '${to}' THEN a.revenue ELSE 0 END))::text AS revenue_period,
-        SUM(a.units)::text AS units_all,
-        ROUND(SUM(a.revenue))::text AS revenue_all
-      FROM all_sales a JOIN mie m ON a.item_no = m.item_no
-      WHERE m.line IS NOT NULL
-      GROUP BY m.line, a.store_code ORDER BY m.line, revenue_period DESC
+      ${UNIFIED_CTE}
+      SELECT line, store_code,
+        SUM(CASE WHEN sale_date BETWEEN '${from}' AND '${to}' THEN units ELSE 0 END)::text AS units_period,
+        ROUND(SUM(CASE WHEN sale_date BETWEEN '${from}' AND '${to}' THEN revenue ELSE 0 END))::text AS revenue_period,
+        SUM(units)::text AS units_all,
+        ROUND(SUM(revenue))::text AS revenue_all
+      FROM unified GROUP BY line, store_code ORDER BY line, revenue_period DESC
     `),
 
     query<{
@@ -134,14 +159,19 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const byStoreParsed = byStore.map((s) => ({
-    ...s,
-    storeName: STORE_NAMES[s.store_code] || s.store_code,
-    units_period: parseFloat(s.units_period),
-    revenue_period: parseFloat(s.revenue_period),
-    units_all: parseFloat(s.units_all),
-    revenue_all: parseFloat(s.revenue_all),
-  }));
+  const byStoreParsed = byStore.map((s) => {
+    const isFd = s.store_code?.startsWith("FD:");
+    const fdName = isFd ? s.store_code.slice(3).toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : "";
+    return {
+      ...s,
+      storeName: isFd ? fdName : (STORE_NAMES[s.store_code] || s.store_code),
+      factory: isFd,
+      units_period: parseFloat(s.units_period),
+      revenue_period: parseFloat(s.revenue_period),
+      units_all: parseFloat(s.units_all),
+      revenue_all: parseFloat(s.revenue_all),
+    };
+  });
 
   const summaryParsed = summary.map((s) => ({
     ...s,
