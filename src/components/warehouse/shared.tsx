@@ -70,6 +70,57 @@ export function Empty({ icon = "📦", title, sub }: { icon?: string; title: str
   );
 }
 
+// ── Movement receipt — "was T → becomes T±N" confirmation for any stock change ─
+export interface MoveRow { item_no: string; description: string | null; current: number; delta: number; next: number }
+
+export function MovementReceipt({ title, subtitle, rows, busy, confirmLabel = "Confirm", onConfirm, onCancel }: {
+  title: string; subtitle?: string; rows: MoveRow[]; busy?: boolean; confirmLabel?: string;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  const totalDelta = rows.reduce((s, r) => s + r.delta, 0);
+  const anyNegative = rows.some(r => r.next < 0);
+  return (
+    <div onClick={busy ? undefined : onCancel} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18, width: "min(620px, 100%)", maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
+        <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid var(--border)" }}>
+          <p style={{ fontSize: "0.96rem", fontWeight: 800, color: "var(--text)" }}>{title}</p>
+          {subtitle && <p style={{ fontSize: "0.72rem", color: "var(--text3)", marginTop: 3 }}>{subtitle}</p>}
+        </div>
+        <div style={{ overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
+            <thead><tr style={{ background: "var(--surface3)", position: "sticky", top: 0 }}>
+              {["Item", "Was", "Change", "Becomes"].map((h, i) => <th key={i} style={{ padding: "9px 18px", textAlign: i === 0 ? "left" : "right", fontSize: "0.56rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "9px 18px" }}>
+                    <span style={{ fontWeight: 700, color: "var(--text)" }}>{r.item_no}</span>
+                    {r.description && <span style={{ color: "var(--text3)", marginLeft: 8, fontSize: "0.68rem" }}>{r.description.length > 32 ? r.description.slice(0, 32) + "…" : r.description}</span>}
+                  </td>
+                  <td style={{ padding: "9px 18px", textAlign: "right", color: "var(--text3)", fontVariantNumeric: "tabular-nums" }}>{fmtInt(r.current)}</td>
+                  <td style={{ padding: "9px 18px", textAlign: "right", fontWeight: 800, fontVariantNumeric: "tabular-nums", color: r.delta >= 0 ? "#10B981" : "#EF4444" }}>{r.delta >= 0 ? "+" : "−"}{fmtInt(Math.abs(r.delta))}</td>
+                  <td style={{ padding: "9px 18px", textAlign: "right", fontWeight: 800, fontVariantNumeric: "tabular-nums", color: r.next < 0 ? "#EF4444" : "var(--text)" }}>{fmtInt(r.next)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: "13px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ marginRight: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontSize: "0.72rem", color: "var(--text3)" }}>{rows.length} item{rows.length > 1 ? "s" : ""} · net <strong style={{ color: totalDelta >= 0 ? "#10B981" : "#EF4444" }}>{totalDelta >= 0 ? "+" : "−"}{fmtInt(Math.abs(totalDelta))}</strong></span>
+            {anyNegative && <span style={{ fontSize: "0.64rem", color: "#EF4444", fontWeight: 600 }}>⚠ one or more items go below zero</span>}
+          </div>
+          <button onClick={onCancel} disabled={busy} style={{ padding: "9px 16px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface3)", cursor: busy ? "default" : "pointer", fontSize: "0.78rem", fontWeight: 700, color: "var(--text2)" }}>Cancel</button>
+          <button onClick={onConfirm} disabled={busy} style={{ padding: "9px 22px", borderRadius: 10, border: "none", cursor: busy ? "default" : "pointer", background: WH_ACCENT, color: "white", fontWeight: 800, fontSize: "0.8rem", opacity: busy ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 7 }}>
+            {busy && <Spinner size={14} />}{confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Simple date-range filter (from / to) ─────────────────────────────────────
 export function DateFilter({ from, to, onChange }: { from: string; to: string; onChange: (from: string, to: string) => void }) {
   const ip = { padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", fontSize: "0.72rem", background: "var(--bg)", color: "var(--text)", outline: "none" } as React.CSSProperties;

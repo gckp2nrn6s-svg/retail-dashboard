@@ -1,6 +1,6 @@
 "use client";
 import { useState, useCallback } from "react";
-import { Card, LineEntry, Spinner, WH_ACCENT, fmtInt, type WHLine } from "@/components/warehouse/shared";
+import { Card, LineEntry, Spinner, WH_ACCENT, fmtInt, MovementReceipt, type WHLine, type MoveRow } from "@/components/warehouse/shared";
 
 type Kind = "outside" | "factory";
 
@@ -17,6 +17,7 @@ export default function IncomingTab() {
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState<MoveRow[] | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(0); // bump to force-remount LineEntry / reset
@@ -24,9 +25,20 @@ export default function IncomingTab() {
   const matchedLines = lines.filter(l => l.matched && l.qty > 0 && l.item_no);
   const canSubmit = matchedLines.length > 0 && !submitting;
 
-  const submit = useCallback(async () => {
+  // Step 1 — preview the before → after (incoming always adds, so delta = +qty).
+  const review = useCallback(async () => {
     if (matchedLines.length === 0 || submitting) return;
     setSubmitting(true); setError(null); setResult(null);
+    try {
+      const moves = matchedLines.map(l => ({ item_no: l.item_no, delta: l.qty }));
+      const r = await fetch("/api/warehouse/movement-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ moves }) }).then(x => x.json());
+      if (r.rows?.length) setPreview(r.rows); else setError("Couldn't preview the receipt.");
+    } catch { setError("Couldn't preview the receipt."); } finally { setSubmitting(false); }
+  }, [matchedLines, submitting]);
+
+  // Step 2 — confirm: actually record the receipt + add to stock.
+  const confirm = useCallback(async () => {
+    setSubmitting(true); setError(null);
     try {
       const r = await fetch("/api/warehouse/receive", {
         method: "POST",
@@ -45,13 +57,13 @@ export default function IncomingTab() {
       }
       setResult(data as Result);
       // reset form
-      setReference(""); setNote(""); setLines([]); setFormKey(k => k + 1);
+      setPreview(null); setReference(""); setNote(""); setLines([]); setFormKey(k => k + 1);
     } catch {
       setError("Network error — the request didn't go through.");
     } finally {
       setSubmitting(false);
     }
-  }, [kind, reference, note, matchedLines, submitting]);
+  }, [kind, reference, note, matchedLines]);
 
   const ip = {
     width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)",
@@ -124,15 +136,15 @@ export default function IncomingTab() {
 
         {/* Submit */}
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={submit} disabled={!canSubmit} style={{
+          <button onClick={review} disabled={!canSubmit} style={{
             display: "inline-flex", alignItems: "center", gap: 8, padding: "11px 22px", borderRadius: 11, border: "none",
             cursor: canSubmit ? "pointer" : "not-allowed",
             background: canSubmit ? WH_ACCENT : "var(--surface3)",
             color: canSubmit ? "white" : "var(--text4)",
             fontWeight: 700, fontSize: "0.82rem", transition: "all 0.12s",
           }}>
-            {submitting && <Spinner size={15} />}
-            {submitting ? "Receiving…" : "Receive into stock"}
+            {submitting && !preview && <Spinner size={15} />}
+            Receive into stock
           </button>
           {matchedLines.length > 0 && !submitting && (
             <span style={{ fontSize: "0.7rem", color: "var(--text3)" }}>
@@ -141,6 +153,18 @@ export default function IncomingTab() {
           )}
         </div>
       </div>
+
+      {preview && (
+        <MovementReceipt
+          title="Receive into HO stock"
+          subtitle={`${kind === "factory" ? "Factory transfer" : "Outside shipment"}${reference.trim() ? ` · ref ${reference.trim()}` : ""}`}
+          rows={preview}
+          busy={submitting}
+          confirmLabel="Confirm receipt"
+          onConfirm={confirm}
+          onCancel={() => { if (!submitting) setPreview(null); }}
+        />
+      )}
     </Card>
   );
 }

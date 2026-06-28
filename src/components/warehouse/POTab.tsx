@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Card, CopyButton, Spinner, Empty, DateFilter, fmtInt, WH_ACCENT, storeName } from "@/components/warehouse/shared";
+import { Card, CopyButton, Spinner, Empty, DateFilter, fmtInt, WH_ACCENT, storeName, MovementReceipt, type MoveRow } from "@/components/warehouse/shared";
 import { Download, ChevronDown, ChevronRight, Check, ArrowLeft, AlertTriangle, X } from "lucide-react";
 
 interface TLine { item_no: string; description: string | null; qty: number }
@@ -38,6 +38,7 @@ export default function POTab() {
   const [po, setPo] = useState<PO | null>(null);
   const [account, setAccount] = useState<Record<string, boolean>>({}); // item_no → account for negative HO (default true)
   const [showNeg, setShowNeg] = useState(false);
+  const [stockPreview, setStockPreview] = useState<MoveRow[] | null>(null); // before→after on submit
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [from, setFrom] = useState(iso(new Date(Date.now() - 30 * 86400000)));
@@ -78,6 +79,18 @@ export default function POTab() {
     } catch { setMsg({ kind: "err", text: "Couldn't build the PO." }); } finally { setBusy(false); }
   };
 
+  // Step 1 — preview the HO-stock deduction (submit removes the physical transfer qty).
+  const reviewSubmit = async () => {
+    if (!computed) return;
+    setBusy(true); setMsg(null);
+    try {
+      const moves = computed.lines.filter(l => l.transfer_qty > 0).map(l => ({ item_no: l.item_no, delta: -l.transfer_qty }));
+      const r = await fetch(`/api/warehouse/movement-preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ moves }) }).then(x => x.json());
+      if (r.rows?.length) setStockPreview(r.rows); else setMsg({ kind: "err", text: "Couldn't preview the stock change." });
+    } catch { setMsg({ kind: "err", text: "Couldn't preview the stock change." }); } finally { setBusy(false); }
+  };
+
+  // Step 2 — confirm: open the run, deduct stock, move docs to "To Be Received".
   const submit = async () => {
     const docNos = [...sel];
     setBusy(true); setMsg(null);
@@ -86,7 +99,7 @@ export default function POTab() {
       const r = await fetch(`/api/warehouse/submit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ docNos, poLines }) }).then(x => x.json());
       if (r.runId) {
         setMsg({ kind: "ok", text: `Submitted ${r.transfers} transfer(s) · ${fmtInt(r.units)} units deducted from HO stock · run #${r.runId}. They're now in “To Be Received”.` });
-        setSel(new Set()); setPo(null); setPhase("select"); load();
+        setStockPreview(null); setSel(new Set()); setPo(null); setPhase("select"); load();
       } else setMsg({ kind: "err", text: "Submit failed." });
     } catch { setMsg({ kind: "err", text: "Submit failed." }); } finally { setBusy(false); }
   };
@@ -207,9 +220,20 @@ export default function POTab() {
           </div>
         </Card>
         <p style={{ fontSize: "0.66rem", color: "var(--text4)" }}>PO qty = consolidated transfer qty − HO on-hand (floored at 0). Negative-HO items follow your per-item choice above. “Copy PO” copies only item-no⇥qty rows with PO qty &gt; 0, ready to paste into NAV.</p>
-        <button onClick={submit} disabled={busy} style={{ alignSelf: "flex-start", padding: "12px 28px", borderRadius: 12, border: "none", cursor: busy ? "default" : "pointer", background: WH_ACCENT, color: "white", fontWeight: 800, fontSize: "0.9rem", opacity: busy ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 8 }}>
-          {busy ? <Spinner size={16} /> : <Check size={16} />} SUBMIT — deduct stock &amp; move to “To Be Received”
+        <button onClick={reviewSubmit} disabled={busy} style={{ alignSelf: "flex-start", padding: "12px 28px", borderRadius: 12, border: "none", cursor: busy ? "default" : "pointer", background: WH_ACCENT, color: "white", fontWeight: 800, fontSize: "0.9rem", opacity: busy ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          {busy && !stockPreview ? <Spinner size={16} /> : <Check size={16} />} SUBMIT — deduct stock &amp; move to “To Be Received”
         </button>
+        {stockPreview && (
+          <MovementReceipt
+            title="Deduct from HO stock"
+            subtitle={`${sel.size} transfer${sel.size > 1 ? "s" : ""} · these units leave HO on-hand now`}
+            rows={stockPreview}
+            busy={busy}
+            confirmLabel="Confirm — submit & deduct"
+            onConfirm={submit}
+            onCancel={() => { if (!busy) setStockPreview(null); }}
+          />
+        )}
       </div>
     );
   }

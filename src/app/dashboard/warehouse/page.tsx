@@ -6,6 +6,7 @@ import POTab from "@/components/warehouse/POTab";
 import ToBeReceivedTab from "@/components/warehouse/ToBeReceivedTab";
 import PaperCheckTab from "@/components/warehouse/PaperCheckTab";
 import StockTab from "@/components/warehouse/StockTab";
+import AdjustTab from "@/components/warehouse/AdjustTab";
 import HistoryTab from "@/components/warehouse/HistoryTab";
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
   { key: "tbr", label: "To Be Received" },
   { key: "paper", label: "Paper Check" },
   { key: "stock", label: "Stock" },
+  { key: "adjust", label: "Adjust" },
   { key: "history", label: "History" },
 ];
 
@@ -32,6 +34,7 @@ export default function WarehousePage() {
         {tab === "tbr" && <ToBeReceivedTab />}
         {tab === "paper" && <PaperCheckTab />}
         {tab === "stock" && <StockTab />}
+        {tab === "adjust" && <AdjustTab />}
         {tab === "history" && <HistoryTab />}
       </div>
     </div>
