@@ -10,12 +10,22 @@ export const dynamic = "force-dynamic";
 // (warehouse_stock) by the consolidated transfer qty per item. The docs then
 // move to the "to be received" tracking state.
 export async function POST(req: NextRequest) {
-  let body: { docNos?: unknown; note?: string };
+  let body: { docNos?: unknown; note?: string; poLines?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
 
   const docNos = Array.isArray(body.docNos) ? [...new Set(body.docNos.map(String).filter(Boolean))] : [];
   const note = (body.note || "").trim().slice(0, 500) || null;
   if (!docNos.length) return NextResponse.json({ error: "no docNos" }, { status: 400 });
+
+  // Optional per-item PO override from the negative-HO chooser: only the chosen
+  // po_qty is honored (transfer_qty + ho_qty always come from the server-side
+  // consolidation; the stock decrement is unaffected — it's the physical transfer qty).
+  const poChoice = new Map<string, number>();
+  if (Array.isArray(body.poLines)) {
+    for (const l of body.poLines as Array<{ item_no?: unknown; po_qty?: unknown }>) {
+      if (l && l.item_no != null) poChoice.set(String(l.item_no), Math.max(0, Math.round(Number(l.po_qty) || 0)));
+    }
+  }
 
   // Pull raw lines + the consolidation OUTSIDE the txn (these are NAV/mock reads).
   let rawRows: TransferLineRaw[];
@@ -58,11 +68,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Snapshot the consolidated PO.
+    // Snapshot the consolidated PO (po_qty honors the negative-HO choice when sent).
     for (const l of consolidation.lines) {
+      const poQty = poChoice.has(l.item_no) ? poChoice.get(l.item_no)! : l.po_qty;
       await client.query(
         `INSERT INTO wh_po_lines (run_id, item_no, transfer_qty, ho_qty, po_qty) VALUES ($1,$2,$3,$4,$5)`,
-        [run.id, l.item_no, l.transfer_qty, l.ho_qty, l.po_qty]);
+        [run.id, l.item_no, l.transfer_qty, l.ho_qty, poQty]);
     }
 
     // Decrement real HO stock by the consolidated transfer qty per item.
