@@ -6,6 +6,16 @@ import { Copy, Check, Loader2 } from "lucide-react";
 export const WH_ACCENT = "#0D9488"; // teal — warehousing
 export const fmtInt = (n: number | string | null | undefined) => Math.round(Number(n) || 0).toLocaleString();
 
+// Client-safe store names (do NOT import @/lib/db here — it pulls in pg/Node).
+const STORE_NAMES: Record<string, string> = {
+  ALMAZA: "Almaza City Center", CCA: "Alexandria", "CF-HOS": "Cairo Festival City",
+  CSTARS: "City Stars", P90: "Point 90", MOA: "Mall of Arabia", MOE: "Mall of Egypt",
+  HO: "Head Office", NOON: "Noon", JUMIA: "Jumia", AMAZON: "Amazon Egypt",
+  "GO SPORT1": "Go Sport", SPINNEYS: "Spinneys", "DUTY FREE": "Duty Free", "FOUR SEASO": "Four Seasons",
+  ATCFC: "AT Cairo Festival", ATMADI: "AT Madinaty", "AMAZON BAN": "Amazon Banha", "AMAZON KAM": "Amazon Kamal",
+};
+export const storeName = (code: string) => STORE_NAMES[code] ?? code;
+
 export interface WHLine { input: string; item_no: string | null; description: string | null; qty: number; matched: boolean }
 
 // ── Card ─────────────────────────────────────────────────────────────────────
