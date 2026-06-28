@@ -22,6 +22,9 @@ export interface TransferLineRaw {
   transfer_to: string;
   item_no: string;
   qty: number;
+  qty_shipped: number;
+  qty_received: number;
+  retail_status: string | null;
   shipment_date: string | null;
 }
 
@@ -49,18 +52,25 @@ export interface TransferFilters {
 
 // ── Raw transfer-line reads (NAV → mock fallback) ───────────────────────────
 
-// NAV: HO transfer lines. Adjust column names here once the real table lands.
+// NAV: HO transfer lines. QtyShipped/QtyReceived drive the "to be received" tick
+// (a transfer is shipped once QtyShipped > 0; fully-received transfers are DELETED
+// from NAV's transfer table, so absence = received). RetailStatus is the custom
+// "Sent / Received" workflow field shown for visibility — swap `NULL AS
+// retail_status` for `RetailStatus AS retail_status` once that column is synced.
 const NAV_TRANSFER_LINES = `
   SELECT DocumentNo AS doc_no, Status AS status, TransferTo AS transfer_to,
          ItemNo AS item_no, Quantity AS qty,
+         QtyShipped AS qty_shipped, QtyReceived AS qty_received,
+         NULL AS retail_status,
          CONVERT(varchar(10), CAST(ShipmentDate AS DATE), 23) AS shipment_date
     FROM TransferLines
    WHERE TransferFrom = 'HO'`;
 
-// Mock mirror — same shape, from local Postgres.
+// Mock mirror — same shape, from local Postgres (mock has no posting progress).
 const MOCK_TRANSFER_LINES = `
   SELECT doc_no, status, transfer_to,
          item_no, qty,
+         0 AS qty_shipped, 0 AS qty_received, NULL AS retail_status,
          to_char(shipment_date, 'YYYY-MM-DD') AS shipment_date
     FROM nav_transfers_mock
    WHERE transfer_from = 'HO'`;
@@ -84,6 +94,9 @@ function normalizeLines(rows: TransferLineRaw[]): TransferLineRaw[] {
     transfer_to: String(r.transfer_to ?? ""),
     item_no: String(r.item_no),
     qty: Number(r.qty) || 0,
+    qty_shipped: Number(r.qty_shipped) || 0,
+    qty_received: Number(r.qty_received) || 0,
+    retail_status: r.retail_status != null && String(r.retail_status).trim() !== "" ? String(r.retail_status).trim() : null,
     shipment_date: r.shipment_date ? String(r.shipment_date).slice(0, 10) : null,
   }));
 }
@@ -269,16 +282,37 @@ export async function consolidatePo(docNos: string[]): Promise<Consolidation> {
   return { lines, totals, copyText, source };
 }
 
-/** Current Status per doc (NAV or mock) — for the to-be-received tab. */
-export async function liveStatusByDoc(
+/** Live per-doc state for the to-be-received tab. */
+export interface DocState {
+  present: boolean;          // still an open transfer in NAV (received ones get deleted)
+  status: string;            // standard NAV status ("0" Open / "1" Released)
+  retail_status: string | null; // custom "Sent / Received" workflow field (display only)
+  qty: number;               // total ordered qty across the doc's lines
+  qty_shipped: number;       // posted-shipped qty (>0 ⇒ shipped ⇒ "to be received")
+  qty_received: number;      // posted-received qty
+}
+
+/**
+ * Live posting state per doc (NAV → mock). Sums QtyShipped/QtyReceived across the
+ * doc's lines and carries the custom RetailStatus. Docs NOT in the result are gone
+ * from NAV's open-transfer table — i.e. fully received (the caller treats absence
+ * as received).
+ */
+export async function liveStateByDoc(
   docNos: string[]
-): Promise<{ map: Map<string, string>; source: TransferSource }> {
+): Promise<{ map: Map<string, DocState>; source: TransferSource }> {
   const want = new Set(docNos.map(String));
-  const map = new Map<string, string>();
+  const map = new Map<string, DocState>();
   if (!want.size) return { map, source: "mock" };
   const { rows, source } = await readTransferLines();
   for (const r of rows) {
-    if (want.has(r.doc_no) && !map.has(r.doc_no)) map.set(r.doc_no, r.status);
+    if (!want.has(r.doc_no)) continue;
+    let s = map.get(r.doc_no);
+    if (!s) { s = { present: true, status: r.status, retail_status: r.retail_status, qty: 0, qty_shipped: 0, qty_received: 0 }; map.set(r.doc_no, s); }
+    s.qty += r.qty;
+    s.qty_shipped += r.qty_shipped;
+    s.qty_received += r.qty_received;
+    if (!s.retail_status && r.retail_status) s.retail_status = r.retail_status;
   }
   return { map, source };
 }

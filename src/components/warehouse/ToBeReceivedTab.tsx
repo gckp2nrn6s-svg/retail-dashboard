@@ -62,7 +62,7 @@ export default function ToBeReceivedTab() {
                 </div>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                   <Tick on={r.stock_deducted} label="Stock deducted" />
-                  <Tick on={r.nav_received} label="NAV received" />
+                  <Tick on={r.nav_received} label="Shipped (to receive)" />
                   <Tick on={r.paper_checked} label="Paper checked" />
                 </div>
                 {r.done && <span style={{ marginLeft: "auto", fontSize: "0.62rem", fontWeight: 800, color: "#10B981", background: "rgba(16,185,129,0.12)", padding: "3px 10px", borderRadius: 8 }}>DONE</span>}
@@ -71,7 +71,7 @@ export default function ToBeReceivedTab() {
           ))}
         </div>
       )}
-      <p style={{ fontSize: "0.66rem", color: "var(--text4)" }}>“NAV received” ticks automatically when the transfer's status flips to received in NAV. “Paper checked” is set in the Paper Check tab.</p>
+      <p style={{ fontSize: "0.66rem", color: "var(--text4)" }}>“Shipped (to receive)” ticks automatically once the transfer is shipped in NAV (Qty Shipped &gt; 0, or it has left NAV's open-transfer list as fully received). The status pill shows the live NAV status. “Paper checked” is set in the Paper Check tab.</p>
     </div>
   );
 }

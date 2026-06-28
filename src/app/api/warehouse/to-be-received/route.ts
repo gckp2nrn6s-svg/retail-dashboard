@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { liveStatusByDoc } from "@/lib/warehouse-transfers";
+import { liveStateByDoc, type DocState } from "@/lib/warehouse-transfers";
 
 export const dynamic = "force-dynamic";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// The exact NAV status string that means "received" is STILL TBD. Detect it
-// here in ONE place so it's trivial to adjust when we learn the real wording —
-// just edit this regex (e.g. /received/i, or list the exact strings).
-// ─────────────────────────────────────────────────────────────────────────────
-export function isReceivedStatus(status: string | null | undefined): boolean {
-  return /receiv/i.test(status || "");
-}
 
 interface Row {
   id: number;
@@ -21,9 +12,21 @@ interface Row {
   paper_checked_at: string | null;
 }
 
+// Human-readable status for the row. Prefers the custom NAV "Retail Status"
+// (Sent / Received …) when synced; otherwise derives from the posting progress.
+function displayStatus(st: DocState | undefined): string {
+  if (!st || !st.present) return "Received";          // gone from NAV's open table ⇒ fully received
+  if (st.retail_status) return st.retail_status;       // "Sent" / "Received" (custom field)
+  if (st.qty_received > 0) return "Receiving";
+  if (st.qty_shipped > 0) return "Shipped";
+  return st.status === "1" ? "Released" : st.status === "0" ? "Open" : (st.status || "Open");
+}
+
 // GET /api/warehouse/to-be-received?from=&to=
-// Submitted transfers with their CURRENT NAV status re-read live per doc, plus
-// the manual paper-check state. `done` = NAV says received AND paper ticked.
+// Submitted transfers with their CURRENT NAV posting state re-read live per doc,
+// plus the manual paper-check state. The "to be received" tick fires once the
+// transfer has been SHIPPED in NAV — QtyShipped > 0, or the order has left NAV's
+// open-transfer table entirely (which only happens once it's fully received).
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
@@ -44,23 +47,28 @@ export async function GET(req: NextRequest) {
        ORDER BY t.created_at DESC, t.id DESC`, params);
 
     const docNos = [...new Set(rows.map(r => r.doc_no).filter(Boolean))];
-    let liveMap = new Map<string, string>();
+    let liveMap = new Map<string, DocState>();
+    let liveOk = false;
     try {
-      ({ map: liveMap } = await liveStatusByDoc(docNos));
+      ({ map: liveMap } = await liveStateByDoc(docNos));
+      liveOk = true;
     } catch (e) {
-      console.error("[warehouse/to-be-received] live status read failed:", e instanceof Error ? e.message : e);
+      console.error("[warehouse/to-be-received] live state read failed:", e instanceof Error ? e.message : e);
     }
 
     const out = rows.map(r => {
-      const current_status = liveMap.get(r.doc_no) ?? r.status_at_submit ?? null;
-      const nav_received = isReceivedStatus(current_status);
+      const st = liveMap.get(r.doc_no);
+      // Shipped ⇒ "to be received". Treat absence as received ONLY when the live
+      // read succeeded (a failed read must not falsely tick everything green).
+      const gone = liveOk && !st;
+      const nav_received = (st ? st.qty_shipped > 0 : false) || gone;
       const paper_checked = r.paper_checked_at != null;
       return {
         id: r.id,
         doc_no: r.doc_no,
         store: r.store,
         status_at_submit: r.status_at_submit,
-        current_status,
+        current_status: liveOk ? displayStatus(st) : (r.status_at_submit ?? "—"),
         stock_deducted: true,            // submit always deducts, by construction
         nav_received,
         paper_checked,
