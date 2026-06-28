@@ -9,6 +9,7 @@ interface Product {
   size: string; size_detail: string; line_name: string; usage: string;
   in_stock: number; unit_price: { egp: number; usd: number };
   units_sold_30d: number; revenue_30d: { egp: number; usd: number };
+  on_shopify: boolean;
 }
 
 const COLOUR_MAP: Record<string, string> = {
@@ -304,7 +305,10 @@ export default function CataloguePage() {
                       )}
                     </div>
                     <div className="flex items-center justify-between mt-1.5">
-                      <span style={{ fontSize: "0.7rem", color: "var(--text3)" }}>#{p.item_no}</span>
+                      <span style={{ fontSize: "0.7rem", color: "var(--text3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        #{p.item_no}
+                        {p.on_shopify && <span style={{ fontSize: "0.52rem", fontWeight: 800, color: "#5E8E3E", background: "rgba(149,191,71,0.18)", borderRadius: 4, padding: "1px 5px" }} title="Mapped to a Shopify product">Shopify</span>}
+                      </span>
                       <div className="flex items-center gap-3">
                         <span style={{ fontSize: "0.68rem", color: "var(--text3)" }}>
                           {p.units_sold_30d > 0 ? <span style={{ color: "var(--green)", fontWeight: 600 }}>{p.units_sold_30d} sold/30d</span> : "no recent sales"}

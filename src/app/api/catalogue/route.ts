@@ -62,13 +62,14 @@ export async function GET(req: NextRequest) {
     query<{
       item_no: string; description: string; brand: string; category: string; subcategory: string;
       colour_exact: string; colour_group: string; size: string; size_detail: string; line_name: string;
-      usage: string; in_stock: string; unit_price: string;
+      usage: string; in_stock: string; unit_price: string; on_shopify: boolean;
     }>(`
       SELECT
         ic.item_no, ic.description, ic.brand, ic.category, ic.subcategory,
         ic.colour_exact, ic.colour_group, ic.size, ic.size_detail, ic.line_name, ic.usage,
         COALESCE(ws.in_stock, 0)::numeric AS in_stock,
-        COALESCE(ws.unit_price, 0)::numeric AS unit_price
+        COALESCE(ws.unit_price, 0)::numeric AS unit_price,
+        EXISTS (SELECT 1 FROM shopify_item_map sm WHERE sm.item_no = ic.item_no) AS on_shopify
       ${baseSql}
       ORDER BY ${orderBy}
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}

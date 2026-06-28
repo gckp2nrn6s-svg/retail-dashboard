@@ -91,8 +91,6 @@ export default function StockTab() {
                   <th style={LCOL}>Item no.</th>
                   <th style={LCOL}>Description</th>
                   <th style={ICOL}>On hand</th>
-                  <th style={ICOL}>In</th>
-                  <th style={ICOL}>Out</th>
                 </tr>
               </thead>
               <tbody>
@@ -101,8 +99,6 @@ export default function StockTab() {
                     <td style={{ padding: "9px 14px", fontWeight: 700, color: "var(--text)", fontFamily: "ui-monospace, monospace", whiteSpace: "nowrap" }}>{r.item_no}</td>
                     <td style={{ padding: "9px 14px", color: "var(--text2)", maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description}</td>
                     <td style={{ ...num, fontWeight: 800, color: "var(--text)" }}>{fmtInt(r.in_stock)}</td>
-                    <td style={{ ...num, color: "var(--text3)" }}>{fmtInt(r.quantity)}</td>
-                    <td style={{ ...num, color: "var(--text3)" }}>{fmtInt(r.out_qty)}</td>
                   </tr>
                 ))}
               </tbody>
