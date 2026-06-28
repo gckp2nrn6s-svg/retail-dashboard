@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { TABS, WH_ACTIONS, type Permissions } from "@/lib/permissions";
 import { Plus, Trash2, Pencil, Check, X, ShieldCheck, User as UserIcon } from "lucide-react";
+import SystemStatus from "@/components/admin/SystemStatus";
 
 interface User { id: string; email: string; name: string; role: string; permissions: Permissions; active: boolean; createdAt: string }
 interface Form { id?: string; email: string; name: string; password: string; role: "admin" | "member"; tabs: Set<string>; wh: Set<string>; active: boolean }
@@ -14,6 +15,7 @@ export default function UsersPage() {
   const { data: session } = useSession();
   const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
 
+  const [view, setView] = useState<"users" | "status">("users");
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<Form | null>(null);
@@ -72,10 +74,17 @@ export default function UsersPage() {
           <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>Admin</p>
           <h1 style={{ color: "white", fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", marginTop: 3 }}>Users &amp; permissions</h1>
         </div>
-        <button onClick={openNew} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 11, border: "none", cursor: "pointer", background: "white", color: "#312e81", fontWeight: 800, fontSize: "0.82rem" }}><Plus size={16} /> New user</button>
+        {view === "users" && <button onClick={openNew} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 11, border: "none", cursor: "pointer", background: "white", color: "#312e81", fontWeight: 800, fontSize: "0.82rem" }}><Plus size={16} /> New user</button>}
       </div>
 
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", gap: 4, padding: 4, background: "var(--surface3)", borderRadius: 11, maxWidth: 380 }}>
+          {([["users", "Users & permissions"], ["status", "System status"]] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setView(k)} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", cursor: "pointer", background: view === k ? "var(--surface)" : "transparent", color: view === k ? "var(--text)" : "var(--text3)", fontWeight: view === k ? 700 : 600, fontSize: "0.78rem", boxShadow: view === k ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>{l}</button>
+          ))}
+        </div>
+
+        {view === "status" ? <SystemStatus /> : <>
         {msg && <div style={{ padding: "9px 14px", borderRadius: 10, background: "rgba(16,185,129,0.12)", color: "#10B981", fontSize: "0.78rem", fontWeight: 700 }}>{msg}</div>}
 
         {loading ? (
@@ -99,6 +108,7 @@ export default function UsersPage() {
             {users.length === 0 && <p style={{ textAlign: "center", color: "var(--text4)", padding: 40 }}>No users yet.</p>}
           </div>
         )}
+        </>}
       </div>
 
       {/* Create / edit modal */}
