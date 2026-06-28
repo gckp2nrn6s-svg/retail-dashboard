@@ -61,7 +61,7 @@ const NAV_TRANSFER_LINES = `
   SELECT DocumentNo AS doc_no, Status AS status, TransferTo AS transfer_to,
          ItemNo AS item_no, Quantity AS qty,
          QtyShipped AS qty_shipped, QtyReceived AS qty_received,
-         NULL AS retail_status,
+         RetailStatus AS retail_status,
          CONVERT(varchar(10), CAST(ShipmentDate AS DATE), 23) AS shipment_date
     FROM TransferLines
    WHERE TransferFrom = 'HO'`;
@@ -87,6 +87,19 @@ async function readTransferLines(): Promise<{ rows: TransferLineRaw[]; source: T
   }
 }
 
+// NAV "Retail Status" is an option field stored as an int; map to its caption
+// (0-indexed dropdown order). Unknown values fall back to the raw number.
+const RETAIL_STATUS_LABELS: Record<string, string> = {
+  "0": "New", "1": "Sent", "2": "Part. receipt", "3": "Closed - ok",
+  "4": "Closed - difference", "5": "To receive", "6": "Planned receive",
+};
+function retailStatusLabel(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (s === "") return null;
+  return RETAIL_STATUS_LABELS[s] ?? s;
+}
+
 function normalizeLines(rows: TransferLineRaw[]): TransferLineRaw[] {
   return rows.map(r => ({
     doc_no: String(r.doc_no),
@@ -96,7 +109,7 @@ function normalizeLines(rows: TransferLineRaw[]): TransferLineRaw[] {
     qty: Number(r.qty) || 0,
     qty_shipped: Number(r.qty_shipped) || 0,
     qty_received: Number(r.qty_received) || 0,
-    retail_status: r.retail_status != null && String(r.retail_status).trim() !== "" ? String(r.retail_status).trim() : null,
+    retail_status: retailStatusLabel(r.retail_status),
     shipment_date: r.shipment_date ? String(r.shipment_date).slice(0, 10) : null,
   }));
 }
