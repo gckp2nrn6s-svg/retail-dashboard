@@ -7,8 +7,16 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 import { DrillDownSheet, useDrill } from "@/components/DrillDownSheet";
 import { ChevronRight } from "lucide-react";
 
-interface Customer { code: string; name: string; named: boolean; egp: number; usd: number; units: number; txns: number; pct: number }
+interface Customer { code: string; name: string; named: boolean; egp: number; usd: number; units: number; txns: number; pct: number; factory?: boolean; client_key?: string }
 interface DayPoint { date: string; egp: number; units: number }
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return "";
+  const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000);
+  if (h < 1) return "just now";
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
 const custColor = (code: string) => `hsl(${(parseInt(code.replace(/\D/g, "") || "0", 10) * 47) % 360} 55% 55%)`;
 
@@ -39,6 +47,7 @@ export default function B2BPage() {
   const [series, setSeries] = useState<DayPoint[]>([]);
   const [total, setTotal] = useState<{ egp: number; usd: number; units: number }>({ egp: 0, usd: 0, units: 0 });
   const [through, setThrough] = useState<string | null>(null);
+  const [factory, setFactory] = useState<{ egp: number; clients: number; syncedAt: string | null }>({ egp: 0, clients: 0, syncedAt: null });
   const [fx, setFx] = useState(52);
   const [loading, setLoading] = useState(true);
   const [navOffline, setNavOffline] = useState(false);
@@ -57,6 +66,7 @@ export default function B2BPage() {
       setSeries(r.series || []);
       setTotal(r.total || { egp: 0, usd: 0, units: 0 });
       setThrough(r.through || null);
+      setFactory(r.factory || { egp: 0, clients: 0, syncedAt: null });
       setFx(r.fx || 52);
       setNavOffline(r.sources?.nav === "offline");
     } catch {
@@ -71,7 +81,9 @@ export default function B2BPage() {
 
   const drillCustomer = (c: Customer) => openDrill({
     title: `${c.name} · ${range.label}`,
-    endpoint: `/api/drill?type=b2b-customer-items&customer=${encodeURIComponent(c.code)}&from=${range.from}&to=${range.to}`,
+    endpoint: c.factory && c.client_key
+      ? `/api/drill?type=factory-client-items&client=${encodeURIComponent(c.client_key)}&from=${range.from}&to=${range.to}`
+      : `/api/drill?type=b2b-customer-items&customer=${encodeURIComponent(c.code)}&from=${range.from}&to=${range.to}`,
   });
 
   return (
@@ -113,6 +125,16 @@ export default function B2BPage() {
           </div>
         )}
 
+        {/* Factory-direct note */}
+        {!loading && !loadError && factory.egp > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(13,148,136,0.08)", border: "1px solid rgba(13,148,136,0.2)", borderRadius: 10, padding: "8px 14px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.7rem" }}>🏭</span>
+            <span style={{ fontSize: "0.66rem", color: "var(--text3)" }}>
+              Includes <strong style={{ color: "var(--text2)" }}>direct factory sales</strong> from the live sheet — {factory.clients} client{factory.clients !== 1 ? "s" : ""} folded in (tagged <span style={{ color: "#0D9488", fontWeight: 700 }}>factory</span>){factory.syncedAt ? ` · synced ${timeAgo(factory.syncedAt)}` : ""}.
+            </span>
+          </div>
+        )}
+
         {/* Trend */}
         <div className="card" style={{ padding: "16px 20px" }}>
           <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text2)", marginBottom: 14 }}>B2B revenue over time</p>
@@ -149,7 +171,9 @@ export default function B2BPage() {
                   <div style={{ width: 10, height: 10, borderRadius: "50%", background: custColor(c.code), flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {c.name}{!c.named && <span style={{ fontSize: "0.55rem", fontWeight: 700, color: "#F59E0B", background: "rgba(245,158,11,0.12)", padding: "1px 6px", borderRadius: 6, marginLeft: 6 }}>no name</span>}
+                      {c.name}
+                      {c.factory && <span style={{ fontSize: "0.55rem", fontWeight: 700, color: "#0D9488", background: "rgba(13,148,136,0.14)", padding: "1px 6px", borderRadius: 6, marginLeft: 6 }}>factory</span>}
+                      {!c.named && <span style={{ fontSize: "0.55rem", fontWeight: 700, color: "#F59E0B", background: "rgba(245,158,11,0.12)", padding: "1px 6px", borderRadius: 6, marginLeft: 6 }}>no name</span>}
                     </p>
                     <p style={{ fontSize: "0.62rem", color: "var(--text3)", marginTop: 1 }}>
                       {c.named ? `${c.code} · ` : ""}{c.units.toLocaleString()} units · {c.txns.toLocaleString()} invoices · {c.pct}%
@@ -165,7 +189,7 @@ export default function B2BPage() {
           )}
           {!loading && customers.length > 0 && (
             <p style={{ fontSize: "0.58rem", color: "var(--text4)", marginTop: 12 }}>
-              B2B = Head-Office invoices (NAV SalesInvoiceLine) net of credit memos, by Sell-to customer. Names from the CEO customer list; unmatched codes show the code. Separate from retail/Ecom — not in the headline total.
+              B2B = Head-Office invoices (NAV SalesInvoiceLine) net of credit memos, by Sell-to customer, plus direct factory sales from the live sheet (tagged <span style={{ color: "#0D9488", fontWeight: 700 }}>factory</span>, merged by client). Names from the CEO customer list; unmatched codes show the code. Separate from retail/Ecom — not in the headline total.
             </p>
           )}
         </div>

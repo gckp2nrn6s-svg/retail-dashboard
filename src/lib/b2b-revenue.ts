@@ -1,4 +1,5 @@
 import { navQuery } from "@/lib/navdb";
+import { getFactoryDirectTotal, maybeRefreshFactoryDirect } from "@/lib/factory-direct";
 
 // Customers that are accounting entries, not real sales — excluded from all B2B
 // figures (C-0142 = "Adjustment"). Add codes here to exclude more.
@@ -20,7 +21,17 @@ const B2B_NET_SQL = `
       FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
   ) t`;
 
+// B2B = NAV invoices (net of credit memos) PLUS factory-direct sales from the live
+// sheet (Carrefour, Amazon, …) which don't flow through NAV. Factory failures
+// degrade to NAV-only so a sheet hiccup never zeroes B2B.
 export async function getB2BRevenue(from: string, to: string): Promise<{ egp: number; units: number }> {
-  const rows = await navQuery<{ egp: number; units: number }>(B2B_NET_SQL, { from, to });
-  return { egp: Math.round(Number(rows[0]?.egp || 0)), units: Math.round(Number(rows[0]?.units || 0)) };
+  maybeRefreshFactoryDirect(); // non-blocking: keep the sheet ≤12h fresh on any B2B view
+  const [rows, fd] = await Promise.all([
+    navQuery<{ egp: number; units: number }>(B2B_NET_SQL, { from, to }),
+    getFactoryDirectTotal(from, to).catch(() => ({ egp: 0, units: 0 })),
+  ]);
+  return {
+    egp:   Math.round(Number(rows[0]?.egp || 0)) + fd.egp,
+    units: Math.round(Number(rows[0]?.units || 0)) + fd.units,
+  };
 }

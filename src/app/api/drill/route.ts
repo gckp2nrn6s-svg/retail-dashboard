@@ -100,6 +100,7 @@ const ALLOWED_TYPES = new Set([
   "daily","kpi","store","store-daily","channel","category","brand",
   "item","item-store","items","daily-detail",
   "store-category","store-subcat","marketplace-items","store-brand","b2b-customer-items",
+  "factory-client-items",
 ]);
 
 export async function GET(req: NextRequest) {
@@ -131,6 +132,7 @@ async function handleDrill(req: NextRequest) {
   const itemNo  = safeStr(p.get("item"));
   const staff   = safeStr(p.get("staff"));
   const customer= safeStr(p.get("customer"));
+  const client  = safeStr(p.get("client")); // factory-direct client_key
   const datePm  = safeDate(p.get("date"), today);
 
   // FX + product descriptions live in Postgres. They're enrichment, not the
@@ -262,6 +264,38 @@ async function handleDrill(req: NextRequest) {
         { key: "egp",     label: "Revenue",        type: "currency" },
         { key: "units",   label: "Units",          type: "units" },
         { key: "pct",     label: "% of customer",  type: "number" },
+      ],
+      rows: drillRows,
+      summary: [
+        { label: "products", value: String(drillRows.length) },
+        { label: "revenue",  value: `EGP ${Math.round(total).toLocaleString()}` },
+      ],
+      fx,
+    });
+  }
+
+  // ── Factory-direct client → products (from the live sheet, in Postgres) ───────
+  if (type === "factory-client-items" && client) {
+    const rows = await query<{ product: string; egp: string; units: string }>(`
+      SELECT COALESCE(NULLIF(TRIM(description),''), NULLIF(TRIM(sku),''), NULLIF(TRIM(model),''), 'item') AS product,
+             SUM(total_sales) AS egp, SUM(qty) AS units
+        FROM factory_direct_sales
+       WHERE client_key = $1 AND sale_date BETWEEN $2 AND $3
+       GROUP BY 1 HAVING SUM(total_sales) <> 0 ORDER BY egp DESC`, [client, from, to]);
+    const total = rows.reduce((s, r) => s + Number(r.egp), 0);
+    const drillRows = rows.map(r => ({
+      product: r.product,
+      egp:   Math.round(Number(r.egp)),
+      usd:   Math.round(Number(r.egp) / fx),
+      units: Math.round(Number(r.units)),
+      pct:   total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
+    }));
+    return NextResponse.json({
+      columns: [
+        { key: "product", label: "Product",      type: "text" },
+        { key: "egp",     label: "Revenue",      type: "currency" },
+        { key: "units",   label: "Units",        type: "units" },
+        { key: "pct",     label: "% of client",  type: "number" },
       ],
       rows: drillRows,
       summary: [
