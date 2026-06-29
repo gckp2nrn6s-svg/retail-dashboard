@@ -59,7 +59,8 @@ export async function GET(req: NextRequest) {
       ]), [[], [], { egp: 0, units: 0 }]),
 
       safeSource<FxRow[]>("pg", () => query<FxRow>(
-        "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"
+        // Time-aware: the rate in effect at the END of the viewed period.
+        "SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]
       ), []),
 
       safeSource("shopify", () => getShopifyRevenue(from, to), { egp: 0, units: 0 }),

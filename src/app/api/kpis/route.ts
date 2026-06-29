@@ -73,7 +73,9 @@ export async function GET(req: NextRequest) {
         return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, prevWeek, prevYear };
       }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [], prevWeek: [], prevYear: [] }),
 
-      safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"), []),
+      // Time-aware: USD uses the rate in effect at the END of the viewed period
+      // (the comparisons below are EGP-based %, so they need no conversion).
+      safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]), []),
 
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(from, to), { egp: 0, units: 0 }),
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(prevFrom, prevTo), { egp: 0, units: 0 }),

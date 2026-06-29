@@ -129,7 +129,9 @@ export async function GET(req: NextRequest) {
 
       safeSource<PgBundle>("pg", async () => {
         const [fxRow, descRows, skuMap] = await Promise.all([
-          query<FxRow>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"),
+          // Time-aware: the rate in effect at the END of the viewed period, not
+          // today's — so historical pulls convert at their own era's rate.
+          query<FxRow>("SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]),
           query<DescRow>("SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"),
           query<SkuRow>("SELECT sku, item_no FROM shopify_item_map"),
         ]);

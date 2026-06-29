@@ -3,6 +3,7 @@ import { navQuery as navQueryRaw } from "@/lib/navdb";
 import { query } from "@/lib/db";
 import { getShopifyRevenueSplit, getShopifyLineItems, getShopifyDailyRevenue } from "@/lib/shopify";
 import { B2B_CUST_FILTER } from "@/lib/b2b-revenue";
+import { getFactoryDirectByClient, clientKey } from "@/lib/factory-direct";
 import { todayCairo } from "@/lib/dates";
 
 // Fault isolation for the whole drill route: NAV going offline (the laptop tunnel
@@ -142,7 +143,7 @@ async function handleDrill(req: NextRequest) {
   let descRows: { item_no: string; description: string }[] = [];
   try {
     [fxRow, descRows] = await Promise.all([
-      query<{egp_per_usd:string}>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"),
+      query<{egp_per_usd:string}>("SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]),
       query<{item_no:string;description:string}>("SELECT item_no, description FROM item_categorisation WHERE description IS NOT NULL"),
     ]);
   } catch (e) {
@@ -520,34 +521,51 @@ async function handleDrill(req: NextRequest) {
   // ── Channel → stores breakdown ───────────────────────────────────────────────
   // B2B channel drills into CUSTOMERS (HO invoices), not POS stores (which are empty).
   if (type === "channel" && channel === "B2B") {
-    const custRows = await navQuery<{cust:string;egp:number;units:number;txns:number}>(`
-      SELECT cust, SUM(egp) AS egp, SUM(units) AS units, COUNT(DISTINCT doc) AS txns FROM (
-        SELECT [Sell-to Customer No_] AS cust, [Amount Including VAT] AS egp, [Quantity] AS units, [Document No_] AS doc
-          FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
-        UNION ALL
-        SELECT [Sell-to Customer No_], -[Amount Including VAT], -[Quantity], [Document No_]
-          FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
-      ) t GROUP BY cust HAVING SUM(egp) <> 0 ORDER BY egp DESC
-    `, { from, to });
+    const [custRows, fdClients] = await Promise.all([
+      navQuery<{cust:string;egp:number;units:number;txns:number}>(`
+        SELECT cust, SUM(egp) AS egp, SUM(units) AS units, COUNT(DISTINCT doc) AS txns FROM (
+          SELECT [Sell-to Customer No_] AS cust, [Amount Including VAT] AS egp, [Quantity] AS units, [Document No_] AS doc
+            FROM SalesInvoiceLine WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
+          UNION ALL
+          SELECT [Sell-to Customer No_], -[Amount Including VAT], -[Quantity], [Document No_]
+            FROM SalesCrMemoLine   WHERE CAST([Posting Date] AS DATE) BETWEEN @from AND @to ${B2B_CUST_FILTER}
+        ) t GROUP BY cust HAVING SUM(egp) <> 0 ORDER BY egp DESC
+      `, { from, to }),
+      getFactoryDirectByClient(from, to).catch(() => []),
+    ]);
     let nameRows: { code: string; name: string }[] = [];
     try { nameRows = await query<{ code: string; name: string }>("SELECT code, name FROM b2b_customers"); } catch { /* names are enrichment — degrade to codes */ }
     const nameMap = Object.fromEntries(nameRows.map(r => [r.code, r.name]));
     const cleanName = (raw?: string) => { if (!raw) return ""; const c = raw.replace(/[\s\d/_.\-]+$/u, "").trim(); return c || raw; };
-    const total = custRows.reduce((s, r) => s + Number(r.egp), 0);
-    const drillRows = custRows.map(r => {
+
+    // NAV customers, then fold in factory-direct (live sheet) by normalized name —
+    // the SAME merge the B2B page uses, so this drill matches the page total.
+    type Row = { customer: string; code: string; egp: number; units: number; factory: boolean; client_key: string };
+    const rows: Row[] = custRows.map(r => {
       const nm = nameMap[r.cust];
-      const display = nm ? (cleanName(nm) || nm) : r.cust;
-      return {
-        customer: display,
-        code:     r.cust,
-        egp:      Math.round(Number(r.egp)),
-        usd:      Math.round(Number(r.egp) / fx),
-        units:    Math.round(Number(r.units)),
-        pct:      total > 0 ? Math.round(Number(r.egp) * 100 / total) : 0,
-        _drill_url:   dUrl({ type: "b2b-customer-items", customer: r.cust }, from, to),
-        _drill_title: `${display} · Products`,
-      };
+      return { customer: nm ? (cleanName(nm) || nm) : r.cust, code: r.cust, egp: Math.round(Number(r.egp)), units: Math.round(Number(r.units)), factory: false, client_key: "" };
     });
+    const byKey = new Map<string, Row>();
+    for (const c of rows) { const k = clientKey(cleanName(c.customer) || c.customer); if (!byKey.has(k)) byKey.set(k, c); }
+    for (const f of fdClients) {
+      const ex = byKey.get(f.client_key);
+      if (ex) { ex.egp += f.egp; ex.units += f.units; ex.factory = true; ex.client_key = f.client_key; }
+      else { const nc: Row = { customer: f.client, code: `FD:${f.client_key}`, egp: f.egp, units: f.units, factory: true, client_key: f.client_key }; rows.push(nc); byKey.set(f.client_key, nc); }
+    }
+    rows.sort((a, b) => b.egp - a.egp);
+    const total = rows.reduce((s, r) => s + r.egp, 0);
+    const drillRows = rows.map(r => ({
+      customer: r.customer,
+      code:     r.code,
+      egp:      r.egp,
+      usd:      Math.round(r.egp / fx),
+      units:    r.units,
+      pct:      total > 0 ? Math.round(r.egp * 100 / total) : 0,
+      _drill_url:   r.code.startsWith("FD:")
+                      ? dUrl({ type: "factory-client-items", client: r.client_key }, from, to)
+                      : dUrl({ type: "b2b-customer-items", customer: r.code }, from, to),
+      _drill_title: `${r.customer} · Products`,
+    }));
     return NextResponse.json({
       columns: [
         { key: "customer", label: "Customer",  type: "text" },

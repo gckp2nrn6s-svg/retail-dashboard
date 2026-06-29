@@ -50,7 +50,7 @@ export async function GET(req: Request) {
           WHERE CAST([Date] AS DATE) BETWEEN @prevFrom AND @prevTo AND [Store No_] IN (${retailIn})
         `, { prevFrom: prevFromS, prevTo: prevToS }),
       ]), [[], []]),
-      safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"), []),
+      safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]), []),
       safeSource("shopify", () => getShopifyRevenue(from, to), { egp: 0, units: 0 }),
       safeSource("shopify", () => getShopifyRevenue(prevFromS, prevToS), { egp: 0, units: 0 }),
     ]);

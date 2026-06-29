@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
         navQuery<CustRow>(CUST_TOTALS, { from, to }),
         navQuery<DayRow>(CUST_SERIES, { from, to }),
       ]), [[], []]),
-      safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"), []),
+      safeSource<FxRow[]>("pg", () => query<FxRow>("SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]), []),
       safeSource<NameRow[]>("pg", () => query<NameRow>("SELECT code, name FROM b2b_customers"), []),
       safeSource<[FdClient[], { date: string; egp: number; units: number }[], Awaited<ReturnType<typeof lastFactorySync>>]>("pg", () => Promise.all([
         getFactoryDirectByClient(from, to),
