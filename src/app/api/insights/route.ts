@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { query, STORE_NAMES } from "@/lib/db";
 import { navQuery } from "@/lib/navdb";
-import { fetchNavVelocity } from "@/lib/navVelocity";
+import { getCombinedVelocity } from "@/lib/navVelocity";
 
 function sn(code: string) { return STORE_NAMES[code] ?? code; }
 
@@ -37,8 +37,8 @@ async function buildInsights() {
 
   // Pre-fetch NAV velocities (30d and 90d) in parallel with other queries
   const [vel30, vel90, fxRow, warehouseItems, hotMomentum, storeWeekly, onlineTransfer, onlineImport, topOpportunity] = await Promise.all([
-    fetchNavVelocity(30),
-    fetchNavVelocity(90),
+    getCombinedVelocity(30),
+    getCombinedVelocity(90),
 
     query<{ egp_per_usd: string }>(
       "SELECT egp_per_usd FROM fx_rates ORDER BY week_start DESC LIMIT 1"

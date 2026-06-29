@@ -245,6 +245,73 @@ async function refreshShopifyDaily(from: string, to: string): Promise<void> {
   return run;
 }
 
+// ── Per-item daily rollup (powers cross-channel velocity in the stock alerts) ──
+let _lastItemRollup = 0;
+const ITEM_ROLLUP_THROTTLE = 12 * 60 * 60 * 1000; // 12h
+const ITEM_ROLLUP_WINDOW = 95;                    // days kept fresh (covers 90d velocity)
+
+async function ensureItemRollupTable(): Promise<void> {
+  await query(`CREATE TABLE IF NOT EXISTS shopify_item_daily (
+    sale_date date NOT NULL, sku text NOT NULL,
+    units numeric NOT NULL DEFAULT 0, revenue numeric NOT NULL DEFAULT 0,
+    built_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (sale_date, sku))`);
+}
+
+/** Fetch [from,to] live and (re)write a day×SKU grid into shopify_item_daily. */
+async function refreshShopifyItemDaily(from: string, to: string): Promise<void> {
+  await ensureItemRollupTable();
+  const brands: ShopifyStore[] = ["samsonite", "american-tourister"];
+  const agg: Record<string, { units: number; revenue: number }> = {}; // key = day|sku
+  for (const brand of brands) {
+    const orders = await fetchBrandOrders(brand, from, to);
+    for (const o of orders) {
+      const day = egDay(o.created_at);
+      for (const li of o.line_items) {
+        const sku = li.sku?.trim();
+        if (!sku) continue;
+        (agg[`${day}|${sku}`] ??= { units: 0, revenue: 0 });
+        agg[`${day}|${sku}`].units += li.quantity;
+        agg[`${day}|${sku}`].revenue += parseFloat(li.price) * li.quantity;
+      }
+    }
+  }
+  const entries = Object.entries(agg);
+  for (let c = 0; c < entries.length; c += 500) {
+    const slice = entries.slice(c, c + 500);
+    const tuples: string[] = []; const vals: (string | number)[] = []; let i = 1;
+    for (const [k, a] of slice) {
+      const [day, sku] = k.split("|");
+      tuples.push(`($${i++},$${i++},$${i++},$${i++},now())`);
+      vals.push(day, sku, Math.round(a.units), Math.round(a.revenue * 100) / 100);
+    }
+    await query(
+      `INSERT INTO shopify_item_daily (sale_date,sku,units,revenue,built_at) VALUES ${tuples.join(",")}
+       ON CONFLICT (sale_date,sku) DO UPDATE SET units=EXCLUDED.units, revenue=EXCLUDED.revenue, built_at=now()`,
+      vals);
+  }
+}
+
+/** Fire-and-forget: refresh the trailing ~95d per-item rollup if >12h stale. */
+export function maybeRefreshShopifyItems(): void {
+  if (Date.now() - _lastItemRollup < ITEM_ROLLUP_THROTTLE) return;
+  _lastItemRollup = Date.now();
+  const to = todayCairo();
+  refreshShopifyItemDaily(addDays(to, -ITEM_ROLLUP_WINDOW), to)
+    .catch(e => console.error("[shopify:itemRollup] refresh failed:", e instanceof Error ? e.message : e));
+}
+
+/** Per-item_no Shopify velocity (units + revenue) over the last N days, from the rollup. */
+export async function getShopifyItemVelocity(days: number): Promise<Map<string, { units: number; revenue: number }>> {
+  const rows = await query<{ item_no: string; units: string; revenue: string }>(
+    `SELECT m.item_no, SUM(s.units)::numeric AS units, SUM(s.revenue)::numeric AS revenue
+       FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
+      WHERE s.sale_date >= CURRENT_DATE - ($1::int) GROUP BY m.item_no`,
+    [days]);
+  const map = new Map<string, { units: number; revenue: number }>();
+  for (const r of rows) map.set(String(r.item_no), { units: Number(r.units) || 0, revenue: Number(r.revenue) || 0 });
+  return map;
+}
+
 /** Ensure the rollup covers historical [from,to] (≤ yesterday): block-backfill any
  *  missing frozen days; refresh the trailing 30d if stale (async when it already has
  *  data, so steady-state reads never block). */

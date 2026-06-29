@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { navQuery } from "@/lib/navdb";
-import { fetchNavVelocity } from "@/lib/navVelocity";
+import { getCombinedVelocity } from "@/lib/navVelocity";
 
 const SYSTEM_PROMPT = `You are the chief intelligence analyst for Le Souverain — an Egyptian trading company (Samsonite, American Tourister, Kamiliant, Lipault, High Sierra luggage) operating 5 retail stores, online channels, and B2B distribution.
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   // Pull relevant data based on the question
   let dataContext = "";
   try {
-    const vel30 = await fetchNavVelocity(30);
+    const vel30 = await getCombinedVelocity(30);
     const [salesLast30, topItems, lowStockWs, storeBreakdown, fxRow] = await Promise.all([
       navQuery<{ revenue: number; units: number }>(`
         SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units

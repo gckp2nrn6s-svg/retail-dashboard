@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { navQuery } from "@/lib/navdb";
-import { fetchNavVelocity } from "@/lib/navVelocity";
+import { getCombinedVelocity } from "@/lib/navVelocity";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     const brandFilter= brand    ? `AND ic.brand = '${brand.replace(/'/g,"''")}'`       : "";
 
     const [vel, wsRows] = await Promise.all([
-      fetchNavVelocity(30),
+      getCombinedVelocity(30),
       query<{ item_no: string; description: string; brand: string; category: string; colour_exact: string; size: string; line_name: string; in_stock: string; unit_price: string }>(`
         SELECT ws.item_no,
                COALESCE(ic.description, ws.description) AS description,
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
   const brandFilter= brand    ? `AND ic.brand = '${brand.replace(/'/g,"''")}'`       : "";
 
   const [vel, wsRows] = await Promise.all([
-    fetchNavVelocity(days),
+    getCombinedVelocity(days),
     query<{ item_no: string; description: string; brand: string; category: string; colour_exact: string; size: string; in_stock: string; unit_price: string }>(`
       SELECT ws.item_no,
              COALESCE(ic.description, ws.description) AS description,

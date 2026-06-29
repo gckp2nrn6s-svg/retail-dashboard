@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { fetchNavVelocity } from "@/lib/navVelocity";
+import { getCombinedVelocity } from "@/lib/navVelocity";
 
 const MIE_CODES = ["HZ9", "HC0", "GE3", "AG9", "QC6"];
 
 export async function GET() {
   const [vel30, wsRows] = await Promise.all([
-    fetchNavVelocity(30),
+    getCombinedVelocity(30),
     query<{ item_no: string; description: string; brand: string; category: string; in_stock: string; unit_price: string }>(`
       SELECT ws.item_no,
              COALESCE(ic.description, ws.description) AS description,

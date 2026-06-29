@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { fetchNavVelocity } from "@/lib/navVelocity";
+import { getCombinedVelocity } from "@/lib/navVelocity";
 
 export async function GET() {
   const [summary, byCategory, byBrand, byColour, bySize, fxRow] = await Promise.all([
@@ -70,7 +70,7 @@ export async function GET() {
   const stockValue = parseFloat(valueRow[0]?.value || "0");
 
   // 30-day velocity from NAV (live, VAT-inclusive)
-  const vel30 = await fetchNavVelocity(30);
+  const vel30 = await getCombinedVelocity(30);
   let totalUnits30 = 0, totalRev30 = 0;
   for (const v of vel30.values()) { totalUnits30 += v.units; totalRev30 += v.revenue; }
 
