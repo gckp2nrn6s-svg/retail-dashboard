@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { Card, Spinner, Empty, fmtInt, storeName, MovementReceipt, type MoveRow } from "@/components/warehouse/shared";
-import { Check } from "lucide-react";
+import { Check, ChevronRight, ChevronDown } from "lucide-react";
 
-interface Line { item_no: string; description: string | null; qty: number; current: number }
-interface Doc { doc: string; store: string; date: string | null; applied: boolean; lines: Line[]; totalQty: number }
+interface Line { item_no: string; description: string | null; qty: number; current: number; value: number }
+interface Doc { doc: string; store: string; date: string | null; applied: boolean; lines: Line[]; totalQty: number; totalValue: number }
 
 export default function ReturnsTab() {
   const [returns, setReturns] = useState<Doc[]>([]);
@@ -13,6 +13,8 @@ export default function ReturnsTab() {
   const [active, setActive] = useState<Doc | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpand = (doc: string) => setExpanded(s => { const n = new Set(s); n.has(doc) ? n.delete(doc) : n.add(doc); return n; });
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -61,18 +63,27 @@ export default function ReturnsTab() {
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
             <thead><tr style={{ background: "var(--surface3)" }}>
-              {["Document", "From", "Date", "Items", "Qty", ""].map((h, i) => (
-                <th key={i} style={{ padding: "10px 16px", textAlign: i >= 3 && i <= 4 ? "right" : "left", fontSize: "0.56rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
+              {["", "Document", "From", "Date", "Items", "Qty", "Value", ""].map((h, i) => (
+                <th key={i} style={{ padding: "10px 16px", textAlign: i >= 4 && i <= 6 ? "right" : "left", fontSize: "0.56rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {sorted.map(d => (
-                <tr key={d.doc} style={{ borderTop: "1px solid var(--border)", opacity: d.applied ? 0.6 : 1 }}>
+              {sorted.map(d => {
+                const exp = expanded.has(d.doc);
+                return (
+                <Fragment key={d.doc}>
+                <tr style={{ borderTop: "1px solid var(--border)", opacity: d.applied ? 0.6 : 1 }}>
+                  <td style={{ padding: "10px 6px 10px 14px", width: 26 }}>
+                    <button onClick={() => toggleExpand(d.doc)} title="Show return lines" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text4)", padding: 2, display: "inline-flex" }}>
+                      {exp ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    </button>
+                  </td>
                   <td style={{ padding: "10px 16px", fontWeight: 700, color: "var(--text)", fontFamily: "ui-monospace, monospace" }}>{d.doc}</td>
                   <td style={{ padding: "10px 16px", color: "var(--text2)" }}>{storeName(d.store)}</td>
                   <td style={{ padding: "10px 16px", color: "var(--text3)" }}>{d.date || "—"}</td>
                   <td style={{ padding: "10px 16px", textAlign: "right", color: "var(--text3)", fontVariantNumeric: "tabular-nums" }}>{d.lines.length}</td>
                   <td style={{ padding: "10px 16px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtInt(d.totalQty)}</td>
+                  <td style={{ padding: "10px 16px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{fmtInt(d.totalValue)}<span style={{ color: "var(--text4)", fontWeight: 500, fontSize: "0.62rem", marginLeft: 3 }}>EGP</span></td>
                   <td style={{ padding: "10px 16px", textAlign: "right" }}>
                     {d.applied ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "0.7rem", fontWeight: 700, color: "#10B981" }}><Check size={13} /> Received</span>
@@ -81,7 +92,33 @@ export default function ReturnsTab() {
                     )}
                   </td>
                 </tr>
-              ))}
+                {exp && (
+                  <tr style={{ background: "var(--surface3)" }}>
+                    <td colSpan={8} style={{ padding: "2px 16px 12px 44px" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.72rem" }}>
+                        <thead><tr>
+                          {["Item", "Description", "Qty", "On hand", "Value (EGP)"].map((h, i) => (
+                            <th key={i} style={{ padding: "6px 12px", textAlign: i >= 2 ? "right" : "left", fontSize: "0.52rem", fontWeight: 700, color: "var(--text4)", textTransform: "uppercase" }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {d.lines.map((l, i) => (
+                            <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                              <td style={{ padding: "5px 12px", fontWeight: 700, color: "var(--text2)", fontFamily: "ui-monospace, monospace" }}>{l.item_no}</td>
+                              <td style={{ padding: "5px 12px", color: "var(--text3)", maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.description}</td>
+                              <td style={{ padding: "5px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtInt(l.qty)}</td>
+                              <td style={{ padding: "5px 12px", textAlign: "right", color: "var(--text3)", fontVariantNumeric: "tabular-nums" }}>{fmtInt(l.current)}</td>
+                              <td style={{ padding: "5px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "var(--text2)" }}>{fmtInt(l.value)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
