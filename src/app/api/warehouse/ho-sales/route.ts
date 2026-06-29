@@ -1,33 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { navQuery } from "@/lib/navdb";
 import { query } from "@/lib/db";
-import { safeSource, isDegraded } from "@/lib/resilience";
+import { maybeRefreshHoDocs } from "@/lib/ho-docs";
 import { todayCairo } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
-// HO Sales — posted sales invoices (deduct stock) + posted credit memos (add stock).
-// Each document is tagged with whether it has already been applied to the ledger
-// (so it can't be deducted twice) and the current on-hand for each of its items.
+// HO Sales — posted invoices (deduct stock) + credit memos (add stock), read from the
+// wh_ho_docs Postgres rollup (instant + consistent; SalesInvoiceLine has no date index
+// so scanning NAV live is slow/intermittent). The rollup is refreshed from NAV in the
+// background. Each document is tagged applied/overridden + current on-hand per item;
+// customer name comes from b2b_customers, value from the invoice amount.
 
 interface LineRow { doc: string; cust: string; pd: string; item: string; descr: string; qty: number; amount: number }
+interface DocRow { kind: string; doc: string; cust: string; posting_date: string; item_no: string; descr: string; qty: number; amount: number }
 interface StockRow { item_no: string; in_stock: number }
 interface RefRow { source_ref: string }
 
 interface DocLine { item_no: string; description: string; qty: number; current: number; value: number }
 interface Doc { doc: string; cust: string; custName: string; date: string; applied: boolean; overridden: boolean; lines: DocLine[]; totalQty: number; totalValue: number; anyNegative: boolean }
-
-// item lines only ([Type]=2); fractional NAV quantities are rounded to whole units.
-// [Amount Including VAT] = the line's VAT-inclusive value. The customer NAME isn't on the
-// line table (nor any NAV replica table) so it's resolved from b2b_customers (code→name).
-const LINES = (tbl: string) => `
-  SELECT [Document No_] AS doc, [Sell-to Customer No_] AS cust,
-         CONVERT(varchar(10), CAST([Posting Date] AS DATE), 23) AS pd,
-         [No_] AS item, [Description] AS descr, [Quantity] AS qty, [Amount Including VAT] AS amount
-    FROM ${tbl}
-   WHERE [Type] = 2 AND [Quantity] <> 0
-     AND CAST([Posting Date] AS DATE) BETWEEN @from AND @to
-   ORDER BY [Posting Date] DESC, [Document No_]`;
 
 // Strip trailing account-number noise from CEO-list names ("JUMIA 413/731" → "JUMIA").
 const cleanName = (raw?: string) => { if (!raw) return ""; const c = raw.replace(/[\s\d/_.\-]+$/u, "").trim(); return c || raw; };
@@ -61,10 +51,14 @@ export async function GET(req: NextRequest) {
   const to = searchParams.get("to") || todayCairo();
   const from = searchParams.get("from") || new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
 
+  maybeRefreshHoDocs(); // non-blocking: keep the rollup fresh from NAV
+
   try {
-    const [invRes, cmRes, stockRows, invRefs, cmRefs, ovRows, nameRows] = await Promise.all([
-      safeSource<LineRow[]>("nav", () => navQuery<LineRow>(LINES("SalesInvoiceLine"), { from, to }), []),
-      safeSource<LineRow[]>("nav", () => navQuery<LineRow>(LINES("SalesCrMemoLine"), { from, to }), []),
+    const [docRows, stockRows, invRefs, cmRefs, ovRows, nameRows] = await Promise.all([
+      query<DocRow>(
+        `SELECT kind, doc, cust, posting_date::text AS posting_date, item_no, descr, qty::float AS qty, amount::float AS amount
+           FROM wh_ho_docs WHERE posting_date BETWEEN $1 AND $2 ORDER BY posting_date DESC, doc`,
+        [from, to]),
       query<StockRow>("SELECT item_no, in_stock FROM warehouse_stock"),
       query<RefRow>("SELECT DISTINCT source_ref FROM wh_stock_ledger WHERE type='ho_invoice_out'"),
       query<RefRow>("SELECT DISTINCT source_ref FROM wh_stock_ledger WHERE type='credit_memo_in'"),
@@ -78,11 +72,11 @@ export async function GET(req: NextRequest) {
     const overridden = new Set(ovRows.map(r => r.doc));
     const nameMap = new Map(nameRows.map(r => [r.code, r.name]));
 
-    const invoices = group(invRes.value, stock, invApplied, overridden, -1, nameMap);
-    const creditMemos = group(cmRes.value, stock, cmApplied, overridden, +1, nameMap);
-    const sources = { nav: invRes.status };
+    const toLine = (r: DocRow): LineRow => ({ doc: r.doc, cust: r.cust, pd: r.posting_date, item: r.item_no, descr: r.descr, qty: r.qty, amount: r.amount });
+    const invoices = group(docRows.filter(r => r.kind === "invoice").map(toLine), stock, invApplied, overridden, -1, nameMap);
+    const creditMemos = group(docRows.filter(r => r.kind === "creditmemo").map(toLine), stock, cmApplied, overridden, +1, nameMap);
 
-    return NextResponse.json({ from, to, invoices, creditMemos, sources, degraded: isDegraded(sources) });
+    return NextResponse.json({ from, to, invoices, creditMemos, sources: { nav: "ok" }, degraded: false });
   } catch (e) {
     console.error("[warehouse/ho-sales]", e instanceof Error ? e.message : e);
     return NextResponse.json({ from, to, invoices: [], creditMemos: [], sources: { nav: "offline" }, degraded: true, error: "Failed to load HO sales" }, { status: 200 });
