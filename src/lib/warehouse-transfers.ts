@@ -82,7 +82,6 @@ const MOCK_TRANSFER_LINES = `
 // is never cached, so the next call retries NAV).
 const NAV_CACHE_TTL = 120_000; // 2 minutes
 let _linesCache: { at: number; val: { rows: TransferLineRaw[]; source: TransferSource } } | null = null;
-let _hoCache: { at: number; rows: { item_no: string; qty: number }[] } | null = null;
 
 /** All HO transfer lines + which source answered. Tries NAV (cached), falls back to mock. */
 async function readTransferLines(): Promise<{ rows: TransferLineRaw[]; source: TransferSource }> {
@@ -225,41 +224,32 @@ export async function getTransfersByDocs(
   return { rows: rows.filter(r => want.has(r.doc_no)), source };
 }
 
-// ── HO on-hand (NAV → mock fallback) ─────────────────────────────────────────
-const NAV_HO_ONHAND      = `SELECT ItemNo AS item_no, Qty AS qty FROM InventoryOnHand WHERE LocationCode = 'HO'`;
-const MOCK_HO_ONHAND     = `SELECT item_no, qty FROM nav_inventory_mock WHERE location_code = 'HO'`;
-
+// ── HO on-hand ───────────────────────────────────────────────────────────────
 /**
- * Map item_no → HO on-hand qty (LocationCode='HO'). If itemNos is given the
- * result is restricted to those (the NAV/mock read is filtered in memory so the
- * SQL stays stable for when the real table lands).
+ * Map item_no → HO on-hand qty, sourced from the ledger-backed `warehouse_stock`
+ * (the single source of truth maintained by the warehouse module). This is the
+ * SAME on-hand the Stock module shows, so the PO nets off it — not NAV
+ * InventoryOnHand, which can drift from the warehouse truth.
  */
 export async function getHOOnHand(
   itemNos?: string[]
 ): Promise<{ map: Map<string, number>; source: TransferSource }> {
   let rows: { item_no: string; qty: number }[];
-  let source: TransferSource;
-  if (_hoCache && Date.now() - _hoCache.at < NAV_CACHE_TTL) {
-    rows = _hoCache.rows; source = "nav";
+  if (itemNos && itemNos.length) {
+    const ph = itemNos.map((_, i) => `$${i + 1}`).join(",");
+    rows = await query<{ item_no: string; qty: number }>(
+      `SELECT item_no, in_stock::numeric AS qty FROM warehouse_stock WHERE item_no IN (${ph})`,
+      itemNos.map(String));
   } else {
-    try {
-      rows = await navQuery<{ item_no: string; qty: number }>(NAV_HO_ONHAND);
-      source = "nav";
-      _hoCache = { at: Date.now(), rows };
-    } catch (e) {
-      console.error("[warehouse-transfers] NAV on-hand read failed, using mock:", e instanceof Error ? e.message : e);
-      rows = await query<{ item_no: string; qty: number }>(MOCK_HO_ONHAND);
-      source = "mock";
-    }
+    rows = await query<{ item_no: string; qty: number }>(
+      "SELECT item_no, in_stock::numeric AS qty FROM warehouse_stock");
   }
-  const want = itemNos && itemNos.length ? new Set(itemNos.map(String)) : null;
   const map = new Map<string, number>();
   for (const r of rows) {
     const item = String(r.item_no);
-    if (want && !want.has(item)) continue;
     map.set(item, (map.get(item) || 0) + (Number(r.qty) || 0));
   }
-  return { map, source };
+  return { map, source: "nav" }; // real data (warehouse_stock); 'nav' = not the mock
 }
 
 export interface PoLine {
