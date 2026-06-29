@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getTransfersByDocs, consolidatePo, type TransferLineRaw } from "@/lib/warehouse-transfers";
+import { logLedger } from "@/lib/stock-ledger";
 import { canWh } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +93,8 @@ export async function POST(req: NextRequest) {
           in_stock   = warehouse_stock.in_stock - EXCLUDED.out_qty,
           updated_at = now()
       `, [l.item_no, l.transfer_qty, l.description ?? null]);
+      // Record-only ledger entry (warehouse_stock already moved above).
+      if (l.transfer_qty) await logLedger(client, { item_no: l.item_no, type: "transfer_out", source_ref: `run-${run.id}`, qty_delta: -l.transfer_qty, batch_id: `run-${run.id}`, note: `transfer submit run ${run.id}` });
     }
 
     await client.query("COMMIT");

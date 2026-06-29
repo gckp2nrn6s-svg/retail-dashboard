@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { resolveCodes } from "@/lib/warehouse";
+import { logLedger } from "@/lib/stock-ledger";
 import { canWh } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,8 @@ export async function POST(req: NextRequest) {
       await client.query(
         `INSERT INTO wh_adjustment_lines (adjustment_id, item_no, qty, before_qty, after_qty) VALUES ($1,$2,$3,$4,$5)`,
         [adj.id, item_no, qty, before, after]);
+      // Record-only ledger entry (warehouse_stock already moved above).
+      await logLedger(client, { item_no, type: "adjust", source_ref: `adj-${adj.id}`, qty_delta: delta, batch_id: `adj-${adj.id}`, note: reason });
     }
 
     await client.query("COMMIT");

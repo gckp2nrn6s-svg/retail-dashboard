@@ -7,6 +7,9 @@ import ToBeReceivedTab from "@/components/warehouse/ToBeReceivedTab";
 import PaperCheckTab from "@/components/warehouse/PaperCheckTab";
 import StockTab from "@/components/warehouse/StockTab";
 import AdjustTab from "@/components/warehouse/AdjustTab";
+import HoSalesTab from "@/components/warehouse/HoSalesTab";
+import ReturnsTab from "@/components/warehouse/ReturnsTab";
+import LogTab from "@/components/warehouse/LogTab";
 import HistoryTab from "@/components/warehouse/HistoryTab";
 
 const TABS = [
@@ -16,6 +19,9 @@ const TABS = [
   { key: "paper", label: "Paper Check" },
   { key: "stock", label: "Stock" },
   { key: "adjust", label: "Adjust" },
+  { key: "hosales", label: "HO Sales" },
+  { key: "returns", label: "Returns" },
+  { key: "log", label: "Log" },
   { key: "history", label: "History" },
 ];
 
@@ -35,6 +41,9 @@ export default function WarehousePage() {
         {tab === "paper" && <PaperCheckTab />}
         {tab === "stock" && <StockTab />}
         {tab === "adjust" && <AdjustTab />}
+        {tab === "hosales" && <HoSalesTab />}
+        {tab === "returns" && <ReturnsTab />}
+        {tab === "log" && <LogTab />}
         {tab === "history" && <HistoryTab />}
       </div>
     </div>

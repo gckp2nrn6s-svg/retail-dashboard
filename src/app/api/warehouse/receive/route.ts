@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { resolveCodes } from "@/lib/warehouse";
+import { logLedger } from "@/lib/stock-ledger";
 import { canWh } from "@/lib/authz";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
           description = COALESCE(warehouse_stock.description, EXCLUDED.description),
           updated_at = now()
       `, [item_no, qty, descByItem.get(item_no) ?? null]);
+      // Record-only ledger entry (warehouse_stock already moved above).
+      await logLedger(client, { item_no, type: "receipt", source_ref: `receipt-${receipt.id}`, qty_delta: qty, batch_id: `receipt-${receipt.id}`, note: `${kind} receipt ${receipt.id}` });
     }
     await client.query("COMMIT");
     const totalUnits = [...merged.values()].reduce((s, q) => s + q, 0);

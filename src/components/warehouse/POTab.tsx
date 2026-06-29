@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CopyButton, Spinner, Empty, DateFilter, fmtInt, WH_ACCENT, storeName, MovementReceipt, type MoveRow } from "@/components/warehouse/shared";
-import { Download, ChevronDown, ChevronRight, Check, ArrowLeft, AlertTriangle, X } from "lucide-react";
+import { Download, ChevronDown, ChevronRight, Check, ArrowLeft, AlertTriangle } from "lucide-react";
 
 interface TLine { item_no: string; description: string | null; qty: number }
 interface Transfer { doc_no: string; store: string; status: string; retail_status: string | null; shipment_date: string | null; lines: TLine[]; total_qty: number }
@@ -15,17 +15,11 @@ interface PO { lines: POLine[]; totals: { transfer_qty: number; po_qty: number; 
 
 function iso(d: Date) { return d.toISOString().slice(0, 10); }
 
-// Recompute PO lines honoring the per-item "account for negative HO" choices.
-// • HO ≥ 0:              PO = max(0, transfer − HO)   (always net off real stock)
-// • HO < 0 & accounted:  PO = transfer − HO           (clear the shortfall + cover the transfer)
-// • HO < 0 & ignored:    PO = transfer                (treat the phantom negative as 0)
-function recompute(lines: POLine[], account: Record<string, boolean>) {
-  const out = lines.map(l => {
-    let po: number;
-    if (l.ho_qty < 0) po = account[l.item_no] === false ? l.transfer_qty : l.transfer_qty - l.ho_qty;
-    else po = Math.max(0, l.transfer_qty - l.ho_qty);
-    return { ...l, po_qty: Math.max(0, Math.round(po)) };
-  });
+// PO qty nets off POSITIVE HO stock only. Negative HO (caused by posted HO sales
+// invoices) is owned by the HO Sales tab + its reconciled-PO copy — so the transfer
+// PO treats negative HO as 0 and never tries to clear it here (that would double-cover).
+function recompute(lines: POLine[]) {
+  const out = lines.map(l => ({ ...l, po_qty: Math.max(0, Math.round(l.transfer_qty - Math.max(0, l.ho_qty))) }));
   return {
     lines: out,
     totals: { items: out.length, transfer_qty: out.reduce((s, l) => s + l.transfer_qty, 0), po_qty: out.reduce((s, l) => s + l.po_qty, 0) },
@@ -41,8 +35,6 @@ export default function POTab() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<"select" | "review">("select");
   const [po, setPo] = useState<PO | null>(null);
-  const [account, setAccount] = useState<Record<string, boolean>>({}); // item_no → account for negative HO (default true)
-  const [showNeg, setShowNeg] = useState(false);
   const [stockPreview, setStockPreview] = useState<MoveRow[] | null>(null); // before→after on submit
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -62,25 +54,17 @@ export default function POTab() {
   const toggle = (doc: string) => setSel(s => { const n = new Set(s); n.has(doc) ? n.delete(doc) : n.add(doc); return n; });
   const toggleExp = (doc: string) => setExpanded(s => { const n = new Set(s); n.has(doc) ? n.delete(doc) : n.add(doc); return n; });
 
-  // Negative-HO lines (the ones needing a decision) + the live recomputed PO.
+  // Negative-HO lines are now informational only (covered via HO Sales, not here).
   const negatives = useMemo(() => (po ? po.lines.filter(l => l.ho_qty < 0) : []), [po]);
-  const computed = useMemo(() => (po ? recompute(po.lines, account) : null), [po, account]);
-  const ignoredCount = negatives.filter(l => account[l.item_no] === false).length;
-  const accountedCount = negatives.length - ignoredCount;
+  const computed = useMemo(() => (po ? recompute(po.lines) : null), [po]);
 
   const proceed = async () => {
     const docNos = [...sel]; if (!docNos.length) return;
     setBusy(true); setMsg(null);
     try {
       const r: PO = await fetch(`/api/warehouse/po`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ docNos }) }).then(x => x.json());
-      if (r.lines) {
-        setPo(r);
-        const init: Record<string, boolean> = {};
-        for (const l of r.lines) if (l.ho_qty < 0) init[l.item_no] = true; // default: account for it
-        setAccount(init);
-        setPhase("review");
-        if (r.lines.some(l => l.ho_qty < 0)) setShowNeg(true); // pop the chooser
-      } else setMsg({ kind: "err", text: "Couldn't build the PO." });
+      if (r.lines) { setPo(r); setPhase("review"); }
+      else setMsg({ kind: "err", text: "Couldn't build the PO." });
     } catch { setMsg({ kind: "err", text: "Couldn't build the PO." }); } finally { setBusy(false); }
   };
 
@@ -111,7 +95,7 @@ export default function POTab() {
 
   const downloadExcel = () => {
     if (!computed) return;
-    const rows = [["Item no", "Description", "Transfer qty", "HO on-hand", "Negative HO?", "PO qty"], ...computed.lines.map(l => [l.item_no, l.description || "", l.transfer_qty, l.ho_qty, l.ho_qty < 0 ? (account[l.item_no] === false ? "ignored" : "accounted") : "", l.po_qty])];
+    const rows = [["Item no", "Description", "Transfer qty", "HO on-hand", "PO qty"], ...computed.lines.map(l => [l.item_no, l.description || "", l.transfer_qty, l.ho_qty, l.po_qty])];
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = "purchase-order.csv"; a.click();
   };
@@ -120,68 +104,10 @@ export default function POTab() {
     <div style={{ padding: "10px 14px", borderRadius: 12, fontSize: "0.78rem", fontWeight: 600, background: msg.kind === "ok" ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.1)", color: msg.kind === "ok" ? "#10B981" : "#EF4444", border: `1px solid ${msg.kind === "ok" ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.25)"}` }}>{msg.text}</div>
   );
 
-  // ── Negative-HO chooser modal ────────────────────────────────────────────────
-  const negModal = showNeg && negatives.length > 0 && (
-    <div onClick={() => setShowNeg(false)} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18, width: "min(680px, 100%)", maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
-        <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
-            <span style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(245,158,11,0.14)", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><AlertTriangle size={19} style={{ color: "#F59E0B" }} /></span>
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: "0.96rem", fontWeight: 800, color: "var(--text)" }}>{negatives.length} item{negatives.length > 1 ? "s have" : " has"} negative HO in NAV</p>
-              <p style={{ fontSize: "0.72rem", color: "var(--text3)", marginTop: 3, lineHeight: 1.5 }}>NAV's HO shipped out without being received back in, so its balance is below zero. Choose, per item, whether the PO should <strong style={{ color: "var(--text2)" }}>account for</strong> that shortfall (order enough to clear it) or <strong style={{ color: "var(--text2)" }}>ignore</strong> it (order just the transfer qty).</p>
-            </div>
-            <button onClick={() => setShowNeg(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text4)", padding: 2 }}><X size={18} /></button>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 13 }}>
-            <button onClick={() => setAccount(a => { const n = { ...a }; for (const l of negatives) n[l.item_no] = true; return n; })} style={{ padding: "6px 13px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface3)", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, color: "var(--text2)" }}>Account for all</button>
-            <button onClick={() => setAccount(a => { const n = { ...a }; for (const l of negatives) n[l.item_no] = false; return n; })} style={{ padding: "6px 13px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--surface3)", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, color: "var(--text2)" }}>Ignore all</button>
-          </div>
-        </div>
-        <div style={{ overflow: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {negatives.map(l => {
-            const acct = account[l.item_no] !== false;
-            const poAcct = l.transfer_qty - l.ho_qty, poIgn = l.transfer_qty;
-            const afterAcct = l.ho_qty + poAcct, afterIgn = l.ho_qty + poIgn; // HO balance right after the PO
-            const Opt = ({ on, onClick, title, po, after }: { on: boolean; onClick: () => void; title: string; po: number; after: number }) => (
-              <button onClick={onClick} style={{ flex: 1, textAlign: "left", padding: "10px 13px", borderRadius: 11, cursor: "pointer", border: on ? `2px solid ${WH_ACCENT}` : "1.5px solid var(--border)", background: on ? "rgba(13,148,136,0.08)" : "var(--surface2)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ width: 15, height: 15, borderRadius: "50%", border: on ? "none" : "1.5px solid var(--border)", background: on ? WH_ACCENT : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{on && <Check size={10} strokeWidth={3} style={{ color: "white" }} />}</span>
-                  <span style={{ fontSize: "0.74rem", fontWeight: 800, color: on ? WH_ACCENT : "var(--text2)" }}>{title}</span>
-                </div>
-                <p style={{ fontSize: "0.7rem", color: "var(--text2)", marginTop: 6 }}>Order <strong style={{ color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{fmtInt(po)}</strong></p>
-                <p style={{ fontSize: "0.66rem", color: "var(--text3)", marginTop: 2 }}>HO {fmtInt(l.ho_qty)} → <strong style={{ color: after >= 0 ? "#10B981" : "#EF4444", fontVariantNumeric: "tabular-nums" }}>{after > 0 ? "+" : ""}{fmtInt(after)}</strong></p>
-              </button>
-            );
-            return (
-              <Card key={l.item_no} style={{ padding: "12px 14px" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 9 }}>
-                  <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--text)" }}>{l.item_no}</span>
-                  <span style={{ fontSize: "0.7rem", color: "var(--text3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.description || ""}</span>
-                  <span style={{ fontSize: "0.66rem", fontWeight: 700, color: "#EF4444", background: "rgba(239,68,68,0.1)", padding: "2px 8px", borderRadius: 7 }}>HO {fmtInt(l.ho_qty)}</span>
-                  <span style={{ fontSize: "0.66rem", color: "var(--text3)" }}>transferring {fmtInt(l.transfer_qty)}</span>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Opt on={acct} onClick={() => setAccount(a => ({ ...a, [l.item_no]: true }))} title="Account for it" po={poAcct} after={afterAcct} />
-                  <Opt on={!acct} onClick={() => setAccount(a => ({ ...a, [l.item_no]: false }))} title="Ignore it" po={poIgn} after={afterIgn} />
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-        <div style={{ padding: "13px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: "0.72rem", color: "var(--text3)" }}><strong style={{ color: "#10B981" }}>{accountedCount}</strong> accounted · <strong style={{ color: "var(--text2)" }}>{ignoredCount}</strong> ignored</span>
-          <button onClick={() => setShowNeg(false)} style={{ marginLeft: "auto", padding: "10px 24px", borderRadius: 11, border: "none", cursor: "pointer", background: WH_ACCENT, color: "white", fontWeight: 800, fontSize: "0.8rem" }}>Apply choices</button>
-        </div>
-      </div>
-    </div>
-  );
-
   // ── Review phase ─────────────────────────────────────────────────────────────
   if (phase === "review" && po && computed) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {negModal}
         {banner}
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <button onClick={() => setPhase("select")} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface3)", cursor: "pointer", fontSize: "0.76rem", fontWeight: 600, color: "var(--text2)" }}><ArrowLeft size={14} /> Back</button>
@@ -194,8 +120,7 @@ export default function POTab() {
         {negatives.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderRadius: 11, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", flexWrap: "wrap" }}>
             <AlertTriangle size={15} style={{ color: "#F59E0B", flexShrink: 0 }} />
-            <span style={{ fontSize: "0.74rem", color: "var(--text2)", fontWeight: 600 }}>{negatives.length} item{negatives.length > 1 ? "s" : ""} had negative HO — <strong style={{ color: "#10B981" }}>{accountedCount}</strong> accounted, <strong style={{ color: "var(--text2)" }}>{ignoredCount}</strong> ignored</span>
-            <button onClick={() => setShowNeg(true)} style={{ marginLeft: "auto", padding: "5px 13px", borderRadius: 9, border: "1px solid rgba(245,158,11,0.4)", background: "transparent", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, color: "#B45309" }}>Adjust</button>
+            <span style={{ fontSize: "0.74rem", color: "var(--text2)", fontWeight: 600 }}>{negatives.length} item{negatives.length > 1 ? "s have" : " has"} negative HO from posted sales invoices — cover those in the <strong>HO Sales</strong> tab (reconciled PO). This PO nets off positive stock only.</span>
           </div>
         )}
         <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -206,16 +131,13 @@ export default function POTab() {
               </tr></thead>
               <tbody>
                 {computed.lines.map((l, i) => {
-                  const neg = l.ho_qty < 0, ign = account[l.item_no] === false;
+                  const neg = l.ho_qty < 0;
                   return (
                     <tr key={i} style={{ borderTop: "1px solid var(--border)", background: neg ? "rgba(245,158,11,0.04)" : undefined }}>
                       <td style={{ padding: "8px 14px", fontWeight: 700 }}>{l.item_no}</td>
                       <td style={{ padding: "8px 14px", color: "var(--text2)", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.description || "—"}</td>
                       <td style={{ padding: "8px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtInt(l.transfer_qty)}</td>
-                      <td style={{ padding: "8px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: neg ? "#EF4444" : "var(--text3)" }}>
-                        {fmtInt(l.ho_qty)}
-                        {neg && <span style={{ marginLeft: 6, fontSize: "0.56rem", fontWeight: 700, color: ign ? "var(--text4)" : "#B45309", background: ign ? "var(--surface3)" : "rgba(245,158,11,0.14)", padding: "1px 6px", borderRadius: 6, verticalAlign: "middle" }}>{ign ? "ignored" : "accounted"}</span>}
-                      </td>
+                      <td style={{ padding: "8px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: neg ? "#EF4444" : "var(--text3)" }}>{fmtInt(l.ho_qty)}</td>
                       <td style={{ padding: "8px 14px", textAlign: "right", fontWeight: 800, color: l.po_qty > 0 ? WH_ACCENT : "var(--text4)", fontVariantNumeric: "tabular-nums" }}>{fmtInt(l.po_qty)}</td>
                     </tr>
                   );
@@ -224,7 +146,7 @@ export default function POTab() {
             </table>
           </div>
         </Card>
-        <p style={{ fontSize: "0.66rem", color: "var(--text4)" }}>PO qty = consolidated transfer qty − HO on-hand (floored at 0). Negative-HO items follow your per-item choice above. “Copy PO” copies only item-no⇥qty rows with PO qty &gt; 0, ready to paste into NAV.</p>
+        <p style={{ fontSize: "0.66rem", color: "var(--text4)" }}>PO qty = transfer qty − positive HO on-hand (floored at 0). Negative HO is covered separately in HO Sales. “Copy PO” copies only item-no⇥qty rows with PO qty &gt; 0, ready to paste into NAV.</p>
         <button onClick={reviewSubmit} disabled={busy} style={{ alignSelf: "flex-start", padding: "12px 28px", borderRadius: 12, border: "none", cursor: busy ? "default" : "pointer", background: WH_ACCENT, color: "white", fontWeight: 800, fontSize: "0.9rem", opacity: busy ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 8 }}>
           {busy && !stockPreview ? <Spinner size={16} /> : <Check size={16} />} SUBMIT — deduct stock &amp; move to “To Be Received”
         </button>

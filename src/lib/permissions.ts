@@ -21,10 +21,11 @@ export const ADMIN_ONLY_TABS = ["users"] as const;
 
 // Fine-grained warehouse write actions, mapped to their API routes.
 export const WH_ACTIONS = [
-  { key: "submit",     label: "Submit POs (deduct stock)", route: "submit" },
-  { key: "adjust",     label: "Adjust stock",              route: "adjust" },
-  { key: "receive",    label: "Receive incoming",          route: "receive" },
-  { key: "papercheck", label: "Paper-check transfers",     route: "paper-check" },
+  { key: "submit",     label: "Submit POs (deduct stock)",     route: "submit" },
+  { key: "adjust",     label: "Adjust stock",                  route: "adjust" },
+  { key: "receive",    label: "Receive incoming",              route: "receive" },
+  { key: "papercheck", label: "Paper-check transfers",         route: "paper-check" },
+  { key: "ho",         label: "HO sales (deduct / add stock)", route: "ho-apply" },
 ] as const;
 
 export type TabKey = (typeof TABS)[number]["key"];
