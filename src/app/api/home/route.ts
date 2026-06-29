@@ -6,6 +6,7 @@ import { getShopifyRevenueAndItems } from "@/lib/shopify";
 import { safeSource, isDegraded } from "@/lib/resilience";
 import { getB2BRevenue } from "@/lib/b2b-revenue";
 import { MARKETPLACE_WHERE } from "@/lib/marketplaces";
+import { maybeRefreshFx } from "@/lib/fx";
 import { navDateToISO, lagDaysFrom } from "@/lib/dates";
 import type { ShopifyLineItemRow } from "@/lib/shopify";
 
@@ -62,6 +63,8 @@ export async function GET(req: NextRequest) {
   const p    = new URL(req.url).searchParams;
   const from = p.get("from") || new Date().toISOString().slice(0, 8) + "01";
   const to   = p.get("to")   || new Date().toISOString().slice(0, 10);
+
+  maybeRefreshFx(); // non-blocking: keep this week's EGP/USD rate fresh from the market
 
   const today     = new Date().toISOString().slice(0, 10);
   const d7ago     = new Date(Date.now() - 7  * 86400000).toISOString().slice(0, 10);

@@ -62,3 +62,35 @@ export async function getFx(): Promise<Fx> {
 export async function fxForPeriod(to: string | Date): Promise<number> {
   return (await getFx()).forPeriod(to);
 }
+
+// ── Daily auto-update from a market API ──────────────────────────────────────
+// Keeps the CURRENT week's rate fresh without a separate cron: any dashboard view
+// triggers a throttled, non-blocking refresh (same lazy pattern as the factory
+// sheet sync). Historical weeks are never touched, so past USD stays period-correct.
+let _lastFxRefresh = 0;
+const FX_REFRESH_THROTTLE = 12 * 60 * 60 * 1000; // 12h
+
+/** Fire-and-forget: refresh this week's rate if >12h stale. Failures are swallowed. */
+export function maybeRefreshFx(): void {
+  if (Date.now() - _lastFxRefresh < FX_REFRESH_THROTTLE) return;
+  _lastFxRefresh = Date.now();
+  refreshFxNow().catch(e => console.error("[fx] auto-refresh failed:", e instanceof Error ? e.message : e));
+}
+
+/** Fetch USD→EGP from the market and upsert this week's fx_rates row. Returns the rate. */
+export async function refreshFxNow(): Promise<number> {
+  const res = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`fx api ${res.status}`);
+  const data = (await res.json()) as { rates?: { EGP?: number } };
+  const egp = Number(data?.rates?.EGP);
+  if (!Number.isFinite(egp) || egp <= 0) throw new Error("no EGP rate in response");
+  // week_start = the Sunday of the current week (matches the existing weekly rows).
+  await query(
+    `INSERT INTO fx_rates (week_start, egp_per_usd)
+     VALUES (CURRENT_DATE - EXTRACT(DOW FROM CURRENT_DATE)::int, $1)
+     ON CONFLICT (week_start) DO UPDATE SET egp_per_usd = EXCLUDED.egp_per_usd`,
+    [egp]
+  );
+  _cache = null; // bust the in-process rate cache so the new rate is picked up
+  return egp;
+}

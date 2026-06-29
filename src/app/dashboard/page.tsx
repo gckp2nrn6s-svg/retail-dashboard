@@ -142,6 +142,7 @@ export default function HomePage() {
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [home, setHome] = useState<HomeData | null>(null);
+  const [stockH, setStockH] = useState<{ inStock: number; zeroStock: number; lowStock: number; totalUnits: number; stockValue: { egp: number; usd: number } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [homeLoading, setHomeLoading] = useState(true);
   const [insightsLoading, setInsightsLoading] = useState(true);
@@ -184,6 +185,11 @@ export default function HomePage() {
     setInsightsLoading(true);
     try { const r = await fetch("/api/insights").then(x => x.json()); setInsights(r.insights || []); }
     finally { setInsightsLoading(false); }
+  }, []);
+
+  // Stock health — current warehouse on-hand (not period-dependent), fetched once.
+  useEffect(() => {
+    fetch("/api/stock/overview").then(x => x.json()).then(r => { if (r?.summary) setStockH(r.summary); }).catch(() => {});
   }, []);
 
   // Initial load on date range change
@@ -344,6 +350,23 @@ export default function HomePage() {
               <div key={i} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 13px" }}>
                 <p style={{ fontSize: "0.54rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 7 }}>{label}</p>
                 {node}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Stock health — current warehouse on-hand (single source: warehouse_stock) */}
+        {stockH && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, padding: "10px 24px 0" }}>
+            {([
+              ["On Hand", `${stockH.totalUnits.toLocaleString()} units`, "white"],
+              ["Stock Value", fmtMoney(stockH.stockValue.egp, stockH.stockValue.usd), "white"],
+              ["Low Stock (≤5)", `${stockH.lowStock.toLocaleString()} items`, stockH.lowStock > 0 ? "#FBBF24" : "white"],
+              ["Out of Stock", `${stockH.zeroStock.toLocaleString()} items`, stockH.zeroStock > 0 ? "#F87171" : "white"],
+            ] as [string, string, string][]).map(([label, val, color], i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 13px" }}>
+                <p style={{ fontSize: "0.54rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 6 }}>{label}</p>
+                <span style={{ color, fontWeight: 800, fontSize: "0.9rem", letterSpacing: "-0.02em" }}>{val}</span>
               </div>
             ))}
           </div>
