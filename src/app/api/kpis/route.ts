@@ -23,6 +23,7 @@ type NavBundle = {
   d7_row: Rev[]; d30_row: Rev[]; yoy_row: RevUnits[];
   storeCount: CountRow[]; sparkRows: DayRev[]; todayNavRow: Rev[];
   prevWeek: Rev[]; prevYear: Rev[];
+  ytd_row: RevUnits[]; r12_row: Rev[];
 };
 type ShopRev = { egp: number; units: number };
 
@@ -47,6 +48,9 @@ export async function GET(req: NextRequest) {
   const yoy_from  = new Date(fromDate.getFullYear() - 1, fromDate.getMonth(), fromDate.getDate()).toISOString().slice(0, 10);
   const yoy_to    = new Date(toDate.getFullYear()   - 1, toDate.getMonth(),   toDate.getDate()).toISOString().slice(0, 10);
   const sparkStart = d30from;
+  // Revenue spine: calendar YTD + rolling-12-month (absolute, "as of today").
+  const yearStart = `${today.slice(0, 4)}-01-01`;
+  const r365from  = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
 
   // Single-day views (Today / Yesterday) show THREE comparisons: vs the day before,
   // vs the same weekday last week, and vs the same date last year.
@@ -55,9 +59,9 @@ export async function GET(req: NextRequest) {
   const prevYearDate  = `${fromDate.getUTCFullYear() - 1}-${String(fromDate.getUTCMonth() + 1).padStart(2, "0")}-${String(fromDate.getUTCDate()).padStart(2, "0")}`;
 
   try {
-    const [navResult, pgResult, shopCurResult, shopPrevResult, shopTodayResult, shopPrevWeekResult, shopPrevYearResult] = await Promise.all([
+    const [navResult, pgResult, shopCurResult, shopPrevResult, shopTodayResult, shopPrevWeekResult, shopPrevYearResult, shopYoyResult, shopYtdResult, shopR12Result] = await Promise.all([
       safeSource<NavBundle>("nav", async () => {
-        const [current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, prevWeek, prevYear] = await Promise.all([
+        const [current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, prevWeek, prevYear, ytd_row, r12_row] = await Promise.all([
           navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] != 'ONLINE'`, { from, to }),
           navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @prevFrom AND @prevTo AND [Store No_] != 'ONLINE'`, { prevFrom, prevTo }),
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @yest AND [Store No_] != 'ONLINE'`, { yest }),
@@ -69,9 +73,11 @@ export async function GET(req: NextRequest) {
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @today AND [Store No_] != 'ONLINE'`, { today }),
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @prevWeekDate AND [Store No_] != 'ONLINE'`, { prevWeekDate }),
           navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) = @prevYearDate AND [Store No_] != 'ONLINE'`, { prevYearDate }),
+          navQuery<RevUnits>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue, -SUM([Quantity]) AS units FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @yearStart AND @today AND [Store No_] != 'ONLINE'`, { yearStart, today }),
+          navQuery<Rev>(`SELECT -SUM([Net Amount]+[VAT Amount]) AS revenue FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @r365from AND @today AND [Store No_] != 'ONLINE'`, { r365from, today }),
         ]);
-        return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, prevWeek, prevYear };
-      }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [], prevWeek: [], prevYear: [] }),
+        return { current, previous, yest_row, d7_row, d30_row, yoy_row, storeCount, sparkRows, todayNavRow, prevWeek, prevYear, ytd_row, r12_row };
+      }, { current: [], previous: [], yest_row: [], d7_row: [], d30_row: [], yoy_row: [], storeCount: [], sparkRows: [], todayNavRow: [], prevWeek: [], prevYear: [], ytd_row: [], r12_row: [] }),
 
       // Time-aware: USD uses the rate in effect at the END of the viewed period
       // (the comparisons below are EGP-based %, so they need no conversion).
@@ -82,6 +88,9 @@ export async function GET(req: NextRequest) {
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(today, today), { egp: 0, units: 0 }),
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(prevWeekDate, prevWeekDate), { egp: 0, units: 0 }),
       safeSource<ShopRev>("shopify", () => getShopifyRevenue(prevYearDate, prevYearDate), { egp: 0, units: 0 }),
+      safeSource<ShopRev>("shopify", () => getShopifyRevenue(yoy_from, yoy_to), { egp: 0, units: 0 }),   // same period last year
+      safeSource<ShopRev>("shopify", () => getShopifyRevenue(yearStart, today), { egp: 0, units: 0 }),    // YTD
+      safeSource<ShopRev>("shopify", () => getShopifyRevenue(r365from, today), { egp: 0, units: 0 }),      // rolling 12mo
     ]);
 
     const nav = navResult.value;
@@ -119,9 +128,22 @@ export async function GET(req: NextRequest) {
 
     const sparkline = nav.sparkRows.map(r => Number(r.revenue));
 
+    // Revenue spine — YoY (this period vs the same period a year ago), calendar YTD,
+    // and rolling-12-month. NAV + Shopify for full totals.
+    const yoyRev   = Number(nav.yoy_row[0]?.revenue ?? 0) + shopYoyResult.value.egp;
+    const ytdEgp   = Number(nav.ytd_row[0]?.revenue ?? 0) + shopYtdResult.value.egp;
+    const ytdUnits = Number(nav.ytd_row[0]?.units   ?? 0) + shopYtdResult.value.units;
+    const r12Egp   = Number(nav.r12_row[0]?.revenue ?? 0) + shopR12Result.value.egp;
+    const spine = {
+      yoyChange: yoyRev > 0 ? pct(rev, yoyRev) : null,
+      ytd:       { egp: Math.round(ytdEgp), usd: Math.round(ytdEgp / fx), units: Math.round(ytdUnits) },
+      rolling12: { egp: Math.round(r12Egp), usd: Math.round(r12Egp / fx) },
+    };
+
     return NextResponse.json({
       revenue:      { egp: rev, usd: rev / fx },
       revChange:    prevRev > 0 ? pct(rev, prevRev) : null,
+      spine,
       dayComparisons,
       units,
       unitsChange:  prevUnits > 0 ? pct(units, prevUnits) : null,

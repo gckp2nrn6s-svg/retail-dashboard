@@ -22,6 +22,7 @@ interface KPI {
   activeStores: number;
   revChange: number | null;
   dayComparisons?: { label: string; change: number | null; prevEgp: number }[] | null;
+  spine?: { yoyChange: number | null; ytd: { egp: number; usd: number; units: number }; rolling12: { egp: number; usd: number } };
   unitsChange: number | null;
   fx: number;
   sources?: Sources;
@@ -330,6 +331,23 @@ export default function HomePage() {
           <MiniKpi label="Avg Ticket"    value={loading || !kpi ? "—" : fmtKpi(kpi.avgTicket)} sub={loading || !kpi ? "" : altKpi(kpi.avgTicket)} dark onClick={() => openDrill({ title: `Top Products · ${range.label}`, endpoint: drillUrl({ type: "items" }) })} />
           <MiniKpi label="Active Stores" value={loading ? "—" : String(kpi?.activeStores ?? "—")} sub={loading ? "" : `$1 = ${(kpi?.fx ?? 52).toFixed(1)} EGP`} dark onClick={() => openDrill({ title: `All Channels · ${range.label}`, endpoint: drillUrl({ type: "channel", channel: "all" }) })} />
         </div>
+
+        {/* Performance spine — vs last period / last year + YTD / rolling-12 */}
+        {kpi?.spine && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, padding: "12px 24px 0" }}>
+            {([
+              ["vs Last Period", <Delta key="lp" v={kpi.revChange} dark showNa />],
+              ["vs Last Year",   <Delta key="ly" v={kpi.spine.yoyChange} dark showNa />],
+              ["YTD",            <span key="ytd" style={{ color: "white", fontWeight: 800, fontSize: "0.92rem", letterSpacing: "-0.02em" }}>{fmtMoney(kpi.spine.ytd.egp, kpi.spine.ytd.usd)}</span>],
+              ["Rolling 12 mo",  <span key="r12" style={{ color: "white", fontWeight: 800, fontSize: "0.92rem", letterSpacing: "-0.02em" }}>{fmtMoney(kpi.spine.rolling12.egp, kpi.spine.rolling12.usd)}</span>],
+            ] as [string, React.ReactNode][]).map(([label, node], i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 13px" }}>
+                <p style={{ fontSize: "0.54rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 7 }}>{label}</p>
+                {node}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Sparkline */}
         <div style={{ padding: "20px 24px 0", cursor: "pointer" }} onClick={() => openDrill({ title: `Daily Revenue · ${range.label}`, endpoint: drillUrl({ type: "daily" }) })}>
