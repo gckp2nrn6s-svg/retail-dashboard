@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { getShopifyRevenueAndItems } from "@/lib/shopify";
 import { safeSource, isDegraded } from "@/lib/resilience";
 import { getB2BRevenue } from "@/lib/b2b-revenue";
+import { MARKETPLACE_WHERE } from "@/lib/marketplaces";
 import { navDateToISO, lagDaysFrom } from "@/lib/dates";
 import type { ShopifyLineItemRow } from "@/lib/shopify";
 
@@ -43,6 +44,7 @@ interface MaxDateRow { max_date: string }
 interface FxRow      { egp_per_usd: string }
 interface DescRow    { item_no: string; description: string }
 interface SkuRow     { sku: string; item_no: string }
+interface MktRow     { egp: number; units: number }
 
 type NavBundle = {
   storeRows: StoreRow[];
@@ -51,6 +53,7 @@ type NavBundle = {
   storeWoW: WoWRow[];
   navMaxDateRows: MaxDateRow[];
   b2b: { egp: number; units: number };
+  marketplace: { egp: number; units: number };
 };
 type PgBundle = { fxRow: FxRow[]; descRows: DescRow[]; skuMap: SkuRow[] };
 type ShopBundle = { egp: number; units: number; items: ShopifyLineItemRow[] };
@@ -70,7 +73,7 @@ export async function GET(req: NextRequest) {
     // zeroes Shopify or Postgres — Shopify revenue always renders.
     const [navResult, pgResult, shopResult] = await Promise.all([
       safeSource<NavBundle>("nav", async () => {
-        const [storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b] = await Promise.all([
+        const [storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b, mktRows] = await Promise.all([
           navQuery<StoreRow>(`
             SELECT
               [Store No_]        AS store,
@@ -122,10 +125,15 @@ export async function GET(req: NextRequest) {
           navQuery<MaxDateRow>(
             "SELECT MAX(CAST([Date] AS DATE)) AS max_date FROM TransSalesEntry", {}
           ),
-          getB2BRevenue(from, to), // HO invoices — the real B2B channel (not in POS)
+          getB2BRevenue(from, to), // HO invoices + factory-direct — the real B2B channel (not in POS)
+          navQuery<MktRow>(`
+            SELECT -SUM([Net Amount] + [VAT Amount]) AS egp, -SUM([Quantity]) AS units
+            FROM TransSalesEntry
+            WHERE CAST([Date] AS DATE) BETWEEN @from AND @to ${MARKETPLACE_WHERE}
+          `, { from, to }), // online marketplaces (Noon/Jumia/Amazon via the ONLINE store)
         ]);
-        return { storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b };
-      }, { storeRows: [], topProducts: [], catRows: [], storeWoW: [], navMaxDateRows: [], b2b: { egp: 0, units: 0 } }),
+        return { storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b, marketplace: mktRows[0] ?? { egp: 0, units: 0 } };
+      }, { storeRows: [], topProducts: [], catRows: [], storeWoW: [], navMaxDateRows: [], b2b: { egp: 0, units: 0 }, marketplace: { egp: 0, units: 0 } }),
 
       safeSource<PgBundle>("pg", async () => {
         const [fxRow, descRows, skuMap] = await Promise.all([
@@ -142,7 +150,7 @@ export async function GET(req: NextRequest) {
         { egp: 0, units: 0, items: [] }),
     ]);
 
-    const { storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b } = navResult.value;
+    const { storeRows, topProducts, catRows, storeWoW, navMaxDateRows, b2b, marketplace } = navResult.value;
     const { fxRow, descRows, skuMap } = pgResult.value;
     const shopify = shopResult.value;
     const shopifyItems = shopify.items;
@@ -185,9 +193,18 @@ export async function GET(req: NextRequest) {
     const shopifyUnits = Math.round(shopify.units);
     const b2bEgp       = Math.round(b2b?.egp ?? 0);
     const b2bUnits     = Math.round(b2b?.units ?? 0);
-    // Headline = Retail + Ecom only. B2B (wholesale) is shown as a channel card but
-    // kept OUT of the total (like Marketplace) — its pct reads as a share of core.
+    const mktEgp       = Math.round(marketplace?.egp ?? 0);
+    const mktUnits     = Math.round(marketplace?.units ?? 0);
+    // Core headline = Retail + Ecom (POS + own-website). B2B (wholesale incl.
+    // factory-direct) and Marketplace are shown as channel cards and kept OUT of
+    // the core total, but rolled into the separate "all channels" figure below.
     const grandTotal   = totalRev + shopifyEgp;
+    // All channels = core + B2B (incl. factory) + online marketplaces. These three
+    // are non-overlapping (core excludes ONLINE; marketplace is the ONLINE store;
+    // B2B is wholesale invoices + the factory sheet).
+    const coreUnits        = storeRows.reduce((s, r) => s + Math.round(Number(r.units)), 0) + shopifyUnits;
+    const allChannelsEgp   = grandTotal + b2bEgp + mktEgp;
+    const allChannelsUnits = coreUnits + b2bUnits + mktUnits;
 
     const channelTotals = ["Retail","Ecom","B2B"].map(grp => {
       const filtered = stores.filter(s => s.group === grp);
@@ -265,7 +282,13 @@ export async function GET(req: NextRequest) {
       brands:     [],
       categories,
       products,
-      totalRev:   Math.round(totalRev + shopifyEgp),
+      totalRev:   Math.round(totalRev + shopifyEgp), // core headline (Retail + Ecom) — unchanged
+      allChannels: {
+        egp:       allChannelsEgp,
+        usd:       Math.round(allChannelsEgp / fx),
+        units:     allChannelsUnits,
+        breakdown: { core: grandTotal, b2b: b2bEgp, marketplace: mktEgp },
+      },
       fx,
       sources,
       degraded:   isDegraded(sources),

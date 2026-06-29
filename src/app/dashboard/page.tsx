@@ -42,6 +42,7 @@ interface HomeData {
   categories: CatRow[];
   products: ProductRow[];
   totalRev: number;
+  allChannels?: { egp: number; usd: number; units: number; breakdown: { core: number; b2b: number; marketplace: number } };
   fx: number;
   freshness: FreshnessRow[];
   sources?: Sources;
@@ -312,6 +313,12 @@ export default function HomePage() {
                   <span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>vs previous period</span>
                   {kpi && <><span style={{ color: "rgba(255,255,255,0.15)" }}>·</span><span style={{ fontSize: "0.65rem", color: "rgba(255,255,255,0.28)" }}>{altKpi(kpi.revenue)}</span></>}
                 </div>
+              )}
+              {home?.allChannels && (
+                <p style={{ fontSize: "0.66rem", color: "rgba(255,255,255,0.42)", fontWeight: 600, marginTop: 12 }}>
+                  All channels <strong style={{ color: "rgba(255,255,255,0.65)" }}>{fmtMoney(home.allChannels.egp, home.allChannels.usd)}</strong>
+                  <span style={{ color: "rgba(255,255,255,0.25)" }}> — core + B2B (incl. factory) + marketplace</span>
+                </p>
               )}
             </div>
           )}
