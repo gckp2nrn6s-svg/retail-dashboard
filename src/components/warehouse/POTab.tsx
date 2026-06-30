@@ -127,7 +127,7 @@ export default function POTab() {
           <div style={{ maxHeight: "52vh", overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
               <thead><tr style={{ background: "var(--surface3)", position: "sticky", top: 0 }}>
-                {["Item no.", "Description", "Transfer", "HO on-hand", "PO qty"].map((h, i) => <th key={i} style={{ padding: "10px 14px", textAlign: i > 1 ? "right" : "left", fontSize: "0.58rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>)}
+                {["Item no.", "Description", "Transfer", "HO book (ERP)", "PO qty"].map((h, i) => <th key={i} style={{ padding: "10px 14px", textAlign: i > 1 ? "right" : "left", fontSize: "0.58rem", fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {computed.lines.map((l, i) => {
@@ -146,7 +146,7 @@ export default function POTab() {
             </table>
           </div>
         </Card>
-        <p style={{ fontSize: "0.66rem", color: "var(--text4)" }}>PO qty = transfer qty − positive HO on-hand (floored at 0). Negative HO is covered separately in HO Sales. “Copy PO” copies only item-no⇥qty rows with PO qty &gt; 0, ready to paste into NAV.</p>
+        <p style={{ fontSize: "0.66rem", color: "var(--text4)" }}>PO qty = transfer qty − the ERP&apos;s HO book stock (NAV InventoryOnHand), floored at 0 — NOT the app&apos;s physical count, so it reflects what the ERP says HO is short. Negative HO book is covered separately in HO Sales. “Copy PO” copies only item-no⇥qty rows with PO qty &gt; 0, ready to paste into NAV.</p>
         <button onClick={reviewSubmit} disabled={busy} style={{ alignSelf: "flex-start", padding: "12px 28px", borderRadius: 12, border: "none", cursor: busy ? "default" : "pointer", background: WH_ACCENT, color: "white", fontWeight: 800, fontSize: "0.9rem", opacity: busy ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 8 }}>
           {busy && !stockPreview ? <Spinner size={16} /> : <Check size={16} />} SUBMIT — deduct stock &amp; move to “To Be Received”
         </button>

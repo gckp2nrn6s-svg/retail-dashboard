@@ -78,6 +78,18 @@ export default function HoSalesTab() {
   const sessionPo = useMemo(() => [...session.entries()].map(([item, qty]) => `${item}\t${qty}`).join("\n"), [session]);
   const sessionUnits = useMemo(() => [...session.values()].reduce((s, q) => s + q, 0), [session]);
 
+  // Total outstanding HO-sales balance to re-purchase = every posted invoice qty MINUS every
+  // credit-memo qty in the current date range (independent of what's been applied this session),
+  // so the user can paste the WHOLE balance into one ERP PO. Net positive items only.
+  const balance = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const d of invoices) for (const l of d.lines) m.set(l.item_no, (m.get(l.item_no) || 0) + l.qty);
+    for (const d of creditMemos) for (const l of d.lines) m.set(l.item_no, (m.get(l.item_no) || 0) - l.qty);
+    return [...m.entries()].filter(([, q]) => q > 0).sort((a, b) => b[1] - a[1]);
+  }, [invoices, creditMemos]);
+  const balancePo = useMemo(() => balance.map(([item, q]) => `${item}\t${q}`).join("\n"), [balance]);
+  const balanceUnits = useMemo(() => balance.reduce((s, [, q]) => s + q, 0), [balance]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Card style={{ padding: "18px 22px" }}>
@@ -110,6 +122,21 @@ export default function HoSalesTab() {
           {degraded && <span style={{ fontSize: "0.7rem", color: "#F59E0B", fontWeight: 700 }}>⚠ NAV degraded — list may be incomplete</span>}
         </div>
       </Card>
+
+      {/* Total outstanding balance — copy the WHOLE HO-sales balance as one ERP PO */}
+      {balance.length > 0 && (
+        <Card style={{ padding: "14px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ marginRight: "auto" }}>
+              <p style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--text)" }}>Total HO-sales balance · {from} → {to}</p>
+              <p style={{ fontSize: "0.7rem", color: "var(--text3)", marginTop: 2 }}>
+                Net of all posted invoices − credit memos in range: <strong>{balance.length}</strong> item{balance.length === 1 ? "" : "s"} · <strong>{fmtInt(balanceUnits)}</strong> units. Paste into a single ERP PO to re-purchase the whole balance.
+              </p>
+            </div>
+            <CopyButton text={balancePo} label="Copy PO — total balance" />
+          </div>
+        </Card>
+      )}
 
       {/* Reconciled PO copy — invoices deducted this session */}
       {kind === "invoice" && session.size > 0 && (

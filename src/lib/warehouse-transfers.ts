@@ -1,10 +1,10 @@
 // PO / transfer-flow helpers for the Warehousing module.
 //
-// NAV holds Head-Office → store transfer orders. The real NAV source tables
-// (TransferLines / InventoryOnHand) DO NOT EXIST YET — the DBA will add them to
-// the ReplitReports replica later. So every NAV read here is DEFENSIVE: it tries
-// navQuery, and on ANY error falls back to the local Postgres MOCK tables
-// (nav_transfers_mock / nav_inventory_mock) so the flow is testable now.
+// NAV holds Head-Office → store transfer orders. InventoryOnHand (ItemNo,
+// LocationCode, Qty) now EXISTS on the ReplitReports replica and is the ERP book
+// used by the PO. The transfer-lines source may still be absent, so every NAV read
+// here is DEFENSIVE: it tries navQuery, and on ANY error falls back to the local
+// Postgres MOCK tables (nav_transfers_mock) / empty so the flow stays usable.
 //
 // Expected NAV shapes (when the tables land, only the SQL strings change):
 //   TransferLines:  DocumentNo, Status, TransferFrom, TransferTo, ItemNo, Quantity,
@@ -226,30 +226,32 @@ export async function getTransfersByDocs(
 
 // ── HO on-hand ───────────────────────────────────────────────────────────────
 /**
- * Map item_no → HO on-hand qty, sourced from the ledger-backed `warehouse_stock`
- * (the single source of truth maintained by the warehouse module). This is the
- * SAME on-hand the Stock module shows, so the PO nets off it — not NAV
- * InventoryOnHand, which can drift from the warehouse truth.
+ * Map item_no → HO on-hand qty, sourced from the ERP BOOK at the HO location
+ * (NAV `InventoryOnHand` WHERE LocationCode='HO'). The PO must net against the ERP
+ * book — re-purchasing the shortfall is what clears the ERP's negatives. This is
+ * deliberately NOT the app's `warehouse_stock` (the physical clean-slate count the
+ * Stock module shows): that figure is the true on-the-floor quantity and is often
+ * far higher than the ERP book, which would floor every PO line to 0.
+ * NAV down → empty map (no netting) so the PO lists the full transfer quantity.
  */
 export async function getHOOnHand(
   itemNos?: string[]
 ): Promise<{ map: Map<string, number>; source: TransferSource }> {
-  let rows: { item_no: string; qty: number }[];
-  if (itemNos && itemNos.length) {
-    const ph = itemNos.map((_, i) => `$${i + 1}`).join(",");
-    rows = await query<{ item_no: string; qty: number }>(
-      `SELECT item_no, in_stock::numeric AS qty FROM warehouse_stock WHERE item_no IN (${ph})`,
-      itemNos.map(String));
-  } else {
-    rows = await query<{ item_no: string; qty: number }>(
-      "SELECT item_no, in_stock::numeric AS qty FROM warehouse_stock");
+  try {
+    const want = itemNos && itemNos.length ? new Set(itemNos.map(String)) : null;
+    const rows = await navQuery<{ item_no: string; qty: number }>(
+      "SELECT [ItemNo] AS item_no, [Qty] AS qty FROM InventoryOnHand WHERE [LocationCode] = 'HO'", {});
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      const item = String(r.item_no).trim();
+      if (want && !want.has(item)) continue;
+      map.set(item, (map.get(item) || 0) + (Number(r.qty) || 0));
+    }
+    return { map, source: "nav" };
+  } catch (e) {
+    console.error("[warehouse-transfers] getHOOnHand (InventoryOnHand) failed:", e instanceof Error ? e.message : e);
+    return { map: new Map(), source: "mock" }; // NAV unavailable → don't net
   }
-  const map = new Map<string, number>();
-  for (const r of rows) {
-    const item = String(r.item_no);
-    map.set(item, (map.get(item) || 0) + (Number(r.qty) || 0));
-  }
-  return { map, source: "nav" }; // real data (warehouse_stock); 'nav' = not the mock
 }
 
 export interface PoLine {
