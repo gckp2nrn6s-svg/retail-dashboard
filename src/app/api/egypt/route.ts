@@ -39,8 +39,6 @@ const MIE_CASE = `
   END
 `;
 
-// Same 5 made-in-Egypt lines, but matched on the factory sheet's sku/description
-// (e.g. sku 'AG9-09-003' → PRESTON). Used to fold factory-direct sales into MIE.
 const FD_LINE_CASE = `
   CASE
     WHEN f.sku ILIKE 'HZ9%' OR f.description ILIKE '%HZ9%' THEN 'SKYTRAC'
@@ -50,28 +48,62 @@ const FD_LINE_CASE = `
     WHEN f.sku ILIKE 'QC6%' OR f.description ILIKE '%QC6%' THEN 'TWIST WAVES'
   END
 `;
-// Factory-direct sales reshaped to the (line, store_code, sale_date, units, revenue)
-// shape so it can UNION with the all_sales-based MIE rows. store_code = 'FD:<client>'.
+
 const FD_UNIFIED = `
   SELECT fd.line, fd.store_code, fd.sale_date, fd.units, fd.revenue FROM (
     SELECT ${FD_LINE_CASE} AS line, 'FD:'||UPPER(TRIM(f.client)) AS store_code,
            f.sale_date, f.qty AS units, f.total_sales AS revenue
     FROM factory_direct_sales f
   ) fd WHERE fd.line IS NOT NULL`;
-// Shared source: all_sales MIE rows + factory-direct MIE rows, one shape.
+
+// Bundle-aware Shopify per (item_no TEXT, sale_date) from shopify_item_daily.
+// - Non-bundle SKUs: direct 1:1 via shopify_item_map
+// - Bundle SKUs: exploded via shopify_bundle_components with catalogue-price-weighted revenue
+//   (e.g. AG9 3-piece set = 3 units, revenue split 25/35/40% by piece price).
+// Non-MIE addons (LU4/LU8/QU9 bags) are included with correct price weights so the
+// denominator is right; the mie JOIN below silently drops them.
+// shopify_item_daily covers 2025-06-24 → today (backfilled from shopify_sales; refreshed 12h).
+const SHOPIFY_BY_ITEM_DATE = `
+  SELECT item_no, sale_date, SUM(units) AS units, ROUND(SUM(revenue)) AS revenue FROM (
+    SELECT m.item_no, s.sale_date, SUM(s.units) AS units, SUM(s.revenue) AS revenue
+    FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
+    WHERE s.sku NOT LIKE '%+%'
+    GROUP BY m.item_no, s.sale_date
+    UNION ALL
+    SELECT bc.component_item_no AS item_no, s.sale_date,
+           SUM(s.units) AS units, SUM(s.revenue * bc.price_weight) AS revenue
+    FROM shopify_item_daily s JOIN shopify_bundle_components bc ON bc.bundle_sku = s.sku
+    GROUP BY bc.component_item_no, s.sale_date
+  ) _sh GROUP BY item_no, sale_date
+`;
+
+// Shared CTE for summary / monthly / byStore queries.
+// Data sources (no duplication):
+//   • all_sales WHERE store_code NOT LIKE 'SHOPIFY%'  →  NAV POS + B2B (snapshot, may lag 1-2 days)
+//   • shopify_mie (shopify_item_daily, bundle-aware, full history from Jun 2025, ~12h lag)
+//   • factory_direct_sales  →  Carrefour, Duty Free, etc.
+// The live tail (livePeriodMie) fills NAV POS + B2B for the snapshot gap; Shopify needs no tail.
 const UNIFIED_CTE = `
   WITH mie AS (SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%'),
+  shopify_mie AS (
+    SELECT m.line, 'SHOPIFY-AMT'::text AS store_code, sh.sale_date,
+           sh.units::numeric AS units, sh.revenue::numeric AS revenue
+    FROM (${SHOPIFY_BY_ITEM_DATE}) sh
+    JOIN mie m ON m.item_no::text = sh.item_no
+    WHERE m.line IS NOT NULL
+  ),
   unified AS (
     SELECT m.line, a.store_code, a.sale_date, a.units, a.revenue
-    FROM all_sales a JOIN mie m ON a.item_no = m.item_no WHERE m.line IS NOT NULL
+    FROM all_sales a JOIN mie m ON a.item_no = m.item_no
+    WHERE m.line IS NOT NULL AND a.store_code NOT LIKE 'SHOPIFY%'
+    UNION ALL
+    SELECT line, store_code, sale_date, units, revenue FROM shopify_mie
     UNION ALL
     ${FD_UNIFIED}
   )`;
 
-// Live per-period MIE sales (POS + B2B invoices + Shopify rollup + factory) so the
-// CURRENT period stays correct even when the all_sales snapshot pipeline lags. All-time
-// + monthly remain on all_sales (historical, lag-tolerant). POS+Shopify ≈ 96% of EG;
-// B2B (~4%) is lumped under 'HO' and factory is per-line (no item_no).
+// Live NAV POS + B2B tail for the days after all_sales snapshot ends.
+// Shopify is excluded here — it is always read directly from shopify_item_daily.
 type Bucket = Map<string, { units: number; revenue: number }>;
 interface LiveAgg { byLine: Bucket; byLineStore: Bucket; byItem: Bucket }
 
@@ -82,45 +114,23 @@ async function livePeriodMie(from: string, to: string, lineOf: Map<string, strin
     const line = lineOf.get(item); if (!line) return;
     bump(byItem, item, u, r); bump(byLine, line, u, r); bump(byLineStore, `${line}|${store}`, u, r);
   };
-  const [pos, b2b, shop, fac] = await Promise.all([
+  const [pos, b2b, fac] = await Promise.all([
     navQuery<{ item: string; store: string; rev: number; units: number }>(
-      // ex-VAT net (matches pos_sales / all_sales basis), store != ONLINE
       `SELECT [Item No_] AS item, [Store No_] AS store, -SUM([Net Amount]) AS rev, -SUM([Quantity]) AS units
          FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] <> 'ONLINE'
          GROUP BY [Item No_], [Store No_]`, { from, to }).catch(() => []),
     navQuery<{ item: string; rev: number; units: number }>(
-      // B2B invoices (~4%), ex-VAT net amount
       `SELECT [No_] AS item, SUM([Amount]) AS rev, SUM([Quantity]) AS units
          FROM SalesInvoiceLine WHERE [Type]=2 AND CAST([Posting Date] AS DATE) BETWEEN @from AND @to GROUP BY [No_]`,
       { from, to }).catch(() => []),
-    query<{ item_no: string; units: string; revenue: string }>(
-      // Non-bundle SKUs: direct 1:1 mapping (original behaviour).
-      // Bundle SKUs: exploded via shopify_bundle_components — each MIE component gets
-      // 1 unit per bundle sale and revenue proportional to its catalogue price.
-      // Non-MIE components (LU4/LU8/QU9 bags) appear in the table but are silently
-      // dropped by the addItem() lineOf filter, correctly excluding their revenue from MIE.
-      `SELECT item_no, SUM(units)::numeric AS units, ROUND(SUM(revenue))::numeric AS revenue FROM (
-         SELECT m.item_no, SUM(s.units) AS units, SUM(s.revenue) AS revenue
-           FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
-          WHERE s.sku NOT LIKE '%+%' AND s.sale_date BETWEEN $1 AND $2
-          GROUP BY m.item_no
-         UNION ALL
-         SELECT bc.component_item_no AS item_no, SUM(s.units) AS units,
-                SUM(s.revenue * bc.price_weight) AS revenue
-           FROM shopify_item_daily s
-           JOIN shopify_bundle_components bc ON bc.bundle_sku = s.sku
-          WHERE s.sale_date BETWEEN $1 AND $2
-          GROUP BY bc.component_item_no
-       ) t GROUP BY item_no`, [from, to]).catch(() => []),
     query<{ line: string; store: string; units: string; revenue: string }>(
       `SELECT line, store, SUM(units)::numeric AS units, SUM(revenue)::numeric AS revenue FROM (
          SELECT ${FD_LINE_CASE} AS line, 'FD:'||UPPER(TRIM(f.client)) AS store, f.qty AS units, f.total_sales AS revenue
          FROM factory_direct_sales f WHERE f.sale_date BETWEEN $1 AND $2) t
        WHERE line IS NOT NULL GROUP BY line, store`, [from, to]).catch(() => []),
   ]);
-  for (const r of pos)  addItem(String(r.item).trim(), String(r.store || "").trim() || "HO", Number(r.units) || 0, Math.round(Number(r.rev) || 0));
-  for (const r of b2b)  addItem(String(r.item).trim(), "HO", Number(r.units) || 0, Math.round(Number(r.rev) || 0));
-  for (const r of shop) addItem(String(r.item_no).trim(), "SHOPIFY-AMT", Number(r.units) || 0, Math.round(Number(r.revenue) || 0));
+  for (const r of pos) addItem(String(r.item).trim(), String(r.store || "").trim() || "HO", Number(r.units) || 0, Math.round(Number(r.rev) || 0));
+  for (const r of b2b) addItem(String(r.item).trim(), "HO", Number(r.units) || 0, Math.round(Number(r.rev) || 0));
   for (const r of fac) { const line = String(r.line).trim(), store = String(r.store).trim(); bump(byLine, line, Number(r.units) || 0, Math.round(Number(r.revenue) || 0)); bump(byLineStore, `${line}|${store}`, Number(r.units) || 0, Math.round(Number(r.revenue) || 0)); }
   return { byLine, byLineStore, byItem };
 }
@@ -133,7 +143,6 @@ export async function GET(req: NextRequest) {
   const from = safeDate(searchParams.get("from"), defaultFrom);
   const to   = safeDate(searchParams.get("to"),   defaultTo);
 
-  // Previous equal-length period — for per-line growth (momentum).
   const fromD = new Date(from), toD = new Date(to);
   const prevTo = new Date(fromD.getTime() - 86400000).toISOString().slice(0, 10);
   const prevFrom = new Date(fromD.getTime() - 86400000 - (toD.getTime() - fromD.getTime())).toISOString().slice(0, 10);
@@ -171,6 +180,8 @@ export async function GET(req: NextRequest) {
       FROM unified GROUP BY line, store_code ORDER BY line, revenue_period DESC
     `),
 
+    // Per-item Stock tab: NAV POS + B2B from all_sales snapshot (Shopify excluded)
+    // UNION Shopify from the bundle-aware rollup — so each component item gets correct units/revenue.
     query<{
       item_no: string; description: string; line: string;
       in_stock: string; unit_price: string;
@@ -180,61 +191,58 @@ export async function GET(req: NextRequest) {
         SELECT ws.item_no, ws.description, ws.in_stock, ws.unit_price,
           ${MIE_CASE} AS line
         FROM warehouse_stock ws WHERE ws.description NOT ILIKE '%BLOCKED%'
+      ),
+      combined AS (
+        SELECT item_no::text AS item_no, sale_date, units, revenue
+        FROM all_sales WHERE store_code NOT LIKE 'SHOPIFY%'
+        UNION ALL
+        SELECT item_no, sale_date, units, revenue FROM (${SHOPIFY_BY_ITEM_DATE}) _sh
       )
       SELECT m.item_no, m.description, m.line,
         m.in_stock::text, m.unit_price::text,
-        COALESCE(SUM(CASE WHEN a.sale_date BETWEEN '${from}' AND '${to}' THEN a.units ELSE 0 END), 0)::text AS units_period,
-        ROUND(COALESCE(SUM(CASE WHEN a.sale_date BETWEEN '${from}' AND '${to}' THEN a.revenue ELSE 0 END), 0))::text AS revenue_period,
-        COALESCE(SUM(a.units), 0)::text AS units_all,
-        ROUND(COALESCE(SUM(a.revenue), 0))::text AS revenue_all
+        COALESCE(SUM(CASE WHEN c.sale_date BETWEEN '${from}' AND '${to}' THEN c.units ELSE 0 END), 0)::text AS units_period,
+        ROUND(COALESCE(SUM(CASE WHEN c.sale_date BETWEEN '${from}' AND '${to}' THEN c.revenue ELSE 0 END), 0))::text AS revenue_period,
+        COALESCE(SUM(c.units), 0)::text AS units_all,
+        ROUND(COALESCE(SUM(c.revenue), 0))::text AS revenue_all
       FROM mie m
-      LEFT JOIN all_sales a ON m.item_no = a.item_no
+      LEFT JOIN combined c ON m.item_no::text = c.item_no
       WHERE m.line IS NOT NULL
       GROUP BY m.item_no, m.description, m.line, m.in_stock, m.unit_price
       ORDER BY m.line, revenue_period DESC
     `),
 
-    // Time-aware FX: the rate in effect at the END of the viewed period.
     query<{ egp_per_usd: string }>("SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]),
   ]);
   const fx = parseFloat(fxRows[0]?.egp_per_usd || "50");
 
-  // Blend snapshot history with live data for ONLY the days the snapshot is missing. Old months
-  // stay pure-snapshot (the snapshot holds full Shopify history; the live shopify_item_daily
-  // rollup only reaches back to ~Mar, so live-overriding old periods would undercount). The
-  // current period / all-time get a live "tail" past the snapshot's end so they're fresh + complete.
+  // Live NAV POS + B2B tail for the gap after all_sales snapshot ends.
+  // Shopify has no tail — shopify_item_daily covers full history and is refreshed every 12h.
   const mieRows = await query<{ item_no: string; line: string }>(`SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%'`);
   const lineOf = new Map<string, string>();
   for (const r of mieRows) if (r.line) lineOf.set(String(r.item_no).trim(), r.line);
 
-  const freshRow = await query<{ d: string }>("SELECT MAX(sale_date)::text AS d FROM all_sales");
+  const freshRow = await query<{ d: string }>("SELECT MAX(sale_date)::text AS d FROM all_sales WHERE store_code NOT LIKE 'SHOPIFY%'");
   const dataThrough = freshRow[0]?.d ?? null;
   const gapStart = dataThrough && dataThrough < defaultTo
     ? new Date(new Date(dataThrough).getTime() + 86400000).toISOString().slice(0, 10) : null;
 
   const EMPTY: LiveAgg = { byLine: new Map(), byLineStore: new Map(), byItem: new Map() };
-  // Live tail for a [rangeFrom, rangeTo] window: only the slice AFTER the snapshot ends
-  // ([max(rangeFrom, gapStart) .. rangeTo]); empty when the window closes within the snapshot.
   const liveTail = (rf: string, rt: string): Promise<LiveAgg> =>
     gapStart && rt > dataThrough! ? livePeriodMie(rf > gapStart ? rf : gapStart, rt, lineOf) : Promise.resolve(EMPTY);
 
   const [periodTail, prevTail, allTail] = await Promise.all([
     liveTail(from, to),
     liveTail(prevFrom, prevTo),
-    liveTail("0000-01-01", defaultTo), // all-time + current month: the full snapshot→today gap
+    liveTail("0000-01-01", defaultTo),
   ]);
-  const effThrough = gapStart ? defaultTo : dataThrough; // banner only shows if NOT gap-filled
+  const effThrough = gapStart ? defaultTo : dataThrough;
   const curMonth = defaultTo.slice(0, 7);
-  // Fold the live tail into the monthly trend's current-month bar (per line).
   const monthlyFilled = gapStart ? monthly.map(m => {
     if (m.month !== curMonth) return m;
     const g = allTail.byLine.get(m.line);
     return g ? { ...m, units: String(parseFloat(m.units) + g.units), revenue: String(parseFloat(m.revenue) + g.revenue) } : m;
   }) : monthly;
 
-  // Days cover uses the last 30 days of COMBINED sell-through (NAV POS + Shopify own-
-  // website + factory-direct), so an Egyptian-made line selling online or via factory
-  // isn't mis-flagged for reorder — same velocity the Stock module's alerts use.
   const vel30 = await getCombinedVelocity(30);
   const sales30Map: Record<string, number> = {};
   for (const [item, v] of vel30) sales30Map[item] = v.units;
@@ -247,10 +255,11 @@ export async function GET(req: NextRequest) {
       ...s,
       in_stock: stock,
       unit_price: parseInt(s.unit_price),
-      units_period: parseFloat(s.units_period) + (periodTail.byItem.get(s.item_no)?.units ?? 0),       // period: snapshot + live tail
-      units_all: parseFloat(s.units_all) + (allTail.byItem.get(s.item_no)?.units ?? 0),                // all-time: snapshot + live tail
-      revenue_period: parseFloat(s.revenue_period) + (periodTail.byItem.get(s.item_no)?.revenue ?? 0),
-      revenue_all: parseFloat(s.revenue_all) + (allTail.byItem.get(s.item_no)?.revenue ?? 0),
+      // SQL already has Shopify; tail adds only NAV POS + B2B gap
+      units_period:   parseFloat(s.units_period)   + (periodTail.byItem.get(s.item_no)?.units   ?? 0),
+      units_all:      parseFloat(s.units_all)       + (allTail.byItem.get(s.item_no)?.units      ?? 0),
+      revenue_period: parseFloat(s.revenue_period)  + (periodTail.byItem.get(s.item_no)?.revenue ?? 0),
+      revenue_all:    parseFloat(s.revenue_all)     + (allTail.byItem.get(s.item_no)?.revenue    ?? 0),
       units_30d: sold30,
       daysCover,
       reorderNow: daysCover !== null && daysCover < 30,
@@ -265,22 +274,24 @@ export async function GET(req: NextRequest) {
       ...s,
       storeName: isFd ? fdName : (STORE_NAMES[s.store_code] || s.store_code),
       factory: isFd,
-      units_period: parseFloat(s.units_period) + (periodTail.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0),       // period: snapshot + live tail
-      revenue_period: parseFloat(s.revenue_period) + (periodTail.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0),
-      units_all: parseFloat(s.units_all) + (allTail.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0),               // all-time: snapshot + live tail
-      revenue_all: parseFloat(s.revenue_all) + (allTail.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0),
+      // Shopify store rows come entirely from SQL; tail adds only NAV POS + B2B gap
+      units_period:   parseFloat(s.units_period)   + (periodTail.byLineStore.get(`${s.line}|${s.store_code}`)?.units   ?? 0),
+      revenue_period: parseFloat(s.revenue_period)  + (periodTail.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0),
+      units_all:      parseFloat(s.units_all)       + (allTail.byLineStore.get(`${s.line}|${s.store_code}`)?.units      ?? 0),
+      revenue_all:    parseFloat(s.revenue_all)     + (allTail.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue    ?? 0),
     };
   });
 
   const summaryParsed = summary.map((s) => ({
     ...s,
     code: LINE_CODES[s.line] || "",
-    revenue_all: parseFloat(s.revenue_all) + (allTail.byLine.get(s.line)?.revenue ?? 0),         // all-time: snapshot + live tail
-    revenue_period: parseFloat(s.revenue_period) + (periodTail.byLine.get(s.line)?.revenue ?? 0), // period: snapshot + live tail
-    revenue_prev: parseFloat(s.revenue_prev) + (prevTail.byLine.get(s.line)?.revenue ?? 0),       // prev: snapshot + live tail
-    units_all: parseFloat(s.units_all) + (allTail.byLine.get(s.line)?.units ?? 0),
-    units_period: parseFloat(s.units_period) + (periodTail.byLine.get(s.line)?.units ?? 0),
-    units_prev: parseFloat(s.units_prev) + (prevTail.byLine.get(s.line)?.units ?? 0),
+    // Shopify is fully in SQL; tail adds only NAV POS + B2B gap
+    revenue_all:    parseFloat(s.revenue_all)    + (allTail.byLine.get(s.line)?.revenue  ?? 0),
+    revenue_period: parseFloat(s.revenue_period) + (periodTail.byLine.get(s.line)?.revenue ?? 0),
+    revenue_prev:   parseFloat(s.revenue_prev)   + (prevTail.byLine.get(s.line)?.revenue  ?? 0),
+    units_all:      parseFloat(s.units_all)      + (allTail.byLine.get(s.line)?.units     ?? 0),
+    units_period:   parseFloat(s.units_period)   + (periodTail.byLine.get(s.line)?.units  ?? 0),
+    units_prev:     parseFloat(s.units_prev)     + (prevTail.byLine.get(s.line)?.units    ?? 0),
   }));
 
   return NextResponse.json({ summary: summaryParsed, monthly: monthlyFilled, byStore: byStoreParsed, skus: skusParsed, fx, dataThrough: effThrough, from, to });
