@@ -24,7 +24,7 @@ const STORE_NAMES: Record<string, string> = {
   P90: "Point 90",
   "SHOPIFY-AMT": "AT Online",
   HO: "B2B / Wholesale",
-  MOE: "Ministry of Education",
+  MOE: "Mall of Egypt",
   NOON: "Noon",
   JUMIA: "Jumia",
 };
@@ -184,30 +184,36 @@ export async function GET(req: NextRequest) {
   ]);
   const fx = parseFloat(fxRows[0]?.egp_per_usd || "50");
 
-  // Live period/prev override (resilient to all_sales snapshot lag) + snapshot freshness.
+  // Blend snapshot history with live data for ONLY the days the snapshot is missing. Old months
+  // stay pure-snapshot (the snapshot holds full Shopify history; the live shopify_item_daily
+  // rollup only reaches back to ~Mar, so live-overriding old periods would undercount). The
+  // current period / all-time get a live "tail" past the snapshot's end so they're fresh + complete.
   const mieRows = await query<{ item_no: string; line: string }>(`SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%'`);
   const lineOf = new Map<string, string>();
   for (const r of mieRows) if (r.line) lineOf.set(String(r.item_no).trim(), r.line);
-  const [livePeriod, livePrev, freshRow] = await Promise.all([
-    livePeriodMie(from, to, lineOf),
-    livePeriodMie(prevFrom, prevTo, lineOf),
-    query<{ d: string }>("SELECT MAX(sale_date)::text AS d FROM all_sales"),
-  ]);
-  const dataThrough = freshRow[0]?.d ?? null;
 
-  // Gap-fill all-time + trend with live data for the days the snapshot is missing, so
-  // the page is fully current (and the banner clears) without touching the snapshot tables.
-  let liveGap: LiveAgg | null = null;
-  if (dataThrough && dataThrough < defaultTo) {
-    const gapFrom = new Date(new Date(dataThrough).getTime() + 86400000).toISOString().slice(0, 10);
-    liveGap = await livePeriodMie(gapFrom, defaultTo, lineOf);
-  }
-  const effThrough = liveGap ? defaultTo : dataThrough; // banner only shows if NOT gap-filled
+  const freshRow = await query<{ d: string }>("SELECT MAX(sale_date)::text AS d FROM all_sales");
+  const dataThrough = freshRow[0]?.d ?? null;
+  const gapStart = dataThrough && dataThrough < defaultTo
+    ? new Date(new Date(dataThrough).getTime() + 86400000).toISOString().slice(0, 10) : null;
+
+  const EMPTY: LiveAgg = { byLine: new Map(), byLineStore: new Map(), byItem: new Map() };
+  // Live tail for a [rangeFrom, rangeTo] window: only the slice AFTER the snapshot ends
+  // ([max(rangeFrom, gapStart) .. rangeTo]); empty when the window closes within the snapshot.
+  const liveTail = (rf: string, rt: string): Promise<LiveAgg> =>
+    gapStart && rt > dataThrough! ? livePeriodMie(rf > gapStart ? rf : gapStart, rt, lineOf) : Promise.resolve(EMPTY);
+
+  const [periodTail, prevTail, allTail] = await Promise.all([
+    liveTail(from, to),
+    liveTail(prevFrom, prevTo),
+    liveTail("0000-01-01", defaultTo), // all-time + current month: the full snapshot→today gap
+  ]);
+  const effThrough = gapStart ? defaultTo : dataThrough; // banner only shows if NOT gap-filled
   const curMonth = defaultTo.slice(0, 7);
-  // Fold the gap into the monthly trend's current-month bar (per line).
-  const monthlyFilled = liveGap ? monthly.map(m => {
+  // Fold the live tail into the monthly trend's current-month bar (per line).
+  const monthlyFilled = gapStart ? monthly.map(m => {
     if (m.month !== curMonth) return m;
-    const g = liveGap!.byLine.get(m.line);
+    const g = allTail.byLine.get(m.line);
     return g ? { ...m, units: String(parseFloat(m.units) + g.units), revenue: String(parseFloat(m.revenue) + g.revenue) } : m;
   }) : monthly;
 
@@ -226,10 +232,10 @@ export async function GET(req: NextRequest) {
       ...s,
       in_stock: stock,
       unit_price: parseInt(s.unit_price),
-      units_period: livePeriod.byItem.get(s.item_no)?.units ?? 0,        // period: LIVE
-      units_all: parseFloat(s.units_all),                               // all-time: snapshot
-      revenue_period: livePeriod.byItem.get(s.item_no)?.revenue ?? 0,
-      revenue_all: parseFloat(s.revenue_all),
+      units_period: parseFloat(s.units_period) + (periodTail.byItem.get(s.item_no)?.units ?? 0),       // period: snapshot + live tail
+      units_all: parseFloat(s.units_all) + (allTail.byItem.get(s.item_no)?.units ?? 0),                // all-time: snapshot + live tail
+      revenue_period: parseFloat(s.revenue_period) + (periodTail.byItem.get(s.item_no)?.revenue ?? 0),
+      revenue_all: parseFloat(s.revenue_all) + (allTail.byItem.get(s.item_no)?.revenue ?? 0),
       units_30d: sold30,
       daysCover,
       reorderNow: daysCover !== null && daysCover < 30,
@@ -244,22 +250,22 @@ export async function GET(req: NextRequest) {
       ...s,
       storeName: isFd ? fdName : (STORE_NAMES[s.store_code] || s.store_code),
       factory: isFd,
-      units_period: livePeriod.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0,        // period: LIVE
-      revenue_period: livePeriod.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0,
-      units_all: parseFloat(s.units_all) + (liveGap?.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0),     // all-time: snapshot + gap
-      revenue_all: parseFloat(s.revenue_all) + (liveGap?.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0),
+      units_period: parseFloat(s.units_period) + (periodTail.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0),       // period: snapshot + live tail
+      revenue_period: parseFloat(s.revenue_period) + (periodTail.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0),
+      units_all: parseFloat(s.units_all) + (allTail.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0),               // all-time: snapshot + live tail
+      revenue_all: parseFloat(s.revenue_all) + (allTail.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0),
     };
   });
 
   const summaryParsed = summary.map((s) => ({
     ...s,
     code: LINE_CODES[s.line] || "",
-    revenue_all: parseFloat(s.revenue_all) + (liveGap?.byLine.get(s.line)?.revenue ?? 0),  // all-time: snapshot + live gap
-    revenue_period: livePeriod.byLine.get(s.line)?.revenue ?? 0,     // period: LIVE
-    revenue_prev: livePrev.byLine.get(s.line)?.revenue ?? 0,         // prev:   LIVE
-    units_all: parseFloat(s.units_all) + (liveGap?.byLine.get(s.line)?.units ?? 0),
-    units_period: livePeriod.byLine.get(s.line)?.units ?? 0,
-    units_prev: livePrev.byLine.get(s.line)?.units ?? 0,
+    revenue_all: parseFloat(s.revenue_all) + (allTail.byLine.get(s.line)?.revenue ?? 0),         // all-time: snapshot + live tail
+    revenue_period: parseFloat(s.revenue_period) + (periodTail.byLine.get(s.line)?.revenue ?? 0), // period: snapshot + live tail
+    revenue_prev: parseFloat(s.revenue_prev) + (prevTail.byLine.get(s.line)?.revenue ?? 0),       // prev: snapshot + live tail
+    units_all: parseFloat(s.units_all) + (allTail.byLine.get(s.line)?.units ?? 0),
+    units_period: parseFloat(s.units_period) + (periodTail.byLine.get(s.line)?.units ?? 0),
+    units_prev: parseFloat(s.units_prev) + (prevTail.byLine.get(s.line)?.units ?? 0),
   }));
 
   return NextResponse.json({ summary: summaryParsed, monthly: monthlyFilled, byStore: byStoreParsed, skus: skusParsed, fx, dataThrough: effThrough, from, to });
