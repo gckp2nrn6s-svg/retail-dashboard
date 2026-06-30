@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { getCombinedVelocity } from "@/lib/navVelocity";
 
 function safeDate(val: string | null, fallback: string): string {
   if (val && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
@@ -74,14 +75,21 @@ export async function GET(req: NextRequest) {
   const from = safeDate(searchParams.get("from"), defaultFrom);
   const to   = safeDate(searchParams.get("to"),   defaultTo);
 
-  const [summary, monthly, byStore, skus] = await Promise.all([
-    query<{ line: string; revenue_all: string; revenue_period: string; units_all: string; units_period: string; }>(`
+  // Previous equal-length period — for per-line growth (momentum).
+  const fromD = new Date(from), toD = new Date(to);
+  const prevTo = new Date(fromD.getTime() - 86400000).toISOString().slice(0, 10);
+  const prevFrom = new Date(fromD.getTime() - 86400000 - (toD.getTime() - fromD.getTime())).toISOString().slice(0, 10);
+
+  const [summary, monthly, byStore, skus, fxRows] = await Promise.all([
+    query<{ line: string; revenue_all: string; revenue_period: string; revenue_prev: string; units_all: string; units_period: string; units_prev: string; }>(`
       ${UNIFIED_CTE}
       SELECT line,
         ROUND(SUM(revenue))::text AS revenue_all,
         ROUND(SUM(CASE WHEN sale_date BETWEEN '${from}' AND '${to}' THEN revenue ELSE 0 END))::text AS revenue_period,
+        ROUND(SUM(CASE WHEN sale_date BETWEEN '${prevFrom}' AND '${prevTo}' THEN revenue ELSE 0 END))::text AS revenue_prev,
         SUM(units)::text AS units_all,
-        SUM(CASE WHEN sale_date BETWEEN '${from}' AND '${to}' THEN units ELSE 0 END)::text AS units_period
+        SUM(CASE WHEN sale_date BETWEEN '${from}' AND '${to}' THEN units ELSE 0 END)::text AS units_period,
+        SUM(CASE WHEN sale_date BETWEEN '${prevFrom}' AND '${prevTo}' THEN units ELSE 0 END)::text AS units_prev
       FROM unified GROUP BY line ORDER BY revenue_period DESC
     `),
 
@@ -127,18 +135,18 @@ export async function GET(req: NextRequest) {
       GROUP BY m.item_no, m.description, m.line, m.in_stock, m.unit_price
       ORDER BY m.line, revenue_period DESC
     `),
-  ]);
 
-  // Days cover always uses last 30 days of sales (independent of selected range)
-  const sales30 = await query<{ item_no: string; units_sold: string }>(`
-    WITH mie AS (SELECT item_no FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%' AND (${MIE_CASE}) IS NOT NULL)
-    SELECT a.item_no, SUM(a.units)::text AS units_sold
-    FROM all_sales a JOIN mie m ON a.item_no = m.item_no
-    WHERE a.sale_date >= CURRENT_DATE - 30
-    GROUP BY a.item_no
-  `);
+    // Time-aware FX: the rate in effect at the END of the viewed period.
+    query<{ egp_per_usd: string }>("SELECT egp_per_usd FROM fx_rates WHERE week_start <= $1 ORDER BY week_start DESC LIMIT 1", [to]),
+  ]);
+  const fx = parseFloat(fxRows[0]?.egp_per_usd || "50");
+
+  // Days cover uses the last 30 days of COMBINED sell-through (NAV POS + Shopify own-
+  // website + factory-direct), so an Egyptian-made line selling online or via factory
+  // isn't mis-flagged for reorder — same velocity the Stock module's alerts use.
+  const vel30 = await getCombinedVelocity(30);
   const sales30Map: Record<string, number> = {};
-  sales30.forEach(r => { sales30Map[r.item_no] = parseFloat(r.units_sold); });
+  for (const [item, v] of vel30) sales30Map[item] = v.units;
 
   const skusParsed = skus.map((s) => {
     const stock = parseInt(s.in_stock);
@@ -178,9 +186,11 @@ export async function GET(req: NextRequest) {
     code: LINE_CODES[s.line] || "",
     revenue_all: parseFloat(s.revenue_all),
     revenue_period: parseFloat(s.revenue_period),
+    revenue_prev: parseFloat(s.revenue_prev),
     units_all: parseFloat(s.units_all),
     units_period: parseFloat(s.units_period),
+    units_prev: parseFloat(s.units_prev),
   }));
 
-  return NextResponse.json({ summary: summaryParsed, monthly, byStore: byStoreParsed, skus: skusParsed, from, to });
+  return NextResponse.json({ summary: summaryParsed, monthly, byStore: byStoreParsed, skus: skusParsed, fx, from, to });
 }

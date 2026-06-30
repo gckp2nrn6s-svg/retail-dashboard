@@ -9,8 +9,8 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 
 interface LineSummary {
   line: string; code: string;
-  revenue_all: number; revenue_period: number;
-  units_all: number; units_period: number;
+  revenue_all: number; revenue_period: number; revenue_prev: number;
+  units_all: number; units_period: number; units_prev: number;
 }
 interface Monthly { line: string; month: string; units: string; revenue: string; }
 interface StoreRow { line: string; store_code: string; storeName: string; units_period: number; revenue_period: number; units_all: number; revenue_all: number; }
@@ -32,6 +32,13 @@ const LINE_COLORS: Record<string, string> = {
 
 function fmt(n: number) { return Math.round(n).toLocaleString(); }
 function fmtM(n: number) { return n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(0)}K` : String(Math.round(n)); }
+function fmtUsd(egp: number, fx: number) { return fx > 0 ? `$${fmtM(egp / fx)}` : ""; }
+function growth(cur: number, prev: number): number | null { return prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null; }
+function Delta({ v }: { v: number | null }) {
+  if (v === null) return <span style={{ fontSize: "0.6rem", color: "var(--text4)" }}>—</span>;
+  const up = v >= 0;
+  return <span style={{ fontSize: "0.62rem", fontWeight: 700, color: up ? "#10B981" : "#EF4444" }}>{up ? "▲" : "▼"} {Math.abs(v)}%</span>;
+}
 
 function parseDesc(desc: string): { color: string; size: string } {
   const sizeMatch = desc.match(/\b(55(?:\/20)?|68(?:\/25)?|69(?:\/25)?|77(?:\/28)?|78|79(?:\/29)?|80(?:\/30)?|66(?:\/24)?|82|67|81)\s*(?:CM|cm)?/i);
@@ -48,7 +55,7 @@ function parseDesc(desc: string): { color: string; size: string } {
 
 export default function EgyptPage() {
   const { range } = useDateRange();
-  const [data, setData] = useState<{ summary: LineSummary[]; monthly: Monthly[]; byStore: StoreRow[]; skus: Sku[]; from: string; to: string } | null>(null);
+  const [data, setData] = useState<{ summary: LineSummary[]; monthly: Monthly[]; byStore: StoreRow[]; skus: Sku[]; fx: number; from: string; to: string } | null>(null);
   const [activeLine, setActiveLine] = useState("SKYTRAC");
   const [tab, setTab] = useState<"overview" | "stock" | "stores" | "trend">("overview");
 
@@ -76,7 +83,9 @@ export default function EgyptPage() {
   const lineSkus = isAll ? (data?.skus || []) : (data?.skus || []).filter(s => s.line === activeLine);
   const totalRevAll = (data?.summary || []).reduce((a, s) => a + s.revenue_all, 0);
   const totalRevPeriod = (data?.summary || []).reduce((a, s) => a + s.revenue_period, 0);
+  const totalRevPrev = (data?.summary || []).reduce((a, s) => a + s.revenue_prev, 0);
   const totalUnitsPeriod = (data?.summary || []).reduce((a, s) => a + s.units_period, 0);
+  const fx = data?.fx ?? 50;
   const reorderCount = (data?.skus || []).filter(s => s.reorderNow).length;
   const stockoutCount = (data?.skus || []).filter(s => s.stockout).length;
 
@@ -105,16 +114,20 @@ export default function EgyptPage() {
         <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.68rem" }}>5 local lines · 1-month restock lead time</p>
         {data ? (
           <div style={{ display: "flex", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
-            {[
-              { label: "All-time revenue", value: `EGP ${fmtM(totalRevAll)}` },
-              { label: range.label, value: `EGP ${fmtM(totalRevPeriod)}` },
+            {([
+              { label: "All-time revenue", value: `EGP ${fmtM(totalRevAll)}`, sub: fmtUsd(totalRevAll, fx) },
+              { label: range.label, value: `EGP ${fmtM(totalRevPeriod)}`, sub: fmtUsd(totalRevPeriod, fx), delta: growth(totalRevPeriod, totalRevPrev) },
               { label: "Units sold", value: fmt(totalUnitsPeriod) },
               { label: "⚠️ Reorder now", value: String(reorderCount), alert: true },
               { label: "🔴 Stocked out", value: String(stockoutCount), alert: stockoutCount > 0 },
-            ].map(k => (
+            ] as { label: string; value: string; sub?: string; delta?: number | null; alert?: boolean }[]).map(k => (
               <div key={k.label}>
                 <div style={{ color: k.alert ? "#FCA5A5" : "rgba(255,255,255,0.4)", fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>{k.label}</div>
-                <div style={{ color: "white", fontWeight: 800, fontSize: "1rem" }}>{k.value}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                  <div style={{ color: "white", fontWeight: 800, fontSize: "1rem" }}>{k.value}</div>
+                  {k.delta !== undefined && <Delta v={k.delta} />}
+                </div>
+                {k.sub && <div style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.62rem", fontWeight: 600 }}>{k.sub} <span style={{ color: "rgba(255,255,255,0.22)" }}>· $1≈{fx.toFixed(1)}</span></div>}
               </div>
             ))}
           </div>
@@ -148,20 +161,24 @@ export default function EgyptPage() {
       {/* Line KPI strip */}
       {data && (
         <div style={{ display: "flex", gap: 10, padding: "12px 16px", overflowX: "auto" }} className="hide-scrollbar">
-          {(isAll ? [
-            { label: "All-time", value: `EGP ${fmtM(totalRevAll)}` },
-            { label: range.label, value: `EGP ${fmtM(totalRevPeriod)}` },
+          {((isAll ? [
+            { label: "All-time", value: `EGP ${fmtM(totalRevAll)}`, sub: fmtUsd(totalRevAll, fx) },
+            { label: range.label, value: `EGP ${fmtM(totalRevPeriod)}`, sub: fmtUsd(totalRevPeriod, fx), delta: growth(totalRevPeriod, totalRevPrev) },
             { label: "Units (period)", value: fmt(totalUnitsPeriod) },
             { label: "Avg/unit", value: totalUnitsPeriod > 0 ? `EGP ${fmt(totalRevPeriod / totalUnitsPeriod)}` : "—" },
           ] : lineData ? [
-            { label: "All-time", value: `EGP ${fmtM(lineData.revenue_all)}` },
-            { label: range.label, value: `EGP ${fmtM(lineData.revenue_period)}` },
+            { label: "All-time", value: `EGP ${fmtM(lineData.revenue_all)}`, sub: fmtUsd(lineData.revenue_all, fx) },
+            { label: range.label, value: `EGP ${fmtM(lineData.revenue_period)}`, sub: fmtUsd(lineData.revenue_period, fx), delta: growth(lineData.revenue_period, lineData.revenue_prev) },
             { label: "Units (period)", value: fmt(lineData.units_period) },
             { label: "Avg/unit", value: lineData.units_period > 0 ? `EGP ${fmt(lineData.revenue_period / lineData.units_period)}` : "—" },
-          ] : []).map(k => (
-            <div key={k.label} style={{ background: "var(--surface)", borderRadius: 12, padding: "10px 14px", minWidth: 100, flexShrink: 0, border: "1px solid var(--border)" }}>
+          ] : []) as { label: string; value: string; sub?: string; delta?: number | null }[]).map(k => (
+            <div key={k.label} style={{ background: "var(--surface)", borderRadius: 12, padding: "10px 14px", minWidth: 112, flexShrink: 0, border: "1px solid var(--border)" }}>
               <div style={{ fontSize: "0.58rem", color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{k.label}</div>
-              <div style={{ fontWeight: 800, fontSize: "0.9rem", marginTop: 2, color: "var(--text)" }}>{k.value}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+                <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "var(--text)" }}>{k.value}</div>
+                {k.delta !== undefined && <Delta v={k.delta} />}
+              </div>
+              {k.sub && <div style={{ fontSize: "0.6rem", color: "var(--text4)", fontWeight: 600, marginTop: 1 }}>{k.sub}</div>}
             </div>
           ))}
         </div>
@@ -186,7 +203,36 @@ export default function EgyptPage() {
         )}
 
         {/* OVERVIEW */}
-        {tab === "overview" && data && (
+        {tab === "overview" && data && (isAll ? (
+          <div>
+            <p style={{ fontSize: "0.68rem", color: "var(--text3)", marginBottom: 12 }}>Line performance · {range.label} — tap a line for its colour×size grid</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+              {data.summary.map(s => {
+                const g = growth(s.revenue_period, s.revenue_prev);
+                const share = totalRevPeriod > 0 ? Math.round((s.revenue_period / totalRevPeriod) * 100) : 0;
+                const col = LINE_COLORS[s.line] || "#6366F1";
+                const lineReorder = data.skus.filter(k => k.line === s.line && (k.reorderNow || k.stockout)).length;
+                return (
+                  <button key={s.line} onClick={() => setActiveLine(s.line)} style={{ textAlign: "left", background: "var(--surface)", border: "1px solid var(--border)", borderTop: `3px solid ${col}`, borderRadius: 14, padding: "14px 16px", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontWeight: 800, fontSize: "0.84rem", color: "var(--text)" }}>{s.line}</span>
+                      <span style={{ fontSize: "0.6rem", fontWeight: 700, color: col, background: `${col}1a`, padding: "2px 7px", borderRadius: 6 }}>{s.code}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+                      <span style={{ fontWeight: 800, fontSize: "1.15rem", color: "var(--text)", letterSpacing: "-0.02em" }}>EGP {fmtM(s.revenue_period)}</span>
+                      <Delta v={g} />
+                    </div>
+                    <div style={{ fontSize: "0.64rem", color: "var(--text3)", marginTop: 2 }}>{fmtUsd(s.revenue_period, fx)} · {fmt(s.units_period)} units · {share}% of lines</div>
+                    {lineReorder > 0 && <div style={{ fontSize: "0.62rem", color: "#EF4444", fontWeight: 700, marginTop: 6 }}>⚠ {lineReorder} need reorder</div>}
+                    <div style={{ height: 5, background: "var(--border)", borderRadius: 3, marginTop: 10 }}>
+                      <div style={{ height: "100%", width: `${share}%`, background: col, borderRadius: 3 }} />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
           <div>
             <p style={{ fontSize: "0.68rem", color: "var(--text3)", marginBottom: 12 }}>
               Colour × Size — stock / units sold in period / price. <span style={{ color: "#EF4444" }}>Red = reorder now</span> · <span style={{ color: "#F59E0B" }}>Amber = &lt;60d cover</span>
@@ -245,7 +291,7 @@ export default function EgyptPage() {
               </div>
             )}
           </div>
-        )}
+        ))}
 
         {/* TREND */}
         {tab === "trend" && data && (() => {
