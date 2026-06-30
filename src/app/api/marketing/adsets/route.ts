@@ -1,355 +1,80 @@
 import { NextRequest, NextResponse } from "next/server";
+import { metaGet, metaMetric, hasMetaCreds } from "@/lib/meta-ads";
 
-const ADSETS: Record<string, object[]> = {
-  cmp_001: [
-    {
-      id: "as_001_1",
-      campaignId: "cmp_001",
-      name: "Cairo Travelers 25-44",
-      audience: "Cairo Metro Area, 25-44, Travel Interests",
-      spend: 16200,
-      revenue: 88290,
-      roas: 5.45,
-      impressions: 480000,
-      clicks: 14400,
-      ctr: 3.00,
-      conversions: 446,
-      frequency: 3.2,
-      reach: 150000,
-    },
-    {
-      id: "as_001_2",
-      campaignId: "cmp_001",
-      name: "Alexandria Families 28-50",
-      audience: "Alexandria, 28-50, Family Travel, Premium Shoppers",
-      spend: 12400,
-      revenue: 60916,
-      roas: 4.91,
-      impressions: 370000,
-      clicks: 10360,
-      ctr: 2.80,
-      conversions: 328,
-      frequency: 4.1,
-      reach: 90000,
-    },
-    {
-      id: "as_001_3",
-      campaignId: "cmp_001",
-      name: "Lookalike – Samsonite Purchasers",
-      audience: "Egypt, 1% Lookalike of Past Purchasers",
-      spend: 9800,
-      revenue: 50470,
-      roas: 5.15,
-      impressions: 284000,
-      clicks: 8236,
-      ctr: 2.90,
-      conversions: 248,
-      frequency: 2.8,
-      reach: 101400,
-    },
-    {
-      id: "as_001_4",
-      campaignId: "cmp_001",
-      name: "Website Visitors Retargeting",
-      audience: "Website Visitors – Last 30 Days",
-      spend: 4400,
-      revenue: 19580,
-      roas: 4.45,
-      impressions: 150000,
-      clicks: 3950,
-      ctr: 2.63,
-      conversions: 120,
-      frequency: 6.8,
-      reach: 22000,
-    },
-  ],
-  cmp_002: [
-    {
-      id: "as_002_1",
-      campaignId: "cmp_002",
-      name: "Parents 30-45 – School Season",
-      audience: "Egypt, Parents 30-45, Education Interests",
-      spend: 14000,
-      revenue: 76300,
-      roas: 5.45,
-      impressions: 420000,
-      clicks: 13440,
-      ctr: 3.20,
-      conversions: 408,
-      frequency: 3.5,
-      reach: 120000,
-    },
-    {
-      id: "as_002_2",
-      campaignId: "cmp_002",
-      name: "Students 18-25 Urban",
-      audience: "Cairo/Alexandria, 18-25, University Students",
-      spend: 11000,
-      revenue: 55000,
-      roas: 5.00,
-      impressions: 350000,
-      clicks: 10500,
-      ctr: 3.00,
-      conversions: 308,
-      frequency: 4.2,
-      reach: 83300,
-    },
-    {
-      id: "as_002_3",
-      campaignId: "cmp_002",
-      name: "Broad Egypt – AT Brand Awareness",
-      audience: "Egypt All, 20-40, Broad",
-      spend: 6500,
-      revenue: 35750,
-      roas: 5.50,
-      impressions: 210000,
-      clicks: 5460,
-      ctr: 2.60,
-      conversions: 176,
-      frequency: 2.1,
-      reach: 100000,
-    },
-  ],
-  cmp_003: [
-    {
-      id: "as_003_1",
-      campaignId: "cmp_003",
-      name: "Gifting Audience – Eid Shoppers",
-      audience: "Egypt, 25-55, Gift Buyers, Eid Behavior",
-      spend: 13500,
-      revenue: 60750,
-      roas: 4.50,
-      impressions: 410000,
-      clicks: 10660,
-      ctr: 2.60,
-      conversions: 348,
-      frequency: 5.1,
-      reach: 80400,
-    },
-    {
-      id: "as_003_2",
-      campaignId: "cmp_003",
-      name: "High Income Cairo – Premium",
-      audience: "Cairo 6th October & New Cairo, 30-55, High Income",
-      spend: 15200,
-      revenue: 60800,
-      roas: 4.00,
-      impressions: 460000,
-      clicks: 11524,
-      ctr: 2.51,
-      conversions: 373,
-      frequency: 3.9,
-      reach: 118000,
-    },
-  ],
-  cmp_004: [
-    {
-      id: "as_004_1",
-      campaignId: "cmp_004",
-      name: "Ramadan Deals – Broad Egypt",
-      audience: "Egypt, 20-50, Broad, Ramadan Shopping",
-      spend: 10800,
-      revenue: 14040,
-      roas: 1.30,
-      impressions: 310000,
-      clicks: 5580,
-      ctr: 1.80,
-      conversions: 114,
-      frequency: 7.2,
-      reach: 43000,
-    },
-    {
-      id: "as_004_2",
-      campaignId: "cmp_004",
-      name: "Value Shoppers – Discount Seekers",
-      audience: "Egypt, 20-40, Discount & Sale Interests",
-      spend: 8600,
-      revenue: 13120,
-      roas: 1.53,
-      impressions: 230000,
-      clicks: 4680,
-      ctr: 2.03,
-      conversions: 104,
-      frequency: 6.5,
-      reach: 35400,
-    },
-  ],
-  cmp_005: [
-    {
-      id: "as_005_1",
-      campaignId: "cmp_005",
-      name: "Shopping – Samsonite Brand Terms",
-      audience: "Google Shopping – Brand Keywords",
-      spend: 14000,
-      revenue: 56000,
-      roas: 4.00,
-      impressions: 280000,
-      clicks: 9800,
-      ctr: 3.50,
-      conversions: 280,
-      frequency: 1.0,
-      reach: 280000,
-    },
-    {
-      id: "as_005_2",
-      campaignId: "cmp_005",
-      name: "Shopping – Generic Luggage",
-      audience: "Google Shopping – Generic Travel & Luggage",
-      spend: 22200,
-      revenue: 70700,
-      roas: 3.18,
-      impressions: 440000,
-      clicks: 11920,
-      ctr: 2.71,
-      conversions: 368,
-      frequency: 1.0,
-      reach: 440000,
-    },
-  ],
-  cmp_006: [
-    {
-      id: "as_006_1",
-      campaignId: "cmp_006",
-      name: "Brand Search – Exact Match",
-      audience: "Google Search – Samsonite Egypt Exact",
-      spend: 7400,
-      revenue: 40700,
-      roas: 5.50,
-      impressions: 120000,
-      clicks: 11400,
-      ctr: 9.50,
-      conversions: 302,
-      frequency: 1.0,
-      reach: 120000,
-    },
-    {
-      id: "as_006_2",
-      campaignId: "cmp_006",
-      name: "Brand Search – Broad Match",
-      audience: "Google Search – Samsonite Egypt Broad",
-      spend: 5200,
-      revenue: 22360,
-      roas: 4.30,
-      impressions: 90000,
-      clicks: 7500,
-      ctr: 8.33,
-      conversions: 202,
-      frequency: 1.0,
-      reach: 90000,
-    },
-  ],
-  cmp_007: [
-    {
-      id: "as_007_1",
-      campaignId: "cmp_007",
-      name: "TikTok – Gen Z Cairo 18-24",
-      audience: "Cairo, 18-24, Lifestyle & Fashion",
-      spend: 5200,
-      revenue: 10920,
-      roas: 2.10,
-      impressions: 820000,
-      clicks: 8200,
-      ctr: 1.00,
-      conversions: 78,
-      frequency: 8.2,
-      reach: 100000,
-    },
-    {
-      id: "as_007_2",
-      campaignId: "cmp_007",
-      name: "TikTok – Young Professionals 25-30",
-      audience: "Egypt, 25-30, Travel & Lifestyle",
-      spend: 4600,
-      revenue: 8680,
-      roas: 1.89,
-      impressions: 720000,
-      clicks: 7200,
-      ctr: 1.00,
-      conversions: 64,
-      frequency: 6.0,
-      reach: 120000,
-    },
-  ],
-  cmp_008: [
-    {
-      id: "as_008_1",
-      campaignId: "cmp_008",
-      name: "Winter Travelers – Broad",
-      audience: "Egypt, 25-50, Winter Travel, Holidays",
-      spend: 14200,
-      revenue: 17324,
-      roas: 1.22,
-      impressions: 420000,
-      clicks: 8820,
-      ctr: 2.10,
-      conversions: 124,
-      frequency: 5.9,
-      reach: 71200,
-    },
-  ],
-  cmp_009: [
-    {
-      id: "as_009_1",
-      campaignId: "cmp_009",
-      name: "Add-to-Cart Abandoners",
-      audience: "Website – Added to Cart, No Purchase, 14 Days",
-      spend: 4800,
-      revenue: 28800,
-      roas: 6.00,
-      impressions: 95000,
-      clicks: 5320,
-      ctr: 5.60,
-      conversions: 182,
-      frequency: 7.5,
-      reach: 12700,
-    },
-    {
-      id: "as_009_2",
-      campaignId: "cmp_009",
-      name: "Product Page Viewers – 7 Days",
-      audience: "Website – Viewed Product Pages, No Cart, 7 Days",
-      spend: 3600,
-      revenue: 17400,
-      roas: 4.83,
-      impressions: 90000,
-      clicks: 4300,
-      ctr: 4.78,
-      conversions: 130,
-      frequency: 5.1,
-      reach: 17600,
-    },
-  ],
-  cmp_010: [
-    {
-      id: "as_010_1",
-      campaignId: "cmp_010",
-      name: "Kids Backpack – Parents 28-40",
-      audience: "Egypt, Parents 28-40, School & Kids",
-      spend: 7600,
-      revenue: 26600,
-      roas: 3.50,
-      impressions: 290000,
-      clicks: 8120,
-      ctr: 2.80,
-      conversions: 198,
-      frequency: 3.3,
-      reach: 87900,
-    },
-  ],
-};
+function mockAdSets() {
+  return [
+    { id: "as1", name: "Lookalike 1% — Purchasers", audience: "LAL 1% Buyers", spend: 9200, revenue: 34000, roas: 3.7, reach: 280000, frequency: 2.4, ctr: 2.8, conversions: 534 },
+    { id: "as2", name: "Interest — Fashion & Style", audience: "Fashion Interest", spend: 7800, revenue: 24600, roas: 3.15, reach: 420000, frequency: 1.9, ctr: 2.1, conversions: 388 },
+    { id: "as3", name: "Broad — 25-44", audience: "Broad Demo", spend: 6100, revenue: 14800, roas: 2.43, reach: 680000, frequency: 1.4, ctr: 1.6, conversions: 218 },
+    { id: "as4", name: "Retargeting — Video Viewers 50%+", audience: "Video Viewers", spend: 5300, revenue: 22600, roas: 4.26, reach: 94000, frequency: 3.8, ctr: 4.2, conversions: 311 },
+  ];
+}
+
+function audienceLabel(targeting: any): string {
+  if (!targeting) return "Egypt";
+  const parts: string[] = [];
+  const cities = targeting.geo_locations?.cities?.map((c: any) => c.name) ?? [];
+  const countries = targeting.geo_locations?.countries ?? [];
+  if (cities.length) parts.push(cities.slice(0, 2).join(", "));
+  else if (countries.length) parts.push(countries.join(", "));
+  if (targeting.age_min && targeting.age_max) parts.push(`${targeting.age_min}-${targeting.age_max}`);
+  return parts.join(", ") || "Egypt";
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const campaignId = searchParams.get("campaignId");
 
-  if (!campaignId) {
-    return NextResponse.json({ error: "campaignId query parameter is required" }, { status: 400 });
-  }
+  if (!campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
+  if (!hasMetaCreds()) return NextResponse.json(mockAdSets());
 
-  const adsets = ADSETS[campaignId];
-  if (!adsets) {
-    return NextResponse.json([]);
-  }
+  const accountId = process.env.META_AD_ACCOUNT_ID!;
+  const to = new Date().toISOString().split("T")[0];
+  const from = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+  const timeRange = JSON.stringify({ since: from, until: to });
 
-  return NextResponse.json(adsets);
+  try {
+    const [adsetsRes, insightsRes] = await Promise.all([
+      metaGet<any>(`/${campaignId}/adsets`, {
+        fields: "id,name,effective_status,targeting",
+        limit: "50",
+      }),
+      metaGet<any>(`/${accountId}/insights`, {
+        fields: "adset_id,spend,impressions,clicks,ctr,actions,action_values,reach,frequency",
+        time_range: timeRange,
+        level: "adset",
+        filtering: JSON.stringify([{ field: "campaign.id", operator: "EQUAL", value: campaignId }]),
+        limit: "50",
+      }),
+    ]);
+
+    const insightMap = new Map<string, any>();
+    for (const i of insightsRes.data ?? []) insightMap.set(i.adset_id, i);
+
+    const adsets = (adsetsRes.data ?? []).map((as: any) => {
+      const ins = insightMap.get(as.id) ?? {};
+      const spend = parseFloat(ins.spend ?? "0");
+      const revenue = metaMetric(ins.action_values, "purchase");
+      const conversions = Math.round(metaMetric(ins.actions, "purchase"));
+      const roas = spend > 0 ? revenue / spend : 0;
+      return {
+        id: as.id,
+        campaignId,
+        name: as.name,
+        audience: audienceLabel(as.targeting),
+        spend: Math.round(spend),
+        revenue: Math.round(revenue),
+        roas: parseFloat(roas.toFixed(2)),
+        ctr: parseFloat(parseFloat(ins.ctr ?? "0").toFixed(2)),
+        conversions,
+        reach: parseInt(ins.reach ?? "0"),
+        frequency: parseFloat(parseFloat(ins.frequency ?? "0").toFixed(1)),
+      };
+    });
+
+    return NextResponse.json(adsets);
+  } catch (err) {
+    console.error("[marketing/adsets] Meta error:", err);
+    return NextResponse.json(mockAdSets());
+  }
 }

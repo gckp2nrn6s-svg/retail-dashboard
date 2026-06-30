@@ -1,148 +1,134 @@
 import { NextRequest, NextResponse } from "next/server";
+import { metaGet, metaMetric, hasMetaCreds } from "@/lib/meta-ads";
 
-export async function GET(_request: NextRequest) {
-  const data = {
-    actions: [
-      {
-        priority: "high",
-        type: "scale",
-        title: "Scale Back-to-School Meta Campaign",
-        description:
-          "The Back-to-School American Tourister campaign is delivering 5.30× ROAS with strong CTR of 3.0%. Increase daily budget by 40% to capture remaining season demand before September.",
-        impact: "Estimated +EGP 66,800 incremental revenue over 3 weeks at current ROAS.",
-        campaign: "cmp_002",
-      },
-      {
-        priority: "high",
-        type: "pause",
-        title: "Pause Ramadan Eid Special Campaign",
-        description:
-          "The Ramadan Eid Special campaign on Google has ROAS of 1.40×, well below the 2.5× break-even threshold. Audience fatigue is evident — frequency hit 7.2×. Reallocate EGP 10,600 remaining budget to the Summer Collection campaign.",
-        impact: "Prevent further EGP loss and redeploy budget to 5×+ ROAS campaigns.",
-        campaign: "cmp_004",
-      },
-      {
-        priority: "high",
-        type: "scale",
-        title: "Increase Retargeting Budget – Cairo Airport Segment",
-        description:
-          "Cart-abandonment retargeting is delivering 6.0× ROAS with only EGP 4,800 spent. This is the highest-performing ad set in the account. Budget is capped too conservatively — increase by 60% immediately.",
-        impact: "Estimated +EGP 28,800 incremental revenue per month.",
-        campaign: "cmp_009",
-      },
-      {
-        priority: "medium",
-        type: "adjust",
-        title: "Reduce TikTok Frequency — Gen Z Cairo",
-        description:
-          "Ad frequency for the TikTok Gen Z Cairo 18-24 ad set has reached 8.2×, causing creative fatigue. Introduce 2 new video creatives (pack-with-me format) and set a frequency cap of 4×.",
-        impact: "Expected CTR improvement from 1.0% to 1.6–1.8%, reducing CPA by ~25%.",
-        campaign: "cmp_007",
-      },
-      {
-        priority: "medium",
-        type: "adjust",
-        title: "Switch Google Shopping to Target ROAS Bidding",
-        description:
-          "The Google Shopping – Luggage All Brands campaign is currently on Manual CPC. With 648 conversions in the period, it has enough data to switch to Target ROAS bidding at 3.5× to improve efficiency.",
-        impact: "Estimated 15–20% improvement in ROAS over 4-week learning period.",
-        campaign: "cmp_005",
-      },
-      {
-        priority: "medium",
-        type: "test",
-        title: "Test Arabic-Language Creatives on Meta",
-        description:
-          "All current top-performing creatives use English copy. Test Arabic headlines and body text for the Summer Collection campaign targeting Cairo Travelers 25-44. Arabic copy typically improves CTR by 20–35% in Egyptian markets.",
-        impact: "Potential CTR uplift from 2.88% to 3.5%+, reducing CPC by ~18%.",
-        campaign: "cmp_001",
-      },
-      {
-        priority: "low",
-        type: "test",
-        title: "Launch Google Performance Max Campaign",
-        description:
-          "No Performance Max campaigns are currently running. Create a PMax campaign with Samsonite & American Tourister product feeds to capture cross-channel demand across Search, Shopping, Display, and YouTube.",
-        impact: "Estimated 15–25% incremental conversions from untapped Google inventory.",
-      },
-      {
-        priority: "low",
-        type: "adjust",
-        title: "Exclude Converted Users from Awareness Campaigns",
-        description:
-          "Recent purchasers (last 90 days) are not excluded from the TikTok awareness campaigns, wasting spend on already-converted users. Add a 'Purchased – 90 Days' exclusion audience.",
-        impact: "Estimated 8–12% reduction in wasted spend on TikTok.",
-        campaign: "cmp_007",
-      },
+function mockRecs() {
+  return {
+    brief: "Performance is trending positively. Meta retargeting campaigns are outperforming benchmarks with 4.82× ROAS. Overall spend efficiency is up 8.4% vs prior period.",
+    alerts: [
+      { type: "good", text: "Meta Retargeting ROAS 4.82× — scale budget by 15%" },
+      { type: "warning", text: "High frequency detected on one or more campaigns — refresh creatives" },
+    ],
+    doThis: [
+      { title: "Scale top-ROAS campaigns", detail: "Increase daily budgets by 20–30% on campaigns delivering ≥4× ROAS." },
+      { title: "Test Arabic creative variants", detail: "Arabic-language headlines typically improve CTR by 20–35% for Egyptian audiences." },
+      { title: "Tighten retargeting windows", detail: "Use 7–14 day windows instead of 30-day for higher intent and lower CPA." },
+    ],
+    avoidThis: [
+      { title: "Ignore high-frequency ad sets", detail: "Ad sets above 5× frequency suffer creative fatigue. Rotate in new creatives immediately." },
+      { title: "Broad demo targeting without signals", detail: "Cold broad audiences underperform vs 1% lookalikes from purchasers." },
     ],
     creativeInsights: [
-      {
-        insight: "Video outperforms static images by 38% in ROAS",
-        detail:
-          "Across all Meta campaigns, video creatives average 5.2× ROAS vs 3.8× for static images. Prioritize video production for Q3, especially short-form 15-second formats.",
-      },
-      {
-        insight: "Carousel format drives highest CTR for product discovery",
-        detail:
-          "Carousel ads achieve an average CTR of 3.15% vs 2.6% for single-image ads. Use carousels for collection launches and multi-product promotions.",
-      },
-      {
-        insight: "Urgency messaging in retargeting increases conversions by 22%",
-        detail:
-          "Ads using 'limited stock' or 'offer expires' language in retargeting ad sets convert 22% higher than generic reminder ads. Apply consistently to all cart-abandonment creatives.",
-      },
-      {
-        insight: "Summer travel imagery outperforms product-only shots",
-        detail:
-          "Creatives showing people using luggage in travel contexts (airports, beaches, hotels) achieve 1.4× higher ROAS than plain product-on-white-background images.",
-      },
+      { title: "Video drives 2× CTR vs static", detail: "15-second video creatives consistently outperform static images on Meta for Egyptian audiences." },
+      { title: "Carousel for multi-product", detail: "Carousel ads show 18% higher conversion rate when featuring 3+ products." },
     ],
     audienceInsights: [
-      {
-        insight: "Cairo Travelers 25-44 is the highest-value segment",
-        detail:
-          "This segment delivers 5.45× ROAS with low CPA of EGP 36. Expand lookalike audiences from this seed pool to 2% and 3% similarity for the Summer and Eid campaigns.",
-      },
-      {
-        insight: "Alexandria audience significantly underfunded",
-        detail:
-          "The Alexandria Families 28-50 ad set delivers 4.91× ROAS but receives only 29% of campaign spend vs Cairo. Rebalance geographic budget allocation.",
-      },
-      {
-        insight: "Discount-seeker audiences underperform in premium campaigns",
-        detail:
-          "Audiences with 'Discount & Sale' interests show 40% lower ROAS than travel-interest audiences. Avoid using these for Samsonite premium tier campaigns; reserve for American Tourister promotions.",
-      },
-      {
-        insight: "Retargeting windows beyond 30 days show diminishing returns",
-        detail:
-          "30-day retargeting audiences convert at 3.5× vs 14-day audiences at 5.0×. Tighten retargeting windows to 7–14 days for higher-intent, lower-waste spend.",
-      },
+      { title: "LAL 1% purchasers is your best segment", detail: "1% lookalike of past buyers delivers the best ROAS — expand to 2% once daily budget exceeds EGP 5,000." },
+      { title: "Retargeting is underutilised", detail: "Cart-abandonment retargeting typically delivers 5–6× ROAS but receives less than 20% of budget." },
     ],
-    avoidList: [
-      "Running Samsonite premium campaigns to broad 'discount-seeker' interest audiences — ROAS averages 1.3× in this segment.",
-      "Using frequency caps above 5× without refreshing creatives — fatigue begins at 4× and ROAS drops sharply after 6×.",
-      "Generic product-on-white-background static images as primary creatives for prospecting campaigns.",
-      "Running seasonal campaigns (Eid, Ramadan) beyond the seasonal window — CPAs inflate 3–4× post-holiday.",
-      "Manual CPC bidding on Google Shopping with more than 500 conversions/month — switch to Target ROAS.",
-      "Ignoring audience exclusions — converted users and irrelevant demographics waste 12–18% of budget across campaigns.",
-      "TikTok for direct conversion campaigns targeting 35+ — this audience converts poorly on TikTok; use Meta instead.",
-    ],
-    doList: [
-      "Prioritize video-first creative strategy across all Meta campaigns — 38% higher ROAS vs static.",
-      "Create dedicated Arabic-language ad variants for all Egyptian city targeting segments.",
-      "Use 1% lookalike audiences built from your top-ROAS customer segments (Cairo Travelers 25-44).",
-      "Implement dayparting — 70% of Egyptian e-commerce conversions occur between 8 PM and 1 AM local time.",
-      "Set up Google Shopping Product Listing Ads with separate campaigns for Samsonite vs American Tourister brands.",
-      "Refresh creatives every 3–4 weeks for active ad sets with frequency above 3×.",
-      "Allocate 70% of budget to proven campaigns (≥4× ROAS) and 30% to testing new audiences and formats.",
-      "Add cart-abandonment email retargeting alongside Meta retargeting for users who don't engage with paid ads.",
-      "Test Ramadan-specific creative angles (gifting, family travel, charitable giving) early — start campaigns 3 weeks before Ramadan.",
-      "Use Google Brand Search campaigns to protect branded keywords and reduce CPA — currently delivering 5.0× ROAS.",
-    ],
-    dailyBrief:
-      "Today's performance marketing overview for your Egyptian luggage portfolio looks strong but uneven: Meta continues to drive the majority of attributed revenue at 5.3× ROAS, led by the Back-to-School and Summer Collection campaigns, while the paused Ramadan Eid campaign on Google remains a drag on overall account efficiency at 1.4× ROAS. Your top priority today should be scaling the cart-abandonment retargeting segment (6.0× ROAS) and pausing the underperforming Ramadan campaign to free up budget — together these two moves could add an estimated EGP 95,600 in net revenue improvement this month.",
   };
+}
 
-  return NextResponse.json(data);
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const from = searchParams.get("from") ?? new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+  const to = searchParams.get("to") ?? new Date().toISOString().split("T")[0];
+
+  if (!hasMetaCreds()) return NextResponse.json(mockRecs());
+
+  const accountId = process.env.META_AD_ACCOUNT_ID!;
+
+  try {
+    const [campsRes, insightsRes] = await Promise.all([
+      metaGet<any>(`/${accountId}/campaigns`, {
+        fields: "id,name,effective_status",
+        effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+        limit: "50",
+      }),
+      metaGet<any>(`/${accountId}/insights`, {
+        fields: "campaign_id,campaign_name,spend,actions,action_values,impressions,clicks,ctr,frequency",
+        time_range: JSON.stringify({ since: from, until: to }),
+        level: "campaign",
+        limit: "50",
+      }),
+    ]);
+
+    const statusMap = new Map<string, string>();
+    for (const c of campsRes.data ?? []) statusMap.set(c.id, c.effective_status);
+
+    const doThis: { title: string; detail: string }[] = [];
+    const avoidThis: { title: string; detail: string }[] = [];
+    const alerts: { type: "warning" | "danger" | "good"; text: string }[] = [];
+
+    let totalSpend = 0;
+    let totalRevenue = 0;
+
+    for (const ins of insightsRes.data ?? []) {
+      const spend = parseFloat(ins.spend ?? "0");
+      if (spend < 50) continue; // skip near-zero spend
+
+      const revenue = metaMetric(ins.action_values, "purchase");
+      const conversions = Math.round(metaMetric(ins.actions, "purchase"));
+      const roas = spend > 0 ? revenue / spend : 0;
+      const freq = parseFloat(ins.frequency ?? "0");
+      const ctr = parseFloat(ins.ctr ?? "0");
+      const isActive = statusMap.get(ins.campaign_id) === "ACTIVE";
+      const name = ins.campaign_name as string;
+
+      totalSpend += spend;
+      totalRevenue += revenue;
+
+      if (roas >= 4.5 && isActive) {
+        doThis.push({ title: `Scale "${name}"`, detail: `ROAS of ${roas.toFixed(1)}× — increase budget 20–30% to capture more demand before it softens.` });
+        alerts.push({ type: "good", text: `"${name}" delivering ${roas.toFixed(1)}× ROAS — top performer this period.` });
+      } else if (roas < 2 && spend > 500) {
+        avoidThis.push({ title: `Review "${name}"`, detail: `ROAS of ${roas.toFixed(1)}× is below break-even. Restructure targeting or pause and reallocate budget.` });
+        alerts.push({ type: "danger", text: `"${name}" at ${roas.toFixed(1)}× ROAS — below break-even threshold.` });
+      } else if (roas >= 2 && roas < 3 && isActive) {
+        doThis.push({ title: `Optimise "${name}"`, detail: `ROAS of ${roas.toFixed(1)}× has room to grow. Test new audience segments or creative variants.` });
+      }
+
+      if (freq > 5 && isActive) {
+        alerts.push({ type: "warning", text: `Frequency at ${freq.toFixed(1)}× on "${name}" — creative fatigue risk, refresh now.` });
+        avoidThis.push({ title: `High frequency on "${name}"`, detail: `At ${freq.toFixed(1)}× frequency, audience is seeing the same ad too often. Introduce 2–3 new creative variants.` });
+      }
+
+      if (ctr < 0.8 && isActive && spend > 500) {
+        avoidThis.push({ title: `Low CTR on "${name}"`, detail: `CTR of ${ctr.toFixed(2)}% is below benchmark (1.5%+). Test new headlines and creative formats to improve engagement.` });
+      }
+    }
+
+    // Pad minimums
+    if (doThis.length === 0) {
+      doThis.push({ title: "Set up purchase conversion events", detail: "No attributed purchases detected. Verify your Meta Pixel purchase event is firing on the order confirmation page." });
+    }
+    if (avoidThis.length === 0) {
+      avoidThis.push({ title: "Avoid pausing campaigns mid-learning phase", detail: "Facebook's algorithm needs 50 conversions per ad set per week to exit the learning phase. Pausing resets this clock." });
+    }
+    if (alerts.length === 0) {
+      alerts.push({ type: "good", text: "No critical alerts — account performance looks stable." });
+    }
+
+    const overallRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+    const brief = `Your Meta account spent EGP ${Math.round(totalSpend).toLocaleString()} from ${from} to ${to}, generating EGP ${Math.round(totalRevenue).toLocaleString()} in attributed revenue at ${overallRoas.toFixed(1)}× blended ROAS. ${doThis[0] ? `Priority action: ${doThis[0].title.toLowerCase()}.` : "Review campaign structure to improve efficiency."}`;
+
+    return NextResponse.json({
+      brief,
+      alerts: alerts.slice(0, 5),
+      doThis: doThis.slice(0, 5),
+      avoidThis: avoidThis.slice(0, 4),
+      creativeInsights: [
+        { title: "Video drives 2× CTR vs static", detail: "15-second video creatives consistently outperform static images on Meta for Egyptian audiences — prioritise video production for Q3." },
+        { title: "Arabic copy improves CTR 20–35%", detail: "Test Arabic-language headlines for all Egypt-targeted campaigns. Local language significantly improves click-through and reduces CPC." },
+        { title: "Carousel for multi-product showcases", detail: "Use carousel format when showing 3+ SKUs — it drives 18% higher conversion rate than single-image ads in the luggage category." },
+      ],
+      audienceInsights: [
+        { title: "1% LAL purchasers is your best segment", detail: "Lookalike audiences built from actual buyers consistently deliver the best CPA and ROAS. Expand to 2% once daily budget exceeds EGP 5,000." },
+        { title: "Tighten retargeting to 7–14 days", detail: "30-day retargeting windows dilute intent. 7–14 day windows typically deliver 40% lower CPA with higher conversion rate." },
+        { title: "Exclude recent buyers from prospecting", detail: "Add a 'Purchasers — last 90 days' exclusion to all prospecting campaigns to avoid wasting spend on already-converted users." },
+      ],
+    });
+  } catch (err) {
+    console.error("[marketing/recommendations] Meta error:", err);
+    return NextResponse.json(mockRecs());
+  }
 }
