@@ -55,7 +55,7 @@ function parseDesc(desc: string): { color: string; size: string } {
 
 export default function EgyptPage() {
   const { range } = useDateRange();
-  const [data, setData] = useState<{ summary: LineSummary[]; monthly: Monthly[]; byStore: StoreRow[]; skus: Sku[]; fx: number; from: string; to: string } | null>(null);
+  const [data, setData] = useState<{ summary: LineSummary[]; monthly: Monthly[]; byStore: StoreRow[]; skus: Sku[]; fx: number; dataThrough: string | null; from: string; to: string } | null>(null);
   const [activeLine, setActiveLine] = useState("SKYTRAC");
   const [tab, setTab] = useState<"overview" | "stock" | "stores" | "trend">("overview");
 
@@ -135,6 +135,12 @@ export default function EgyptPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>{[1,2,3,4,5].map(i => (<div key={i} style={{ height: 36, borderRadius: 8, background: "rgba(255,255,255,0.05)", animation: "shimmer 1.5s infinite" }} />))}</div>
         )}
       </div>
+
+      {data?.dataThrough && data.dataThrough < new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10) && (
+        <div style={{ margin: "12px 16px 0", padding: "10px 14px", borderRadius: 12, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", fontSize: "0.7rem", color: "var(--text2)", lineHeight: 1.5 }}>
+          ⚠️ <strong>Current-period figures are live.</strong> All-time totals &amp; the monthly trend reflect the synced snapshot through <strong>{data.dataThrough}</strong> — they&apos;ll catch up once the NAV→Postgres sync resumes.
+        </div>
+      )}
 
       {/* Line selector */}
       <div style={{ display: "flex", gap: 8, padding: "14px 16px 0", overflowX: "auto" }} className="hide-scrollbar">

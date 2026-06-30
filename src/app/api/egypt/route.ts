@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { navQuery } from "@/lib/navdb";
 import { getCombinedVelocity } from "@/lib/navVelocity";
 
 function safeDate(val: string | null, fallback: string): string {
@@ -66,6 +67,46 @@ const UNIFIED_CTE = `
     UNION ALL
     ${FD_UNIFIED}
   )`;
+
+// Live per-period MIE sales (POS + B2B invoices + Shopify rollup + factory) so the
+// CURRENT period stays correct even when the all_sales snapshot pipeline lags. All-time
+// + monthly remain on all_sales (historical, lag-tolerant). POS+Shopify ≈ 96% of EG;
+// B2B (~4%) is lumped under 'HO' and factory is per-line (no item_no).
+type Bucket = Map<string, { units: number; revenue: number }>;
+interface LiveAgg { byLine: Bucket; byLineStore: Bucket; byItem: Bucket }
+
+async function livePeriodMie(from: string, to: string, lineOf: Map<string, string>): Promise<LiveAgg> {
+  const byLine: Bucket = new Map(), byLineStore: Bucket = new Map(), byItem: Bucket = new Map();
+  const bump = (m: Bucket, k: string, u: number, r: number) => { const e = m.get(k) || { units: 0, revenue: 0 }; e.units += u; e.revenue += r; m.set(k, e); };
+  const addItem = (item: string, store: string, u: number, r: number) => {
+    const line = lineOf.get(item); if (!line) return;
+    bump(byItem, item, u, r); bump(byLine, line, u, r); bump(byLineStore, `${line}|${store}`, u, r);
+  };
+  const [pos, b2b, shop, fac] = await Promise.all([
+    navQuery<{ item: string; store: string; rev: number; units: number }>(
+      `SELECT [Item No_] AS item, [Store No_] AS store, -SUM([Net Amount]+[VAT Amount]) AS rev, -SUM([Quantity]) AS units
+         FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] <> 'ONLINE'
+         GROUP BY [Item No_], [Store No_]`, { from, to }).catch(() => []),
+    navQuery<{ item: string; rev: number; units: number }>(
+      `SELECT [No_] AS item, SUM([Amount Including VAT]) AS rev, SUM([Quantity]) AS units
+         FROM SalesInvoiceLine WHERE [Type]=2 AND CAST([Posting Date] AS DATE) BETWEEN @from AND @to GROUP BY [No_]`,
+      { from, to }).catch(() => []),
+    query<{ item_no: string; units: string; revenue: string }>(
+      `SELECT m.item_no, SUM(s.units)::numeric AS units, SUM(s.revenue)::numeric AS revenue
+         FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
+        WHERE s.sale_date BETWEEN $1 AND $2 GROUP BY m.item_no`, [from, to]).catch(() => []),
+    query<{ line: string; store: string; units: string; revenue: string }>(
+      `SELECT line, store, SUM(units)::numeric AS units, SUM(revenue)::numeric AS revenue FROM (
+         SELECT ${FD_LINE_CASE} AS line, 'FD:'||UPPER(TRIM(f.client)) AS store, f.qty AS units, f.total_sales AS revenue
+         FROM factory_direct_sales f WHERE f.sale_date BETWEEN $1 AND $2) t
+       WHERE line IS NOT NULL GROUP BY line, store`, [from, to]).catch(() => []),
+  ]);
+  for (const r of pos)  addItem(String(r.item).trim(), String(r.store || "").trim() || "HO", Number(r.units) || 0, Math.round(Number(r.rev) || 0));
+  for (const r of b2b)  addItem(String(r.item).trim(), "HO", Number(r.units) || 0, Math.round(Number(r.rev) || 0));
+  for (const r of shop) addItem(String(r.item_no).trim(), "SHOPIFY-AMT", Number(r.units) || 0, Math.round(Number(r.revenue) || 0));
+  for (const r of fac) { const line = String(r.line).trim(), store = String(r.store).trim(); bump(byLine, line, Number(r.units) || 0, Math.round(Number(r.revenue) || 0)); bump(byLineStore, `${line}|${store}`, Number(r.units) || 0, Math.round(Number(r.revenue) || 0)); }
+  return { byLine, byLineStore, byItem };
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -141,6 +182,17 @@ export async function GET(req: NextRequest) {
   ]);
   const fx = parseFloat(fxRows[0]?.egp_per_usd || "50");
 
+  // Live period/prev override (resilient to all_sales snapshot lag) + snapshot freshness.
+  const mieRows = await query<{ item_no: string; line: string }>(`SELECT item_no, ${MIE_CASE} AS line FROM warehouse_stock WHERE description NOT ILIKE '%BLOCKED%'`);
+  const lineOf = new Map<string, string>();
+  for (const r of mieRows) if (r.line) lineOf.set(String(r.item_no).trim(), r.line);
+  const [livePeriod, livePrev, freshRow] = await Promise.all([
+    livePeriodMie(from, to, lineOf),
+    livePeriodMie(prevFrom, prevTo, lineOf),
+    query<{ d: string }>("SELECT MAX(sale_date)::text AS d FROM all_sales"),
+  ]);
+  const dataThrough = freshRow[0]?.d ?? null;
+
   // Days cover uses the last 30 days of COMBINED sell-through (NAV POS + Shopify own-
   // website + factory-direct), so an Egyptian-made line selling online or via factory
   // isn't mis-flagged for reorder — same velocity the Stock module's alerts use.
@@ -156,9 +208,9 @@ export async function GET(req: NextRequest) {
       ...s,
       in_stock: stock,
       unit_price: parseInt(s.unit_price),
-      units_period: parseFloat(s.units_period),
-      units_all: parseFloat(s.units_all),
-      revenue_period: parseFloat(s.revenue_period),
+      units_period: livePeriod.byItem.get(s.item_no)?.units ?? 0,        // period: LIVE
+      units_all: parseFloat(s.units_all),                               // all-time: snapshot
+      revenue_period: livePeriod.byItem.get(s.item_no)?.revenue ?? 0,
       revenue_all: parseFloat(s.revenue_all),
       units_30d: sold30,
       daysCover,
@@ -174,9 +226,9 @@ export async function GET(req: NextRequest) {
       ...s,
       storeName: isFd ? fdName : (STORE_NAMES[s.store_code] || s.store_code),
       factory: isFd,
-      units_period: parseFloat(s.units_period),
-      revenue_period: parseFloat(s.revenue_period),
-      units_all: parseFloat(s.units_all),
+      units_period: livePeriod.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0,        // period: LIVE
+      revenue_period: livePeriod.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0,
+      units_all: parseFloat(s.units_all),                                                       // all-time: snapshot
       revenue_all: parseFloat(s.revenue_all),
     };
   });
@@ -184,13 +236,13 @@ export async function GET(req: NextRequest) {
   const summaryParsed = summary.map((s) => ({
     ...s,
     code: LINE_CODES[s.line] || "",
-    revenue_all: parseFloat(s.revenue_all),
-    revenue_period: parseFloat(s.revenue_period),
-    revenue_prev: parseFloat(s.revenue_prev),
+    revenue_all: parseFloat(s.revenue_all),                          // all-time: snapshot
+    revenue_period: livePeriod.byLine.get(s.line)?.revenue ?? 0,     // period: LIVE
+    revenue_prev: livePrev.byLine.get(s.line)?.revenue ?? 0,         // prev:   LIVE
     units_all: parseFloat(s.units_all),
-    units_period: parseFloat(s.units_period),
-    units_prev: parseFloat(s.units_prev),
+    units_period: livePeriod.byLine.get(s.line)?.units ?? 0,
+    units_prev: livePrev.byLine.get(s.line)?.units ?? 0,
   }));
 
-  return NextResponse.json({ summary: summaryParsed, monthly, byStore: byStoreParsed, skus: skusParsed, fx, from, to });
+  return NextResponse.json({ summary: summaryParsed, monthly, byStore: byStoreParsed, skus: skusParsed, fx, dataThrough, from, to });
 }
