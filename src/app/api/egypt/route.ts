@@ -94,9 +94,24 @@ async function livePeriodMie(from: string, to: string, lineOf: Map<string, strin
          FROM SalesInvoiceLine WHERE [Type]=2 AND CAST([Posting Date] AS DATE) BETWEEN @from AND @to GROUP BY [No_]`,
       { from, to }).catch(() => []),
     query<{ item_no: string; units: string; revenue: string }>(
-      `SELECT m.item_no, SUM(s.units)::numeric AS units, SUM(s.revenue)::numeric AS revenue
-         FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
-        WHERE s.sale_date BETWEEN $1 AND $2 GROUP BY m.item_no`, [from, to]).catch(() => []),
+      // Non-bundle SKUs: direct 1:1 mapping (original behaviour).
+      // Bundle SKUs: exploded via shopify_bundle_components — each MIE component gets
+      // 1 unit per bundle sale and revenue proportional to its catalogue price.
+      // Non-MIE components (LU4/LU8/QU9 bags) appear in the table but are silently
+      // dropped by the addItem() lineOf filter, correctly excluding their revenue from MIE.
+      `SELECT item_no, SUM(units)::numeric AS units, ROUND(SUM(revenue))::numeric AS revenue FROM (
+         SELECT m.item_no, SUM(s.units) AS units, SUM(s.revenue) AS revenue
+           FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
+          WHERE s.sku NOT LIKE '%+%' AND s.sale_date BETWEEN $1 AND $2
+          GROUP BY m.item_no
+         UNION ALL
+         SELECT bc.component_item_no AS item_no, SUM(s.units) AS units,
+                SUM(s.revenue * bc.price_weight) AS revenue
+           FROM shopify_item_daily s
+           JOIN shopify_bundle_components bc ON bc.bundle_sku = s.sku
+          WHERE s.sale_date BETWEEN $1 AND $2
+          GROUP BY bc.component_item_no
+       ) t GROUP BY item_no`, [from, to]).catch(() => []),
     query<{ line: string; store: string; units: string; revenue: string }>(
       `SELECT line, store, SUM(units)::numeric AS units, SUM(revenue)::numeric AS revenue FROM (
          SELECT ${FD_LINE_CASE} AS line, 'FD:'||UPPER(TRIM(f.client)) AS store, f.qty AS units, f.total_sales AS revenue
