@@ -84,11 +84,13 @@ async function livePeriodMie(from: string, to: string, lineOf: Map<string, strin
   };
   const [pos, b2b, shop, fac] = await Promise.all([
     navQuery<{ item: string; store: string; rev: number; units: number }>(
-      `SELECT [Item No_] AS item, [Store No_] AS store, -SUM([Net Amount]+[VAT Amount]) AS rev, -SUM([Quantity]) AS units
+      // ex-VAT net (matches pos_sales / all_sales basis), store != ONLINE
+      `SELECT [Item No_] AS item, [Store No_] AS store, -SUM([Net Amount]) AS rev, -SUM([Quantity]) AS units
          FROM TransSalesEntry WHERE CAST([Date] AS DATE) BETWEEN @from AND @to AND [Store No_] <> 'ONLINE'
          GROUP BY [Item No_], [Store No_]`, { from, to }).catch(() => []),
     navQuery<{ item: string; rev: number; units: number }>(
-      `SELECT [No_] AS item, SUM([Amount Including VAT]) AS rev, SUM([Quantity]) AS units
+      // B2B invoices (~4%), ex-VAT net amount
+      `SELECT [No_] AS item, SUM([Amount]) AS rev, SUM([Quantity]) AS units
          FROM SalesInvoiceLine WHERE [Type]=2 AND CAST([Posting Date] AS DATE) BETWEEN @from AND @to GROUP BY [No_]`,
       { from, to }).catch(() => []),
     query<{ item_no: string; units: string; revenue: string }>(
@@ -193,6 +195,22 @@ export async function GET(req: NextRequest) {
   ]);
   const dataThrough = freshRow[0]?.d ?? null;
 
+  // Gap-fill all-time + trend with live data for the days the snapshot is missing, so
+  // the page is fully current (and the banner clears) without touching the snapshot tables.
+  let liveGap: LiveAgg | null = null;
+  if (dataThrough && dataThrough < defaultTo) {
+    const gapFrom = new Date(new Date(dataThrough).getTime() + 86400000).toISOString().slice(0, 10);
+    liveGap = await livePeriodMie(gapFrom, defaultTo, lineOf);
+  }
+  const effThrough = liveGap ? defaultTo : dataThrough; // banner only shows if NOT gap-filled
+  const curMonth = defaultTo.slice(0, 7);
+  // Fold the gap into the monthly trend's current-month bar (per line).
+  const monthlyFilled = liveGap ? monthly.map(m => {
+    if (m.month !== curMonth) return m;
+    const g = liveGap!.byLine.get(m.line);
+    return g ? { ...m, units: String(parseFloat(m.units) + g.units), revenue: String(parseFloat(m.revenue) + g.revenue) } : m;
+  }) : monthly;
+
   // Days cover uses the last 30 days of COMBINED sell-through (NAV POS + Shopify own-
   // website + factory-direct), so an Egyptian-made line selling online or via factory
   // isn't mis-flagged for reorder — same velocity the Stock module's alerts use.
@@ -228,21 +246,21 @@ export async function GET(req: NextRequest) {
       factory: isFd,
       units_period: livePeriod.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0,        // period: LIVE
       revenue_period: livePeriod.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0,
-      units_all: parseFloat(s.units_all),                                                       // all-time: snapshot
-      revenue_all: parseFloat(s.revenue_all),
+      units_all: parseFloat(s.units_all) + (liveGap?.byLineStore.get(`${s.line}|${s.store_code}`)?.units ?? 0),     // all-time: snapshot + gap
+      revenue_all: parseFloat(s.revenue_all) + (liveGap?.byLineStore.get(`${s.line}|${s.store_code}`)?.revenue ?? 0),
     };
   });
 
   const summaryParsed = summary.map((s) => ({
     ...s,
     code: LINE_CODES[s.line] || "",
-    revenue_all: parseFloat(s.revenue_all),                          // all-time: snapshot
+    revenue_all: parseFloat(s.revenue_all) + (liveGap?.byLine.get(s.line)?.revenue ?? 0),  // all-time: snapshot + live gap
     revenue_period: livePeriod.byLine.get(s.line)?.revenue ?? 0,     // period: LIVE
     revenue_prev: livePrev.byLine.get(s.line)?.revenue ?? 0,         // prev:   LIVE
-    units_all: parseFloat(s.units_all),
+    units_all: parseFloat(s.units_all) + (liveGap?.byLine.get(s.line)?.units ?? 0),
     units_period: livePeriod.byLine.get(s.line)?.units ?? 0,
     units_prev: livePrev.byLine.get(s.line)?.units ?? 0,
   }));
 
-  return NextResponse.json({ summary: summaryParsed, monthly, byStore: byStoreParsed, skus: skusParsed, fx, dataThrough, from, to });
+  return NextResponse.json({ summary: summaryParsed, monthly: monthlyFilled, byStore: byStoreParsed, skus: skusParsed, fx, dataThrough: effThrough, from, to });
 }
