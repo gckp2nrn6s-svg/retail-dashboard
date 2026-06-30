@@ -41,7 +41,7 @@ interface Campaign {
   ctr: number;
   cpa: number;
   conversions: number;
-  budgetUsed: number; // %
+  budgetUsed: number; // % (API may return budgetUsedPct — normalised on ingest)
 }
 
 interface AdSet {
@@ -251,18 +251,20 @@ function Skeleton({ h, w }: { h?: string; w?: string }) {
 }
 
 function StatusBadge({ status }: { status: Campaign["status"] }) {
-  const cfg = {
+  const normalized = (status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()) as Campaign["status"];
+  const cfg = ({
     Active: { bg: "rgba(16,185,129,0.15)", color: "#10B981", dot: "#10B981" },
     Paused: { bg: "rgba(245,158,11,0.15)", color: "#F59E0B", dot: "#F59E0B" },
     Ended: { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", dot: "rgba(255,255,255,0.3)" },
-  }[status];
+  } as Record<string, { bg: string; color: string; dot: string }>)[normalized]
+    ?? { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", dot: "rgba(255,255,255,0.3)" };
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
       style={{ background: cfg.bg, color: cfg.color }}
     >
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.dot }} />
-      {status}
+      {normalized}
     </span>
   );
 }
@@ -343,7 +345,19 @@ export default function MarketingPage() {
     const params = new URLSearchParams({ from: range.from, to: range.to, ...(platform !== "All" ? { platform } : {}) });
     fetch(`/api/marketing/campaigns?${params}`)
       .then(r => r.json())
-      .then(d => { setCampaigns(Array.isArray(d) ? d : d.campaigns ?? []); setLoadingCampaigns(false); })
+      .then(d => {
+        const raw: any[] = Array.isArray(d) ? d : d.campaigns ?? [];
+        // Normalise API shape → page shape (API uses budgetUsedPct, lowercase status)
+        const normalised: Campaign[] = raw.map(c => ({
+          ...c,
+          budgetUsed: c.budgetUsed ?? c.budgetUsedPct ?? 0,
+          status: c.status
+            ? ((c.status.charAt(0).toUpperCase() + c.status.slice(1).toLowerCase()) as Campaign["status"])
+            : "Ended",
+        }));
+        setCampaigns(normalised);
+        setLoadingCampaigns(false);
+      })
       .catch(() => setLoadingCampaigns(false));
   }, [range.from, range.to, platform]);
 
