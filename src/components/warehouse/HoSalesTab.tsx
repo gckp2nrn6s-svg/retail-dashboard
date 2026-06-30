@@ -25,6 +25,9 @@ export default function HoSalesTab() {
   const [sessionDocs, setSessionDocs] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpand = (doc: string) => setExpanded(s => { const n = new Set(s); n.has(doc) ? n.delete(doc) : n.add(doc); return n; });
+  // Documents ticked for the PO copy (the PO is built from the SELECTION, not the date range).
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const toggleSelect = (doc: string) => setSelectedDocs(s => { const n = new Set(s); n.has(doc) ? n.delete(doc) : n.add(doc); return n; });
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -78,17 +81,16 @@ export default function HoSalesTab() {
   const sessionPo = useMemo(() => [...session.entries()].map(([item, qty]) => `${item}\t${qty}`).join("\n"), [session]);
   const sessionUnits = useMemo(() => [...session.values()].reduce((s, q) => s + q, 0), [session]);
 
-  // Total outstanding HO-sales balance to re-purchase = every posted invoice qty MINUS every
-  // credit-memo qty in the current date range (independent of what's been applied this session),
-  // so the user can paste the WHOLE balance into one ERP PO. Net positive items only.
-  const balance = useMemo(() => {
+  // The PO copy is built from the SELECTED documents (checkboxes), not the date range — the user
+  // ticks exactly which posted docs go on the ERP PO. Consolidated per item across the selected
+  // docs of the CURRENT view (invoices = qty to re-purchase).
+  const selectedBalance = useMemo(() => {
     const m = new Map<string, number>();
-    for (const d of invoices) for (const l of d.lines) m.set(l.item_no, (m.get(l.item_no) || 0) + l.qty);
-    for (const d of creditMemos) for (const l of d.lines) m.set(l.item_no, (m.get(l.item_no) || 0) - l.qty);
-    return [...m.entries()].filter(([, q]) => q > 0).sort((a, b) => b[1] - a[1]);
-  }, [invoices, creditMemos]);
-  const balancePo = useMemo(() => balance.map(([item, q]) => `${item}\t${q}`).join("\n"), [balance]);
-  const balanceUnits = useMemo(() => balance.reduce((s, [, q]) => s + q, 0), [balance]);
+    for (const d of docs) if (selectedDocs.has(d.doc)) for (const l of d.lines) m.set(l.item_no, (m.get(l.item_no) || 0) + l.qty);
+    return [...m.entries()].filter(([, q]) => q !== 0).sort((a, b) => b[1] - a[1]);
+  }, [docs, selectedDocs]);
+  const selectedPo = useMemo(() => selectedBalance.map(([item, q]) => `${item}\t${q}`).join("\n"), [selectedBalance]);
+  const selectedUnits = useMemo(() => selectedBalance.reduce((s, [, q]) => s + q, 0), [selectedBalance]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -96,7 +98,7 @@ export default function HoSalesTab() {
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <p style={{ fontSize: "0.95rem", fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em" }}>HO Sales</p>
           <p style={{ fontSize: "0.7rem", color: "var(--text3)" }}>
-            Posted invoices deduct HO stock (can go negative); credit memos add it back. Each document applies <strong>once</strong> — re-applying is blocked, so nothing double-deducts. After deducting, copy the reconciled PO to re-purchase in the ERP and clear the negatives.
+            Posted invoices deduct HO stock (can go negative); credit memos add it back. Each document applies <strong>once</strong> — re-applying is blocked, so nothing double-deducts. <strong>Tick</strong> the documents you want to re-purchase and use <strong>Copy PO</strong> to paste just those into one ERP PO. Every deduct/add is recorded in the <strong>Log</strong> tab (by document, item, qty &amp; time).
           </p>
         </div>
 
@@ -106,7 +108,7 @@ export default function HoSalesTab() {
             const on = key === kind;
             const tone = key === "invoice" ? "#EF4444" : "#10B981";
             return (
-              <button key={key} onClick={() => setKind(key)} style={{
+              <button key={key} onClick={() => { setKind(key); setSelectedDocs(new Set()); }} style={{
                 flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px 12px", borderRadius: 9, border: "none", cursor: "pointer",
                 background: on ? tone : "transparent", color: on ? "white" : "var(--text3)", fontWeight: on ? 700 : 600, fontSize: "0.78rem", transition: "all 0.12s",
               }}>
@@ -123,17 +125,18 @@ export default function HoSalesTab() {
         </div>
       </Card>
 
-      {/* Total outstanding balance — copy the WHOLE HO-sales balance as one ERP PO */}
-      {balance.length > 0 && (
-        <Card style={{ padding: "14px 20px" }}>
+      {/* Copy PO for the SELECTED documents (ticked below) — not the whole date range */}
+      {selectedDocs.size > 0 && (
+        <Card style={{ padding: "14px 20px", background: "rgba(13,148,136,0.06)", border: `1px solid ${WH_ACCENT}55` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
             <div style={{ marginRight: "auto" }}>
-              <p style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--text)" }}>Total HO-sales balance · {from} → {to}</p>
+              <p style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--text)" }}>Copy PO · {selectedDocs.size} selected {kind === "invoice" ? "invoice" : "credit memo"}{selectedDocs.size === 1 ? "" : "s"}</p>
               <p style={{ fontSize: "0.7rem", color: "var(--text3)", marginTop: 2 }}>
-                Net of all posted invoices − credit memos in range: <strong>{balance.length}</strong> item{balance.length === 1 ? "" : "s"} · <strong>{fmtInt(balanceUnits)}</strong> units. Paste into a single ERP PO to re-purchase the whole balance.
+                <strong>{selectedBalance.length}</strong> item{selectedBalance.length === 1 ? "" : "s"} · <strong>{fmtInt(selectedUnits)}</strong> units consolidated from the ticked documents. Paste into one ERP PO.
               </p>
             </div>
-            <CopyButton text={balancePo} label="Copy PO — total balance" />
+            <CopyButton text={selectedPo} label="Copy PO" />
+            <button onClick={() => setSelectedDocs(new Set())} style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface3)", cursor: "pointer", fontSize: "0.74rem", fontWeight: 700, color: "var(--text3)" }}>Clear</button>
           </div>
         </Card>
       )}
@@ -177,9 +180,10 @@ export default function HoSalesTab() {
                 const exp = expanded.has(d.doc);
                 return (
                 <Fragment key={d.doc}>
-                <tr style={{ borderTop: "1px solid var(--border)", opacity: d.applied ? 0.6 : 1 }}>
-                  <td style={{ padding: "10px 6px 10px 14px", width: 26 }}>
-                    <button onClick={() => toggleExpand(d.doc)} title="Show invoice lines" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text4)", padding: 2, display: "inline-flex" }}>
+                <tr style={{ borderTop: "1px solid var(--border)", opacity: d.applied ? 0.6 : 1, background: selectedDocs.has(d.doc) ? "rgba(13,148,136,0.06)" : undefined }}>
+                  <td style={{ padding: "10px 6px 10px 14px", width: 56, whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={selectedDocs.has(d.doc)} onChange={() => toggleSelect(d.doc)} title="Select for PO copy" style={{ width: 15, height: 15, accentColor: WH_ACCENT, cursor: "pointer", verticalAlign: "middle", marginRight: 8 }} />
+                    <button onClick={() => toggleExpand(d.doc)} title="Show invoice lines" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text4)", padding: 2, verticalAlign: "middle" }}>
                       {exp ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                     </button>
                   </td>
