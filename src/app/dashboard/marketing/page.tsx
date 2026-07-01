@@ -16,6 +16,7 @@ import { useDateRange } from "@/contexts/DateRangeContext";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { useCurrency } from "@/components/CurrencyToggle";
 import CreativeStudio from "@/components/marketing/CreativeStudio";
+import AttributionStudio from "@/components/marketing/AttributionStudio";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -301,7 +302,7 @@ export default function MarketingPage() {
   const { range } = useDateRange();
   const { currency } = useCurrency();
 
-  const [activeTab, setActiveTab] = useState<"performance" | "creative">("performance");
+  const [activeTab, setActiveTab] = useState<"performance" | "attribution" | "creative">("performance");
   const [platform, setPlatform] = useState<Platform>("All");
   const [sortKey, setSortKey] = useState<SortKey>("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -535,7 +536,7 @@ export default function MarketingPage() {
 
       {/* ══════════════════════════════ TAB BAR ════════════════════════════════ */}
       <div style={{ display: "flex", gap: 2, padding: "0 24px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(8,8,16,0.6)" }}>
-        {([["performance", "Performance"], ["creative", "Creative Studio ✦"]] as const).map(([tab, label]) => (
+        {([["performance", "Performance"], ["attribution", "Attribution Truth ✦"], ["creative", "Creative Studio ✦"]] as const).map(([tab, label]) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -558,6 +559,11 @@ export default function MarketingPage() {
       </div>
 
       {/* ═══════════════════════════════ BODY ══════════════════════════════════ */}
+      {activeTab === "attribution" ? (
+        <div style={{ overflowY: "auto", height: "calc(100vh - 100px)" }}>
+          <AttributionStudio dateRange={{ from: range.from, to: range.to }} platform={platform} />
+        </div>
+      ) : null}
       {activeTab === "creative" ? (
         <div style={{ overflowY: "auto", height: "calc(100vh - 100px)" }}>
           <CreativeStudio dateRange={{ from: range.from, to: range.to }} platform={platform} />

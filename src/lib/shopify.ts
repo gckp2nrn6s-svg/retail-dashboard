@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { todayCairo } from "@/lib/dates";
+import type { RawOrder } from "@/lib/attribution";
 
 export type ShopifyStore = "samsonite" | "american-tourister";
 
@@ -56,6 +57,7 @@ interface ShopifyLineItem {
 }
 
 interface ShopifyOrder {
+  id?: number | string;
   created_at: string;
   updated_at?: string;          // bumped on any change incl. refunds (used to catch late returns)
   total_price: string;          // original order total
@@ -63,6 +65,12 @@ interface ShopifyOrder {
   currency: string;
   financial_status: string;
   line_items: ShopifyLineItem[];
+  // Attribution fields — Shopify returns these by default (we don't filter `fields`),
+  // we just weren't reading them. landing_site carries the utm_* + fbclid that tie an
+  // order back to the Meta ad that produced it. See src/lib/attribution.ts.
+  source_name?: string | null;      // "web" | "pos" | app id
+  landing_site?: string | null;     // first page hit — holds the utm params + fbclid
+  referring_site?: string | null;   // external referrer (utm fallback)
 }
 
 // Net order revenue: current_total_price (after refunds) when present, else total_price.
@@ -509,6 +517,46 @@ export async function getShopifyRevenueAndItems(
   let items: ShopifyLineItemRow[] = [];
   try { items = await getShopifyLineItems(itemsFrom, to); } catch { items = []; }
   return { egp, units, items };
+}
+
+/**
+ * Order-level rows carrying the attribution fields (landing_site → utm/fbclid) for
+ * the attribution engine. Live fetch (no rollup) — attribution needs each order's
+ * URL, which the daily rollup doesn't store. Reuses the shared dedup/pagination/
+ * rate-limit machinery, so it's as safe as every other Shopify read here.
+ *
+ * These are the SAME orders the revenue helpers count (voided/refunded already
+ * filtered, revenue = current_total_price net of refunds) — so attributed revenue
+ * always reconciles against the headline Shopify number. Never throws: on failure
+ * it logs and returns [] so the marketing page degrades instead of crashing.
+ */
+export async function getAttributedOrders(from: string, to: string): Promise<RawOrder[]> {
+  const brands: ShopifyStore[] = ["samsonite", "american-tourister"];
+  let groups: { brand: ShopifyStore; orders: ShopifyOrder[] }[];
+  try {
+    groups = await Promise.all(
+      brands.map(async (brand) => ({ brand, orders: await fetchBrandOrders(brand, from, to) })),
+    );
+  } catch (e) {
+    console.error(`[shopify:attributed] failed, attribution will show empty: ${e instanceof Error ? e.message : e}`);
+    return [];
+  }
+  const rows: RawOrder[] = [];
+  for (const { brand, orders } of groups) {
+    for (const o of orders) {
+      rows.push({
+        id: String(o.id ?? ""),
+        createdAt: o.created_at,
+        brand,
+        revenue: netTotal(o),
+        units: o.line_items.reduce((s, i) => s + i.quantity, 0),
+        landingSite: o.landing_site ?? null,
+        referringSite: o.referring_site ?? null,
+        sourceName: o.source_name ?? null,
+      });
+    }
+  }
+  return rows;
 }
 
 /** Fetch all line items. Pass brand to restrict to one store ("samsonite" | "american-tourister"). */

@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { metaGet, metaMetric, hasMetaCreds } from "@/lib/meta-ads";
+import { getAttributedOrders } from "@/lib/shopify";
+import { attributeOrders, rollupByAd } from "@/lib/attribution";
 import Anthropic from "@anthropic-ai/sdk";
+
+// The designer brain runs on Opus (on-demand, deep reasoning). The always-on
+// dashboard advice stays on Sonnet; the reconciliation numbers use no LLM at all.
+const BRIEF_MODEL = "claude-opus-4-8";
+
+export const dynamic = "force-dynamic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +26,8 @@ interface AdPerf {
   headline: string;
   body: string;
   thumbnailUrl: string | null;
+  /** "shopify" = ROAS from real attributed orders; "meta" = pixel-reported fallback. */
+  revenueSource?: "shopify" | "meta";
 }
 
 interface FormatSummary {
@@ -143,6 +153,45 @@ async function fetchMetaAds(from: string, to: string): Promise<AdPerf[]> {
       };
     })
     .filter((ad: AdPerf) => ad.spend > 0);
+}
+
+// ─── Ground ad ROAS in real Shopify orders ───────────────────────────────────
+// Meta's per-ad revenue is modeled (unreliable post-iOS14). Where an ad's id shows
+// up in Shopify orders (via utm_content), we replace its revenue/ROAS with the real
+// attributed figure — so the brief's "winning format" is decided by money in the
+// bank, not the pixel's guess. Ads with no matched orders keep Meta's number as a
+// clearly-flagged fallback. Window MUST match the ads' insight window.
+async function applyTrueRoas(
+  ads: AdPerf[],
+  from: string,
+  to: string,
+): Promise<{ ads: AdPerf[]; verifiedAds: number; verifiedRevenue: number }> {
+  try {
+    const attrs = attributeOrders(await getAttributedOrders(from, to));
+    const byAd = rollupByAd(attrs);
+    let verifiedAds = 0;
+    let verifiedRevenue = 0;
+    const out = ads.map((ad): AdPerf => {
+      const s = byAd.get(ad.id);
+      if (s && s.revenue > 0) {
+        verifiedAds++;
+        verifiedRevenue += s.revenue;
+        const trueRoas = ad.spend > 0 ? s.revenue / ad.spend : 0;
+        return {
+          ...ad,
+          revenue: Math.round(s.revenue),
+          roas: parseFloat(trueRoas.toFixed(2)),
+          conversions: s.orders, // real orders beat modeled conversions
+          revenueSource: "shopify",
+        };
+      }
+      return { ...ad, revenueSource: "meta" };
+    });
+    return { ads: out, verifiedAds, verifiedRevenue: Math.round(verifiedRevenue) };
+  } catch (e) {
+    console.error("[creative-intelligence] true-ROAS join failed, using Meta revenue:", e instanceof Error ? e.message : e);
+    return { ads, verifiedAds: 0, verifiedRevenue: 0 };
+  }
 }
 
 // ─── Analyse ad data ──────────────────────────────────────────────────────────
@@ -331,9 +380,17 @@ async function claudeBrief(payload: AnalysisPayload): Promise<CreativeBrief> {
     )
     .join("\n");
 
-  const prompt = `You are a world-class creative director for an Egyptian luxury luggage brand (Le Souverain — sells Samsonite and American Tourister).
+  const verified = topAds.filter((a) => a.revenueSource === "shopify").length;
+  const groundingNote =
+    verified > 0
+      ? `IMPORTANT: ROAS figures below are FIRST-PARTY VERIFIED — computed from real Shopify orders matched to each ad (not Meta's modeled/pixel numbers, which over-report post-iOS14). Trust these numbers; they are money that actually landed. ${verified} of the top ads are order-verified.`
+      : `NOTE: ROAS figures are Meta-reported (pixel-modeled) — directional, treat with mild skepticism.`;
 
-Here is the real performance data from our Meta ad account over the last 30 days:
+  const prompt = `You are a world-class creative director and performance strategist for an Egyptian luxury luggage brand (Le Souverain — sells Samsonite and American Tourister). Your briefs are followed to the letter by the design and media teams, so be precise, opinionated, and grounded strictly in the data.
+
+${groundingNote}
+
+Here is the performance data from our Meta ad account for ${month}:
 
 TOP 10 ADS BY ROAS:
 ${topAdsText}
@@ -392,8 +449,8 @@ Return a JSON object with exactly this structure (no markdown, no explanation, j
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 3000,
+    model: BRIEF_MODEL,
+    max_tokens: 4000,
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -411,31 +468,45 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const to = searchParams.get("to") ?? new Date().toISOString().split("T")[0];
 
-  // Try 90 days first, fall back to 30
+  // Use the requested window (the user's date picker) so Meta spend and the Shopify
+  // true-ROAS join cover the SAME period — otherwise ROAS is nonsense. Widen to 90d
+  // only if the requested window has no ads (sparse account).
+  const reqFrom = searchParams.get("from") ?? new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
   const from90 = new Date(Date.now() - 90 * 86400000).toISOString().split("T")[0];
-  const from30 = searchParams.get("from") ?? new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
 
   let ads: AdPerf[] = [];
-  let usedFrom = from30;
+  let usedFrom = reqFrom;
+  let verifiedAds = 0;
+  let verifiedRevenue = 0;
+  let isMock = false;
 
   if (!hasMetaCreds()) {
     ads = mockAdPerf();
+    isMock = true;
   } else {
     try {
-      ads = await fetchMetaAds(from90, to);
-      usedFrom = from90;
+      ads = await fetchMetaAds(reqFrom, to);
+      usedFrom = reqFrom;
       if (ads.length === 0) {
-        ads = await fetchMetaAds(from30, to);
-        usedFrom = from30;
+        ads = await fetchMetaAds(from90, to);
+        usedFrom = from90;
       }
     } catch (err) {
       console.error("[creative-intelligence] Meta fetch error:", err);
       try {
-        ads = await fetchMetaAds(from30, to);
-        usedFrom = from30;
+        ads = await fetchMetaAds(from90, to);
+        usedFrom = from90;
       } catch {
         ads = mockAdPerf();
+        isMock = true;
       }
+    }
+    // Replace pixel ROAS with real order-verified ROAS where we can (window-aligned).
+    if (!isMock && ads.length > 0) {
+      const t = await applyTrueRoas(ads, usedFrom, to);
+      ads = t.ads;
+      verifiedAds = t.verifiedAds;
+      verifiedRevenue = t.verifiedRevenue;
     }
   }
 
@@ -461,6 +532,13 @@ export async function GET(request: NextRequest) {
     generatedBy,
     generatedAt: new Date().toISOString(),
     dateRange: { from: usedFrom, to },
+    // How much of this analysis is grounded in real orders vs Meta's pixel.
+    grounding: {
+      verifiedAds,
+      verifiedRevenue,
+      totalAds: payload.adsCount,
+      basis: verifiedAds > 0 ? "first-party" : "meta-reported",
+    },
     performanceData: {
       topAds: payload.topAds,
       bottomAds: payload.bottomAds,
