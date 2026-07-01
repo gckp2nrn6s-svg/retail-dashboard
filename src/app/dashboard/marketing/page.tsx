@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronUp, ChevronRight, X, ArrowLeft, Zap,
   Eye, MousePointer, DollarSign, Target, Users, BarChart2,
   Image as ImageIcon, Video, Layers, Sparkles, AlertCircle,
-  RefreshCw, ExternalLink,
+  RefreshCw, ExternalLink, Activity, ArrowUpRight, ArrowDownRight,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -25,7 +25,7 @@ interface KpiCard {
   label: string;
   value: string;
   raw: number;
-  trend: number; // % change vs prev period
+  trend: number;
   icon: React.ReactNode;
 }
 
@@ -41,7 +41,7 @@ interface Campaign {
   ctr: number;
   cpa: number;
   conversions: number;
-  budgetUsed: number; // % (API may return budgetUsedPct — normalised on ingest)
+  budgetUsed: number;
 }
 
 interface AdSet {
@@ -112,10 +112,10 @@ function mockOverview(from: string, to: string, platform: Platform) {
   };
 }
 
-const PLATFORMS_CONFIG: Record<string, { color: string; bg: string }> = {
-  Meta: { color: "#1877F2", bg: "rgba(24,119,242,0.15)" },
-  Google: { color: "#4285F4", bg: "rgba(66,133,244,0.15)" },
-  TikTok: { color: "#FF0050", bg: "rgba(255,0,80,0.15)" },
+const PLATFORMS_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
+  Meta:   { color: "#1877F2", bg: "rgba(24,119,242,0.15)",  label: "f" },
+  Google: { color: "#4285F4", bg: "rgba(66,133,244,0.15)",  label: "G" },
+  TikTok: { color: "#FF0050", bg: "rgba(255,0,80,0.15)",    label: "T" },
 };
 
 function mockCampaigns(platform: Platform): Campaign[] {
@@ -197,55 +197,39 @@ function fmtNum(n: number) {
 }
 
 function roasColor(roas: number) {
-  if (roas >= 3) return "#10B981";
-  if (roas >= 1) return "#F59E0B";
+  if (roas >= 3.5) return "#10B981";
+  if (roas >= 2) return "#F59E0B";
   return "#EF4444";
 }
 
 function roasBorder(roas: number) {
-  if (roas >= 3) return "rgba(16,185,129,0.4)";
-  if (roas >= 1) return "rgba(245,158,11,0.4)";
-  return "rgba(239,68,68,0.4)";
+  if (roas >= 3.5) return "rgba(16,185,129,0.35)";
+  if (roas >= 2) return "rgba(245,158,11,0.35)";
+  return "rgba(239,68,68,0.35)";
 }
+
+function roasLabel(roas: number) {
+  if (roas >= 3.5) return "Strong";
+  if (roas >= 2) return "OK";
+  return "Weak";
+}
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+
+const BG       = "#080810";
+const SURFACE  = "rgba(255,255,255,0.03)";
+const BORDER   = "1px solid rgba(255,255,255,0.07)";
+const TEXT      = "#F9FAFB";
+const MUTED     = "rgba(255,255,255,0.45)";
+const ACCENT    = "#6366F1";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function PlatformPill({ p, active, onClick }: { p: Platform; active: boolean; onClick: () => void }) {
-  const cfg = p !== "All" ? PLATFORMS_CONFIG[p] : null;
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: active ? (cfg ? cfg.bg : "rgba(37,99,235,0.2)") : "rgba(255,255,255,0.04)",
-        borderColor: active ? (cfg ? cfg.color : "#2563EB") : "rgba(255,255,255,0.1)",
-        color: active ? (cfg ? cfg.color : "#60A5FA") : "rgba(255,255,255,0.5)",
-        transition: "all 0.2s",
-      }}
-      className="px-4 py-1.5 rounded-full border text-sm font-semibold cursor-pointer hover:opacity-90"
-    >
-      {p}
-    </button>
-  );
-}
-
-function TrendBadge({ value }: { value: number }) {
-  const up = value >= 0;
-  return (
-    <span
-      className="flex items-center gap-0.5 text-xs font-semibold"
-      style={{ color: up ? "#10B981" : "#EF4444" }}
-    >
-      {up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-      {Math.abs(value).toFixed(1)}%
-    </span>
-  );
-}
-
-function Skeleton({ h, w }: { h?: string; w?: string }) {
+function Skeleton({ h = "16px", w = "100%", rounded = "8px" }: { h?: string; w?: string; rounded?: string }) {
   return (
     <div
-      className="animate-pulse rounded-lg"
-      style={{ height: h || "20px", width: w || "100%", background: "rgba(255,255,255,0.06)" }}
+      className="animate-pulse"
+      style={{ height: h, width: w, borderRadius: rounded, background: "rgba(255,255,255,0.06)" }}
     />
   );
 }
@@ -253,38 +237,58 @@ function Skeleton({ h, w }: { h?: string; w?: string }) {
 function StatusBadge({ status }: { status: Campaign["status"] }) {
   const normalized = (status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()) as Campaign["status"];
   const cfg = ({
-    Active: { bg: "rgba(16,185,129,0.15)", color: "#10B981", dot: "#10B981" },
-    Paused: { bg: "rgba(245,158,11,0.15)", color: "#F59E0B", dot: "#F59E0B" },
-    Ended: { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", dot: "rgba(255,255,255,0.3)" },
+    Active: { bg: "rgba(16,185,129,0.12)", color: "#10B981", dot: "#10B981" },
+    Paused: { bg: "rgba(245,158,11,0.12)", color: "#F59E0B", dot: "#F59E0B" },
+    Ended:  { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.35)", dot: "rgba(255,255,255,0.25)" },
   } as Record<string, { bg: string; color: string; dot: string }>)[normalized]
-    ?? { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)", dot: "rgba(255,255,255,0.3)" };
+    ?? { bg: "rgba(255,255,255,0.06)", color: MUTED, dot: "rgba(255,255,255,0.25)" };
   return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: cfg.bg, color: cfg.color }}
-    >
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: cfg.bg, color: cfg.color }}>
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.dot }} />
       {normalized}
     </span>
   );
 }
 
-function PlatformBadge({ platform }: { platform: string }) {
+function PlatformDot({ platform }: { platform: string }) {
   const cfg = PLATFORMS_CONFIG[platform] || { color: "#888", bg: "rgba(255,255,255,0.06)" };
+  return <span className="w-2 h-2 rounded-full shrink-0 inline-block" style={{ background: cfg.color }} />;
+}
+
+function FormatBadge({ format }: { format: Ad["format"] }) {
+  const cfg: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
+    Video:    { icon: <Video size={10} />,    color: "#818CF8", bg: "rgba(99,102,241,0.15)" },
+    Image:    { icon: <ImageIcon size={10} />, color: "#60A5FA", bg: "rgba(59,130,246,0.15)" },
+    Carousel: { icon: <Layers size={10} />,   color: "#A78BFA", bg: "rgba(139,92,246,0.15)" },
+  };
+  const c = cfg[format] || cfg.Image;
   return (
-    <span
-      className="text-xs font-bold px-2 py-0.5 rounded"
-      style={{ background: cfg.bg, color: cfg.color }}
-    >
-      {platform}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: c.bg, color: c.color }}>
+      {c.icon} {format}
     </span>
   );
 }
 
-function FormatIcon({ format }: { format: Ad["format"] }) {
-  if (format === "Video") return <Video size={14} />;
-  if (format === "Carousel") return <Layers size={14} />;
-  return <ImageIcon size={14} />;
+function TrendPill({ value }: { value: number }) {
+  const up = value >= 0;
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span className="inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums" style={{ color: up ? "#10B981" : "#EF4444" }}>
+      <Icon size={11} strokeWidth={2.5} />
+      {Math.abs(value).toFixed(1)}%
+    </span>
+  );
+}
+
+function RoasBadge({ roas }: { roas: number }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold tabular-nums"
+      style={{ background: `${roasColor(roas)}18`, color: roasColor(roas) }}
+    >
+      {roas.toFixed(1)}×
+    </span>
+  );
 }
 
 const SORT_KEYS = ["name", "spend", "revenue", "roas", "ctr", "cpa", "conversions", "budgetUsed"] as const;
@@ -296,50 +300,38 @@ export default function MarketingPage() {
   const { range } = useDateRange();
   const { currency } = useCurrency();
 
-  // Filters
   const [platform, setPlatform] = useState<Platform>("All");
-
-  // Layer 2 state
   const [sortKey, setSortKey] = useState<SortKey>("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-
-  // Layer 3 state
   const [selectedAdSet, setSelectedAdSet] = useState<AdSet | null>(null);
-
-  // Layer 4 state
   const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
-
-  // Expanded recommendation cards
   const [expandedRec, setExpandedRec] = useState<string | null>(null);
+  const [creativeOpen, setCreativeOpen] = useState(false);
+  const [audienceOpen, setAudienceOpen] = useState(false);
 
-  // Brief timestamp — client-only to avoid hydration mismatch
   const [briefTime, setBriefTime] = useState<string>("");
   useEffect(() => {
     setBriefTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
   }, []);
 
-  // Loading states
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [loadingAdSets, setLoadingAdSets] = useState(false);
   const [loadingAds, setLoadingAds] = useState(false);
 
-  // Data
   const [overview, setOverview] = useState<ReturnType<typeof mockOverview> | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [adSets, setAdSets] = useState<AdSet[]>([]);
   const [ads, setAds] = useState<Ad[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation | null>(null);
 
-  // ── Load overview with mock data (client-only to avoid hydration mismatch) ──
   useEffect(() => {
     setLoadingOverview(true);
     setOverview(mockOverview(range.from, range.to, platform));
     setLoadingOverview(false);
   }, [range.from, range.to, platform]);
 
-  // ── Fetch campaigns ──
   useEffect(() => {
     setLoadingCampaigns(true);
     const params = new URLSearchParams({ from: range.from, to: range.to, ...(platform !== "All" ? { platform } : {}) });
@@ -347,7 +339,6 @@ export default function MarketingPage() {
       .then(r => r.json())
       .then(d => {
         const raw: any[] = Array.isArray(d) ? d : d.campaigns ?? [];
-        // Normalise API shape → page shape (API uses budgetUsedPct, lowercase status)
         const normalised: Campaign[] = raw.map(c => ({
           ...c,
           budgetUsed: c.budgetUsed ?? c.budgetUsedPct ?? 0,
@@ -361,7 +352,6 @@ export default function MarketingPage() {
       .catch(() => setLoadingCampaigns(false));
   }, [range.from, range.to, platform]);
 
-  // ── Fetch recommendations (fall back to mock if API missing or malformed) ──
   useEffect(() => {
     fetch(`/api/marketing/recommendations?from=${range.from}&to=${range.to}`)
       .then(r => r.json())
@@ -375,7 +365,6 @@ export default function MarketingPage() {
       .catch(() => setRecommendations(mockRecommendations()));
   }, [range.from, range.to]);
 
-  // ── Fetch ad sets when campaign selected ──
   useEffect(() => {
     if (!selectedCampaign) return;
     setLoadingAdSets(true);
@@ -388,7 +377,6 @@ export default function MarketingPage() {
       .catch(() => setLoadingAdSets(false));
   }, [selectedCampaign]);
 
-  // ── Fetch ads when ad set selected ──
   useEffect(() => {
     if (!selectedAdSet) return;
     setLoadingAds(true);
@@ -400,7 +388,6 @@ export default function MarketingPage() {
       .catch(() => setLoadingAds(false));
   }, [selectedAdSet]);
 
-  // ── Auto-refresh every 60s ──
   const rangeFromRef = useRef(range.from);
   const rangeToRef   = useRef(range.to);
   const platformRef  = useRef(platform);
@@ -417,7 +404,6 @@ export default function MarketingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Sorted campaigns ──
   const sortedCampaigns = useMemo(() => {
     return [...campaigns].sort((a, b) => {
       const va = a[sortKey as keyof Campaign] as number;
@@ -435,627 +421,673 @@ export default function MarketingPage() {
     [sortKey]
   );
 
-  // ── KPI cards ──
-  const kpiCards: KpiCard[] = overview
-    ? [
-        { key: "totalSpend", label: "Total Spend", value: fmt(overview.totalSpend, currency), raw: overview.totalSpend, trend: overview.trends.totalSpend, icon: <DollarSign size={16} /> },
-        { key: "totalRevenue", label: "Revenue", value: fmt(overview.totalRevenue, currency), raw: overview.totalRevenue, trend: overview.trends.totalRevenue, icon: <TrendingUp size={16} /> },
-        { key: "roas", label: "ROAS", value: `${overview.roas.toFixed(2)}x`, raw: overview.roas, trend: overview.trends.roas, icon: <BarChart2 size={16} /> },
-        { key: "impressions", label: "Impressions", value: fmtNum(overview.impressions), raw: overview.impressions, trend: overview.trends.impressions, icon: <Eye size={16} /> },
-        { key: "clicks", label: "Clicks", value: fmtNum(overview.clicks), raw: overview.clicks, trend: overview.trends.clicks, icon: <MousePointer size={16} /> },
-        { key: "ctr", label: "CTR", value: `${overview.ctr.toFixed(1)}%`, raw: overview.ctr, trend: overview.trends.ctr, icon: <Target size={16} /> },
-        { key: "cpa", label: "CPA", value: fmt(overview.cpa, currency), raw: overview.cpa, trend: overview.trends.cpa, icon: <Users size={16} /> },
-        { key: "conversions", label: "Conversions", value: fmtNum(overview.conversions), raw: overview.conversions, trend: overview.trends.conversions, icon: <CheckCircle size={16} /> },
-      ]
-    : [];
+  const closeAll = () => { setSelectedCampaign(null); setSelectedAdSet(null); setSelectedAd(null); };
 
-  const drawerOpen = !!selectedCampaign;
+  // Derived platform spend shares
+  const platformShares = useMemo(() => {
+    if (!campaigns.length) return [];
+    const totals: Record<string, number> = {};
+    campaigns.forEach(c => { totals[c.platform as string] = (totals[c.platform as string] || 0) + c.spend; });
+    const total = Object.values(totals).reduce((s, v) => s + v, 0) || 1;
+    return Object.entries(totals).map(([name, spend]) => ({ name, spend, pct: (spend / total) * 100 }));
+  }, [campaigns]);
+
+  const panelOpen = !!selectedCampaign;
+
+  // ─── Main render ─────────────────────────────────────────────────────────────
 
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: "#050D1A", color: "#fff", fontFamily: "inherit" }}
-    >
-      {/* ── Page Header ── */}
-      <div
-        className="sticky top-0 z-20 px-6 py-4 flex items-center justify-between gap-4 flex-wrap"
+    <div style={{ background: BG, color: TEXT, minHeight: "100vh", fontFamily: "inherit" }}>
+      <style>{`
+        @keyframes shimmer {
+          0%   { background-position: -200% 0; }
+          100% { background-position:  200% 0; }
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0);     }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0);    }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        .mktg-row-hover:hover td { background: rgba(255,255,255,0.025) !important; }
+        .mktg-row-active td      { background: rgba(99,102,241,0.07)  !important; }
+        .metric-card:hover { border-color: rgba(255,255,255,0.12) !important; background: rgba(255,255,255,0.045) !important; }
+        .panel-adset:hover { border-color: rgba(255,255,255,0.13) !important; background: rgba(255,255,255,0.05) !important; }
+        .ad-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+        .rec-item:hover { background: rgba(255,255,255,0.03) !important; }
+      `}</style>
+
+      {/* ═══════════════════════════════ TOP BAR ═══════════════════════════════ */}
+      <header
         style={{
-          background: "rgba(5,13,26,0.95)",
-          backdropFilter: "blur(12px)",
+          position: "sticky",
+          top: 0,
+          zIndex: 30,
+          background: "rgba(8,8,16,0.92)",
+          backdropFilter: "blur(20px)",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
         }}
       >
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Performance Marketing</h1>
-          <p className="text-sm mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Cross-platform ad intelligence — {range.label}
-          </p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <DateRangePicker />
-        </div>
-      </div>
-
-      <div className="px-6 py-6 space-y-6">
-        {/* ── LAYER 1: Overview ── */}
-        <section>
+        <div className="flex items-center gap-3 px-6" style={{ height: 56 }}>
           {/* Platform pills */}
-          <div className="flex items-center gap-2 mb-5 flex-wrap">
-            {(["All", "Meta", "Google", "TikTok"] as Platform[]).map((p) => (
-              <PlatformPill key={p} p={p} active={platform === p} onClick={() => setPlatform(p)} />
-            ))}
-            <span className="ml-auto text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-              {range.from} → {range.to}
-            </span>
-          </div>
-
-          {/* KPI cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-5">
-            {loadingOverview
-              ? Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <Skeleton h="12px" w="60%" />
-                    <div className="mt-3"><Skeleton h="24px" w="80%" /></div>
-                    <div className="mt-2"><Skeleton h="12px" w="50%" /></div>
-                  </div>
-                ))
-              : kpiCards.map((card) => (
-                  <div
-                    key={card.key}
-                    className="rounded-xl p-4 transition-all duration-200 hover:scale-[1.02]"
-                    style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      cursor: "default",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-                      (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.12)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)";
-                      (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.06)";
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5 mb-2" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {card.icon}
-                      <span className="text-xs font-medium uppercase tracking-wider">{card.label}</span>
-                    </div>
-                    <div className="text-2xl font-bold tracking-tight">{card.value}</div>
-                    <div className="mt-1.5">
-                      <TrendBadge value={card.trend} />
-                    </div>
-                  </div>
-                ))}
-          </div>
-
-          {/* Daily Brief + Alerts */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Brief */}
-            <div
-              className="lg:col-span-2 rounded-xl p-5"
-              style={{ background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.2)" }}
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles size={16} style={{ color: "#60A5FA" }} />
-                <span className="text-sm font-semibold" style={{ color: "#60A5FA" }}>AI Daily Brief</span>
-                <span className="ml-auto text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-                  {briefTime ? `Generated ${briefTime}` : ""}
-                </span>
-              </div>
-              {recommendations ? (
-                <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.75)" }}>
-                  {recommendations.brief}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <Skeleton h="14px" />
-                  <Skeleton h="14px" w="90%" />
-                  <Skeleton h="14px" w="80%" />
-                </div>
-              )}
-            </div>
-
-            {/* Alerts */}
-            <div
-              className="rounded-xl p-5"
-              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <AlertCircle size={16} style={{ color: "#F59E0B" }} />
-                <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>Alerts</span>
-              </div>
-              {recommendations ? (
-                <div className="space-y-2">
-                  {recommendations.alerts.map((a, i) => {
-                    const cfg = ({
-                      danger: { bg: "rgba(239,68,68,0.12)", color: "#EF4444", icon: <XCircle size={13} /> },
-                      warning: { bg: "rgba(245,158,11,0.12)", color: "#F59E0B", icon: <AlertTriangle size={13} /> },
-                      good: { bg: "rgba(16,185,129,0.12)", color: "#10B981", icon: <CheckCircle size={13} /> },
-                    } as Record<string, { bg: string; color: string; icon: React.ReactNode }>)[a.type]
-                      ?? { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)", icon: <AlertCircle size={13} /> };
-                    return (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
-                        style={{ background: cfg.bg, color: cfg.color }}
-                      >
-                        <span className="mt-0.5 shrink-0">{cfg.icon}</span>
-                        <span style={{ color: "rgba(255,255,255,0.8)" }}>{a.text}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {[...Array(3)].map((_, i) => <Skeleton key={i} h="32px" />)}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* ── Revenue sparkline ── */}
-        {overview && (
-          <div
-            className="rounded-xl p-5"
-            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>Spend vs Revenue — 14 Day Trend</span>
-            </div>
-            <ResponsiveContainer width="100%" height={120}>
-              <AreaChart data={overview.sparklines} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="day" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.3)" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "rgba(255,255,255,0.3)" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
-                <Tooltip
-                  contentStyle={{ background: "#0F1B2D", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 12 }}
-                  formatter={(v: any, name: any) => [fmt(v as number, currency), name === "spend" ? "Spend" : "Revenue"]}
-                />
-                <Area type="monotone" dataKey="spend" stroke="#2563EB" strokeWidth={2} fill="url(#spendGrad)" dot={false} />
-                <Area type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2} fill="url(#revGrad)" dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-            <div className="flex items-center gap-6 mt-2 justify-end">
-              <span className="flex items-center gap-2 text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                <span className="w-3 h-0.5 rounded" style={{ background: "#2563EB", display: "inline-block" }} /> Spend
-              </span>
-              <span className="flex items-center gap-2 text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>
-                <span className="w-3 h-0.5 rounded" style={{ background: "#10B981", display: "inline-block" }} /> Revenue
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* ── LAYER 2: Campaign Table ── */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>
-              Campaigns
-              {!loadingCampaigns && (
-                <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
-                  {campaigns.length}
-                </span>
-              )}
-            </h2>
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Click a row to drill down</span>
-          </div>
-
-          <div
-            className="rounded-xl overflow-hidden"
-            style={{ border: "1px solid rgba(255,255,255,0.06)" }}
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[900px]">
-                <thead>
-                  <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                    {[
-                      { key: "name", label: "Campaign" },
-                      { key: null, label: "Platform" },
-                      { key: null, label: "Status" },
-                      { key: null, label: "Objective" },
-                      { key: "spend", label: "Spend" },
-                      { key: "revenue", label: "Revenue" },
-                      { key: "roas", label: "ROAS" },
-                      { key: "ctr", label: "CTR" },
-                      { key: "cpa", label: "CPA" },
-                      { key: "conversions", label: "Conv." },
-                      { key: "budgetUsed", label: "Budget" },
-                    ].map(({ key, label }) => (
-                      <th
-                        key={label}
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "rgba(255,255,255,0.35)", cursor: key ? "pointer" : "default", whiteSpace: "nowrap", userSelect: "none" }}
-                        onClick={() => key && handleSort(key as SortKey)}
-                      >
-                        <span className="flex items-center gap-1">
-                          {label}
-                          {key && sortKey === key && (
-                            sortDir === "desc" ? <ChevronDown size={12} /> : <ChevronUp size={12} />
-                          )}
-                        </span>
-                      </th>
-                    ))}
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingCampaigns
-                    ? Array.from({ length: 5 }).map((_, i) => (
-                        <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                          {Array.from({ length: 11 }).map((__, j) => (
-                            <td key={j} className="px-4 py-3"><Skeleton h="14px" /></td>
-                          ))}
-                          <td className="px-4 py-3" />
-                        </tr>
-                      ))
-                    : sortedCampaigns.map((c) => (
-                        <tr
-                          key={c.id}
-                          onClick={() => setSelectedCampaign(c)}
-                          style={{
-                            borderBottom: "1px solid rgba(255,255,255,0.04)",
-                            cursor: "pointer",
-                            transition: "background 0.15s",
-                            background: selectedCampaign?.id === c.id ? "rgba(37,99,235,0.08)" : "transparent",
-                          }}
-                          onMouseEnter={(e) => { if (selectedCampaign?.id !== c.id) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"; }}
-                          onMouseLeave={(e) => { if (selectedCampaign?.id !== c.id) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                        >
-                          <td className="px-4 py-3 font-medium" style={{ maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "rgba(255,255,255,0.9)" }}>
-                            {c.name}
-                          </td>
-                          <td className="px-4 py-3"><PlatformBadge platform={c.platform as string} /></td>
-                          <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                          <td className="px-4 py-3 text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>{c.objective}</td>
-                          <td className="px-4 py-3 font-medium">{fmt(c.spend, currency)}</td>
-                          <td className="px-4 py-3 font-medium">{fmt(c.revenue, currency)}</td>
-                          <td className="px-4 py-3">
-                            <span className="font-bold" style={{ color: roasColor(c.roas) }}>{c.roas.toFixed(2)}x</span>
-                          </td>
-                          <td className="px-4 py-3 text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>{c.ctr.toFixed(1)}%</td>
-                          <td className="px-4 py-3 text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>{fmt(c.cpa, currency)}</td>
-                          <td className="px-4 py-3 text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>{fmtNum(c.conversions)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
-                                <div
-                                  className="h-full rounded-full"
-                                  style={{
-                                    width: `${Math.min(c.budgetUsed, 100)}%`,
-                                    background: c.budgetUsed >= 90 ? "#EF4444" : c.budgetUsed >= 70 ? "#F59E0B" : "#10B981",
-                                    transition: "width 0.5s ease",
-                                  }}
-                                />
-                              </div>
-                              <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>{c.budgetUsed}%</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <ChevronRight size={14} style={{ color: "rgba(255,255,255,0.3)", transition: "transform 0.2s" }} />
-                          </td>
-                        </tr>
-                      ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Bottom: Recommendations ── */}
-        <section>
-          <h2 className="text-base font-semibold mb-4" style={{ color: "rgba(255,255,255,0.85)" }}>
-            Strategic Recommendations
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            {/* DO THIS */}
-            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(16,185,129,0.2)" }}>
-              <div className="px-5 py-3 flex items-center gap-2" style={{ background: "rgba(16,185,129,0.1)" }}>
-                <CheckCircle size={15} style={{ color: "#10B981" }} />
-                <span className="text-sm font-bold" style={{ color: "#10B981" }}>DO THIS</span>
-              </div>
-              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-                {(recommendations?.doThis || Array.from({ length: 3 })).map((item: any, i) => (
-                  <div
-                    key={i}
-                    className="px-5 py-3 cursor-pointer transition-colors"
-                    style={{ background: expandedRec === `do-${i}` ? "rgba(16,185,129,0.05)" : "rgba(255,255,255,0.02)" }}
-                    onClick={() => setExpandedRec(expandedRec === `do-${i}` ? null : `do-${i}`)}
-                    onMouseEnter={(e) => { if (expandedRec !== `do-${i}`) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"; }}
-                    onMouseLeave={(e) => { if (expandedRec !== `do-${i}`) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.02)"; }}
-                  >
-                    {item ? (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{item.title}</span>
-                          {expandedRec === `do-${i}` ? <ChevronUp size={14} style={{ color: "rgba(255,255,255,0.3)" }} /> : <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.3)" }} />}
-                        </div>
-                        {expandedRec === `do-${i}` && (
-                          <p className="mt-2 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>{item.detail}</p>
-                        )}
-                      </>
-                    ) : <Skeleton h="14px" />}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* AVOID THIS */}
-            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(239,68,68,0.2)" }}>
-              <div className="px-5 py-3 flex items-center gap-2" style={{ background: "rgba(239,68,68,0.1)" }}>
-                <XCircle size={15} style={{ color: "#EF4444" }} />
-                <span className="text-sm font-bold" style={{ color: "#EF4444" }}>AVOID THIS</span>
-              </div>
-              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
-                {(recommendations?.avoidThis || Array.from({ length: 3 })).map((item: any, i) => (
-                  <div
-                    key={i}
-                    className="px-5 py-3 cursor-pointer transition-colors"
-                    style={{ background: expandedRec === `avoid-${i}` ? "rgba(239,68,68,0.05)" : "rgba(255,255,255,0.02)" }}
-                    onClick={() => setExpandedRec(expandedRec === `avoid-${i}` ? null : `avoid-${i}`)}
-                    onMouseEnter={(e) => { if (expandedRec !== `avoid-${i}`) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"; }}
-                    onMouseLeave={(e) => { if (expandedRec !== `avoid-${i}`) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.02)"; }}
-                  >
-                    {item ? (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{item.title}</span>
-                          {expandedRec === `avoid-${i}` ? <ChevronUp size={14} style={{ color: "rgba(255,255,255,0.3)" }} /> : <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.3)" }} />}
-                        </div>
-                        {expandedRec === `avoid-${i}` && (
-                          <p className="mt-2 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>{item.detail}</p>
-                        )}
-                      </>
-                    ) : <Skeleton h="14px" />}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Insights grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              ...(recommendations?.creativeInsights || []).map((x: any) => ({ ...x, type: "Creative" })),
-              ...(recommendations?.audienceInsights || []).map((x: any) => ({ ...x, type: "Audience" })),
-            ].map((ins: any, i) => (
-              <div
-                key={i}
-                className="rounded-xl p-4 cursor-pointer"
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.06)",
-                  transition: "all 0.2s",
-                }}
-                onClick={() => setExpandedRec(expandedRec === `ins-${i}` ? null : `ins-${i}`)}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.12)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.06)"; }}
-              >
-                <span
-                  className="text-xs font-semibold px-2 py-0.5 rounded mb-2 inline-block"
+          <div className="flex items-center gap-1.5">
+            {(["All", "Meta", "Google", "TikTok"] as Platform[]).map((p) => {
+              const cfg = p !== "All" ? PLATFORMS_CONFIG[p] : null;
+              const active = platform === p;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setPlatform(p)}
                   style={{
-                    background: ins.type === "Creative" ? "rgba(124,58,237,0.15)" : "rgba(37,99,235,0.15)",
-                    color: ins.type === "Creative" ? "#A78BFA" : "#60A5FA",
+                    padding: "4px 14px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? (cfg ? cfg.color : ACCENT) : "rgba(255,255,255,0.09)"}`,
+                    background: active ? (cfg ? cfg.bg : `${ACCENT}22`) : "transparent",
+                    color: active ? (cfg ? cfg.color : "#A5B4FC") : MUTED,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    letterSpacing: "0.01em",
                   }}
                 >
-                  {ins.type}
-                </span>
-                <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.85)" }}>{ins.title}</p>
-                {expandedRec === `ins-${i}` && (
-                  <p className="mt-2 text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>{ins.detail}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      {/* ── LAYER 3 & 4: Slide-in Drawer ── */}
-      {/* Backdrop */}
-      <div
-        onClick={() => { setSelectedCampaign(null); setSelectedAdSet(null); setSelectedAd(null); }}
-        style={{
-          position: "fixed", inset: 0, zIndex: 30,
-          background: "rgba(0,0,0,0.5)",
-          backdropFilter: "blur(4px)",
-          opacity: drawerOpen ? 1 : 0,
-          pointerEvents: drawerOpen ? "auto" : "none",
-          transition: "opacity 0.3s ease",
-        }}
-      />
-
-      {/* Drawer panel */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: "min(560px, 100vw)",
-          zIndex: 40,
-          background: "#060E1C",
-          borderLeft: "1px solid rgba(255,255,255,0.08)",
-          transform: drawerOpen ? "translateX(0)" : "translateX(100%)",
-          transition: "transform 0.35s cubic-bezier(0.4,0,0.2,1)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {selectedCampaign && (
-          <>
-            {/* Drawer header */}
-            <div
-              className="flex items-center gap-3 px-5 py-4 shrink-0"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}
-            >
-              {selectedAdSet ? (
-                <button
-                  onClick={() => { setSelectedAdSet(null); setSelectedAd(null); }}
-                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  <ArrowLeft size={16} style={{ color: "rgba(255,255,255,0.6)" }} />
+                  {p}
                 </button>
-              ) : null}
-              <div className="flex-1 min-w-0">
-                {selectedAdSet ? (
-                  <div>
-                    <div className="text-xs mb-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {selectedCampaign.name}
-                    </div>
-                    <div className="text-sm font-semibold truncate">{selectedAdSet.name}</div>
+              );
+            })}
+          </div>
+
+          {/* Spacer */}
+          <div style={{ flex: 1 }} />
+
+          {/* ROAS live badge */}
+          {overview && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 12px",
+                borderRadius: 999,
+                background: `${roasColor(overview.roas)}15`,
+                border: `1px solid ${roasColor(overview.roas)}30`,
+              }}
+            >
+              <Activity size={12} style={{ color: roasColor(overview.roas) }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: roasColor(overview.roas), fontVariantNumeric: "tabular-nums" }}>
+                {overview.roas.toFixed(1)}× ROAS
+              </span>
+            </div>
+          )}
+
+          {/* Date range */}
+          <DateRangePicker />
+        </div>
+      </header>
+
+      {/* ═══════════════════════════════ BODY ══════════════════════════════════ */}
+      <div style={{ display: "flex", height: "calc(100vh - 56px)", overflow: "hidden" }}>
+
+        {/* ────────────── LEFT MAIN (70%) ────────────── */}
+        <main
+          style={{
+            flex: "1 1 0",
+            overflowY: "auto",
+            padding: "24px",
+            paddingRight: "20px",
+          }}
+        >
+          {/* ─── HERO METRICS ─────────────────────────── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 12 }}>
+            {loadingOverview
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} style={{ background: SURFACE, border: BORDER, borderRadius: 14, padding: "20px 20px 16px" }}>
+                    <Skeleton h="10px" w="50%" rounded="4px" />
+                    <div style={{ marginTop: 14 }}><Skeleton h="34px" w="70%" rounded="6px" /></div>
+                    <div style={{ marginTop: 10 }}><Skeleton h="10px" w="40%" rounded="4px" /></div>
+                    <div style={{ marginTop: 14 }}><Skeleton h="36px" rounded="6px" /></div>
                   </div>
-                ) : (
-                  <div className="text-sm font-semibold truncate">{selectedCampaign.name}</div>
+                ))
+              : overview && [
+                  { key: "totalSpend",    label: "TOTAL SPEND",   value: fmt(overview.totalSpend, currency),       trend: overview.trends.totalSpend,   accent: "#6366F1" },
+                  { key: "totalRevenue",  label: "REVENUE",        value: fmt(overview.totalRevenue, currency),     trend: overview.trends.totalRevenue,  accent: "#10B981" },
+                  { key: "roas",          label: "ROAS",           value: `${overview.roas.toFixed(1)}×`,           trend: overview.trends.roas,          accent: roasColor(overview.roas) },
+                  { key: "conversions",   label: "CONVERSIONS",    value: fmtNum(overview.conversions),             trend: overview.trends.conversions,   accent: "#F59E0B" },
+                ].map((card) => (
+                  <div
+                    key={card.key}
+                    className="metric-card"
+                    style={{
+                      background: SURFACE,
+                      border: BORDER,
+                      borderRadius: 14,
+                      padding: "20px 20px 16px",
+                      transition: "all 0.15s ease",
+                      cursor: "default",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: MUTED, textTransform: "uppercase", marginBottom: 12 }}>
+                      {card.label}
+                    </div>
+                    <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em", color: TEXT, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                      {card.value}
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <TrendPill value={card.trend} />
+                    </div>
+                    {/* Sparkline */}
+                    {overview.sparklines.length > 0 && (
+                      <div style={{ marginTop: 14, height: 36 }}>
+                        <ResponsiveContainer width="100%" height={36}>
+                          <AreaChart data={overview.sparklines} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id={`sg-${card.key}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%"   stopColor={card.accent} stopOpacity={0.25} />
+                                <stop offset="100%" stopColor={card.accent} stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <Area
+                              type="monotone"
+                              dataKey={card.key === "totalSpend" ? "spend" : card.key === "totalRevenue" ? "revenue" : card.key === "roas" ? "roas" : "revenue"}
+                              stroke={card.accent}
+                              strokeWidth={1.5}
+                              fill={`url(#sg-${card.key})`}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+                ))}
+          </div>
+
+          {/* ─── SECONDARY METRICS ────────────────────── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 20 }}>
+            {loadingOverview
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} style={{ background: SURFACE, border: BORDER, borderRadius: 10, padding: "12px 16px" }}>
+                    <Skeleton h="9px" w="45%" rounded="3px" />
+                    <div style={{ marginTop: 8 }}><Skeleton h="20px" w="65%" rounded="4px" /></div>
+                  </div>
+                ))
+              : overview && [
+                  { label: "IMPRESSIONS", value: fmtNum(overview.impressions), trend: overview.trends.impressions },
+                  { label: "CLICKS",      value: fmtNum(overview.clicks),      trend: overview.trends.clicks },
+                  { label: "CTR",         value: `${overview.ctr.toFixed(1)}%`, trend: overview.trends.ctr },
+                  { label: "CPA",         value: fmt(overview.cpa, currency),   trend: overview.trends.cpa },
+                ].map((card) => (
+                  <div
+                    key={card.label}
+                    style={{
+                      background: SURFACE,
+                      border: BORDER,
+                      borderRadius: 10,
+                      padding: "12px 16px",
+                    }}
+                  >
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: MUTED, textTransform: "uppercase", marginBottom: 6 }}>
+                      {card.label}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                      <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums", color: TEXT }}>
+                        {card.value}
+                      </span>
+                      <TrendPill value={card.trend} />
+                    </div>
+                  </div>
+                ))}
+          </div>
+
+          {/* ─── PLATFORM SPEND SHARE ─────────────────── */}
+          {platformShares.length > 0 && (
+            <div
+              style={{
+                background: SURFACE,
+                border: BORDER,
+                borderRadius: 12,
+                padding: "16px 20px",
+                marginBottom: 20,
+              }}
+            >
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: MUTED, textTransform: "uppercase", marginBottom: 14 }}>
+                Platform Spend Share
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {platformShares.map(({ name, spend, pct }) => {
+                  const cfg = PLATFORMS_CONFIG[name] || { color: "#888", bg: "rgba(255,255,255,0.06)" };
+                  return (
+                    <div
+                      key={name}
+                      style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}
+                      onClick={() => setPlatform(name as Platform)}
+                    >
+                      <div style={{ width: 52, fontSize: 12, fontWeight: 700, color: cfg.color }}>{name}</div>
+                      <div style={{ flex: 1, height: 6, borderRadius: 3, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${pct}%`,
+                            borderRadius: 3,
+                            background: cfg.color,
+                            transition: "width 0.6s ease",
+                          }}
+                        />
+                      </div>
+                      <div style={{ width: 80, textAlign: "right", fontSize: 12, fontVariantNumeric: "tabular-nums", color: MUTED }}>
+                        {fmt(spend, currency)} <span style={{ color: "rgba(255,255,255,0.25)" }}>· {pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ─── SPEND vs REVENUE CHART ───────────────── */}
+          {overview && (
+            <div
+              style={{
+                background: SURFACE,
+                border: BORDER,
+                borderRadius: 12,
+                padding: "18px 20px",
+                marginBottom: 20,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>Spend vs Revenue — 14 Day Trend</div>
+                <div style={{ display: "flex", gap: 16 }}>
+                  {[{ c: "#6366F1", l: "Spend" }, { c: "#10B981", l: "Revenue" }].map(({ c, l }) => (
+                    <span key={l} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
+                      <span style={{ width: 14, height: 2, borderRadius: 1, background: c, display: "inline-block" }} />
+                      {l}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={110}>
+                <AreaChart data={overview.sparklines} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gSpend" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#6366F1" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#6366F1" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#10B981" stopOpacity={0.2} />
+                      <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="day" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.25)" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "rgba(255,255,255,0.25)" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} width={36} />
+                  <Tooltip
+                    contentStyle={{ background: "#10101c", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 12 }}
+                    formatter={(v: any, name: any) => [fmt(v as number, currency), name === "spend" ? "Spend" : "Revenue"]}
+                  />
+                  <Area type="monotone" dataKey="spend"   stroke="#6366F1" strokeWidth={2} fill="url(#gSpend)"   dot={false} />
+                  <Area type="monotone" dataKey="revenue" stroke="#10B981" strokeWidth={2} fill="url(#gRevenue)" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* ─── CAMPAIGNS TABLE ──────────────────────── */}
+          <section>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)" }}>Campaigns</span>
+                {!loadingCampaigns && (
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: MUTED }}>
+                    {campaigns.length}
+                  </span>
                 )}
               </div>
-              <PlatformBadge platform={selectedCampaign.platform as string} />
-              <button
-                onClick={() => { setSelectedCampaign(null); setSelectedAdSet(null); setSelectedAd(null); }}
-                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-              >
-                <X size={16} style={{ color: "rgba(255,255,255,0.5)" }} />
-              </button>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>Click row to drill down</span>
             </div>
 
-            {/* Drawer content */}
-            <div className="flex-1 overflow-y-auto">
-              {!selectedAdSet ? (
-                // ── LAYER 3: Ad sets ──
-                <div className="p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>Ad Sets</h3>
-                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Click to view ads</span>
-                  </div>
-                  {loadingAdSets ? (
-                    <div className="space-y-3">
-                      {[...Array(4)].map((_, i) => <Skeleton key={i} h="80px" />)}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {adSets.map((as) => (
-                        <div
-                          key={as.id}
-                          onClick={() => setSelectedAdSet(as)}
-                          className="rounded-xl p-4 cursor-pointer"
+            <div style={{ borderRadius: 12, overflow: "hidden", border: BORDER }}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 860 }}>
+                  <thead>
+                    <tr style={{ background: "rgba(255,255,255,0.025)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      {([
+                        { key: "name",        label: "Campaign",  w: 200 },
+                        { key: null,          label: "Status",    w: 90  },
+                        { key: "spend",       label: "Spend",     w: 90  },
+                        { key: "revenue",     label: "Revenue",   w: 90  },
+                        { key: "roas",        label: "ROAS",      w: 110 },
+                        { key: "ctr",         label: "CTR",       w: 70  },
+                        { key: "cpa",         label: "CPA",       w: 80  },
+                        { key: "conversions", label: "Conv.",      w: 70  },
+                        { key: "budgetUsed",  label: "Budget",    w: 100 },
+                      ] as { key: SortKey | null; label: string; w: number }[]).map(({ key, label, w }) => (
+                        <th
+                          key={label}
                           style={{
-                            background: "rgba(255,255,255,0.03)",
-                            border: "1px solid rgba(255,255,255,0.06)",
-                            transition: "all 0.2s",
+                            padding: "10px 14px",
+                            textAlign: "left",
+                            fontSize: 9,
+                            fontWeight: 700,
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                            color: key && sortKey === key ? "#A5B4FC" : "rgba(255,255,255,0.3)",
+                            cursor: key ? "pointer" : "default",
+                            userSelect: "none",
+                            whiteSpace: "nowrap",
+                            width: w,
                           }}
-                          onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-                            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.12)";
-                          }}
-                          onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)";
-                            (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.06)";
-                          }}
+                          onClick={() => key && handleSort(key)}
                         >
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <div className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.9)" }}>{as.name}</div>
-                              <div className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{as.audience}</div>
-                            </div>
-                            <span className="font-bold text-sm" style={{ color: roasColor(as.roas) }}>{as.roas.toFixed(2)}x</span>
-                          </div>
-                          <div className="grid grid-cols-4 gap-2">
-                            {[
-                              { label: "Spend", value: fmt(as.spend, currency) },
-                              { label: "CTR", value: `${as.ctr.toFixed(1)}%` },
-                              { label: "Reach", value: fmtNum(as.reach) },
-                              { label: "Conv.", value: fmtNum(as.conversions) },
-                            ].map(({ label, value }) => (
-                              <div key={label}>
-                                <div className="text-xs mb-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{label}</div>
-                                <div className="text-sm font-medium">{value}</div>
-                              </div>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            {label}
+                            {key && sortKey === key && (
+                              sortDir === "desc"
+                                ? <ChevronDown size={11} style={{ color: "#A5B4FC" }} />
+                                : <ChevronUp   size={11} style={{ color: "#A5B4FC" }} />
+                            )}
+                          </span>
+                        </th>
+                      ))}
+                      <th style={{ width: 28 }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingCampaigns
+                      ? Array.from({ length: 5 }).map((_, i) => (
+                          <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            {Array.from({ length: 9 }).map((__, j) => (
+                              <td key={j} style={{ padding: "12px 14px" }}><Skeleton h="12px" rounded="4px" /></td>
                             ))}
+                            <td style={{ padding: "12px 14px" }} />
+                          </tr>
+                        ))
+                      : sortedCampaigns.map((c) => {
+                          const active = selectedCampaign?.id === c.id;
+                          return (
+                            <tr
+                              key={c.id}
+                              className={`mktg-row-hover${active ? " mktg-row-active" : ""}`}
+                              onClick={() => setSelectedCampaign(c)}
+                              style={{
+                                borderBottom: "1px solid rgba(255,255,255,0.04)",
+                                cursor: "pointer",
+                                transition: "background 0.12s ease",
+                              }}
+                            >
+                              {/* Campaign name */}
+                              <td style={{ padding: "12px 14px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, maxWidth: 200 }}>
+                                  <PlatformDot platform={c.platform as string} />
+                                  <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.88)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 13 }}>
+                                    {c.name}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: 10, color: MUTED, marginTop: 2, paddingLeft: 16 }}>
+                                  {c.platform as string} · {c.objective}
+                                </div>
+                              </td>
+
+                              {/* Status */}
+                              <td style={{ padding: "12px 14px" }}><StatusBadge status={c.status} /></td>
+
+                              {/* Spend */}
+                              <td style={{ padding: "12px 14px", fontVariantNumeric: "tabular-nums", fontWeight: 600, fontSize: 13 }}>
+                                {fmt(c.spend, currency)}
+                              </td>
+
+                              {/* Revenue */}
+                              <td style={{ padding: "12px 14px", fontVariantNumeric: "tabular-nums", fontWeight: 600, fontSize: 13 }}>
+                                {fmt(c.revenue, currency)}
+                              </td>
+
+                              {/* ROAS with mini bar */}
+                              <td style={{ padding: "12px 14px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums", color: roasColor(c.roas) }}>
+                                    {c.roas.toFixed(1)}×
+                                  </span>
+                                  <div style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden", maxWidth: 40 }}>
+                                    <div style={{ height: "100%", width: `${Math.min((c.roas / 6) * 100, 100)}%`, borderRadius: 2, background: roasColor(c.roas) }} />
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* CTR */}
+                              <td style={{ padding: "12px 14px", fontVariantNumeric: "tabular-nums", fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
+                                {c.ctr.toFixed(1)}%
+                              </td>
+
+                              {/* CPA */}
+                              <td style={{ padding: "12px 14px", fontVariantNumeric: "tabular-nums", fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
+                                {fmt(c.cpa, currency)}
+                              </td>
+
+                              {/* Conversions */}
+                              <td style={{ padding: "12px 14px", fontVariantNumeric: "tabular-nums", fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
+                                {fmtNum(c.conversions)}
+                              </td>
+
+                              {/* Budget used */}
+                              <td style={{ padding: "12px 14px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <div style={{ width: 52, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                                    <div
+                                      style={{
+                                        height: "100%",
+                                        width: `${Math.min(c.budgetUsed, 100)}%`,
+                                        borderRadius: 2,
+                                        background: c.budgetUsed >= 90 ? "#EF4444" : c.budgetUsed >= 70 ? "#F59E0B" : "#10B981",
+                                        transition: "width 0.5s ease",
+                                      }}
+                                    />
+                                  </div>
+                                  <span style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: MUTED }}>{c.budgetUsed}%</span>
+                                </div>
+                              </td>
+
+                              {/* Arrow */}
+                              <td style={{ padding: "12px 10px" }}>
+                                <ChevronRight size={13} style={{ color: active ? ACCENT : "rgba(255,255,255,0.2)", transition: "color 0.15s" }} />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        {/* ────────────── RIGHT AI PANEL (30%) ────────── */}
+        <aside
+          style={{
+            width: panelOpen ? 0 : 360,
+            minWidth: panelOpen ? 0 : 360,
+            borderLeft: "1px solid rgba(255,255,255,0.07)",
+            overflowY: "auto",
+            overflowX: "hidden",
+            background: "rgba(255,255,255,0.015)",
+            transition: "width 0.3s ease, min-width 0.3s ease",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {!panelOpen && (
+            <div style={{ padding: "20px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* ── DAILY BRIEF ── */}
+              <div
+                style={{
+                  background: "rgba(99,102,241,0.07)",
+                  border: "1px solid rgba(99,102,241,0.2)",
+                  borderRadius: 12,
+                  padding: "14px 16px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                  <Sparkles size={14} style={{ color: ACCENT }} />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT, letterSpacing: "0.04em", textTransform: "uppercase" }}>Daily Brief</span>
+                  {briefTime && (
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginLeft: "auto" }}>{briefTime}</span>
+                  )}
+                </div>
+                {recommendations
+                  ? <p style={{ fontSize: 12, lineHeight: 1.65, color: "rgba(255,255,255,0.68)" }}>{recommendations.brief}</p>
+                  : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {[100, 90, 80].map((w, i) => <Skeleton key={i} h="11px" w={`${w}%`} rounded="3px" />)}
+                    </div>
+                }
+              </div>
+
+              {/* ── ALERTS ── */}
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: MUTED, marginBottom: 8 }}>Alerts</div>
+                {recommendations
+                  ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {recommendations.alerts.map((a, i) => {
+                        const cfg = ({
+                          danger:  { bg: "rgba(239,68,68,0.1)",   color: "#EF4444", icon: <XCircle       size={12} /> },
+                          warning: { bg: "rgba(245,158,11,0.1)",  color: "#F59E0B", icon: <AlertTriangle size={12} /> },
+                          good:    { bg: "rgba(16,185,129,0.1)",  color: "#10B981", icon: <CheckCircle   size={12} /> },
+                        } as Record<string, { bg: string; color: string; icon: React.ReactNode }>)[a.type]
+                          ?? { bg: "rgba(255,255,255,0.04)", color: MUTED, icon: <AlertCircle size={12} /> };
+                        return (
+                          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 8, background: cfg.bg }}>
+                            <span style={{ color: cfg.color, marginTop: 1, flexShrink: 0 }}>{cfg.icon}</span>
+                            <span style={{ fontSize: 11, lineHeight: 1.5, color: "rgba(255,255,255,0.75)" }}>{a.text}</span>
                           </div>
+                        );
+                      })}
+                    </div>
+                  : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {[...Array(3)].map((_, i) => <Skeleton key={i} h="38px" rounded="8px" />)}
+                    </div>
+                }
+              </div>
+
+              {/* ── DO THIS ── */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <CheckCircle size={13} style={{ color: "#10B981" }} />
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#10B981" }}>Do This</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {(recommendations?.doThis || Array.from({ length: 3 })).map((item: any, i) => (
+                    <div
+                      key={i}
+                      className="rec-item"
+                      onClick={() => setExpandedRec(expandedRec === `do-${i}` ? null : `do-${i}`)}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        border: "1px solid rgba(16,185,129,0.12)",
+                        background: expandedRec === `do-${i}` ? "rgba(16,185,129,0.06)" : "rgba(16,185,129,0.03)",
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {item ? (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>{item.title}</span>
+                            {expandedRec === `do-${i}` ? <ChevronUp size={12} style={{ color: MUTED }} /> : <ChevronDown size={12} style={{ color: MUTED }} />}
+                          </div>
+                          {expandedRec === `do-${i}` && (
+                            <p style={{ marginTop: 7, fontSize: 11, lineHeight: 1.6, color: "rgba(255,255,255,0.5)" }}>{item.detail}</p>
+                          )}
+                        </>
+                      ) : <Skeleton h="12px" rounded="3px" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── AVOID THIS ── */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                  <XCircle size={13} style={{ color: "#EF4444" }} />
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#EF4444" }}>Avoid</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {(recommendations?.avoidThis || Array.from({ length: 3 })).map((item: any, i) => (
+                    <div
+                      key={i}
+                      className="rec-item"
+                      onClick={() => setExpandedRec(expandedRec === `avoid-${i}` ? null : `avoid-${i}`)}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        border: "1px solid rgba(239,68,68,0.12)",
+                        background: expandedRec === `avoid-${i}` ? "rgba(239,68,68,0.07)" : "rgba(239,68,68,0.03)",
+                        cursor: "pointer",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {item ? (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>{item.title}</span>
+                            {expandedRec === `avoid-${i}` ? <ChevronUp size={12} style={{ color: MUTED }} /> : <ChevronDown size={12} style={{ color: MUTED }} />}
+                          </div>
+                          {expandedRec === `avoid-${i}` && (
+                            <p style={{ marginTop: 7, fontSize: 11, lineHeight: 1.6, color: "rgba(255,255,255,0.5)" }}>{item.detail}</p>
+                          )}
+                        </>
+                      ) : <Skeleton h="12px" rounded="3px" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── CREATIVE INSIGHTS (collapsible) ── */}
+              {recommendations && (
+                <div>
+                  <button
+                    onClick={() => setCreativeOpen(v => !v)}
+                    style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 8 }}
+                  >
+                    <Layers size={13} style={{ color: "#A78BFA" }} />
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A78BFA" }}>Creative Insights</span>
+                    <span style={{ marginLeft: "auto" }}>{creativeOpen ? <ChevronUp size={12} style={{ color: MUTED }} /> : <ChevronDown size={12} style={{ color: MUTED }} />}</span>
+                  </button>
+                  {creativeOpen && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {recommendations.creativeInsights.map((ins, i) => (
+                        <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(167,139,250,0.06)", border: "1px solid rgba(167,139,250,0.12)" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>{ins.title}</div>
+                          <p style={{ fontSize: 11, lineHeight: 1.55, color: MUTED }}>{ins.detail}</p>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-              ) : (
-                // ── LAYER 4: Ads grid ──
-                <div className="p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>Ads</h3>
-                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Click to preview</span>
-                  </div>
-                  {loadingAds ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {[...Array(4)].map((_, i) => <Skeleton key={i} h="200px" />)}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      {ads.map((ad) => (
-                        <div
-                          key={ad.id}
-                          onClick={() => setSelectedAd(ad)}
-                          className="rounded-xl p-4 cursor-pointer"
-                          style={{
-                            background: "rgba(255,255,255,0.03)",
-                            border: `1px solid ${roasBorder(ad.roas)}`,
-                            transition: "all 0.2s",
-                          }}
-                          onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
-                            (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px rgba(0,0,0,0.3)`;
-                          }}
-                          onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-                            (e.currentTarget as HTMLElement).style.boxShadow = "none";
-                          }}
-                        >
-                          {/* Format badge + creative preview */}
-                          <div
-                            className="w-full aspect-video rounded-lg mb-3 flex items-center justify-center"
-                            style={{ background: "rgba(255,255,255,0.04)", border: "1px dashed rgba(255,255,255,0.08)" }}
-                          >
-                            <div className="flex flex-col items-center gap-1.5">
-                              <span style={{ color: "rgba(255,255,255,0.2)" }}>
-                                <FormatIcon format={ad.format} />
-                              </span>
-                              <span
-                                className="text-xs px-2 py-0.5 rounded"
-                                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}
-                              >
-                                {ad.format}
-                              </span>
-                            </div>
-                          </div>
-                          <p className="text-xs font-semibold mb-1 leading-snug" style={{ color: "rgba(255,255,255,0.85)" }}>
-                            {ad.headline}
-                          </p>
-                          <p className="text-xs mb-3 leading-relaxed" style={{ color: "rgba(255,255,255,0.4)" }}>
-                            {ad.body.length > 60 ? ad.body.slice(0, 60) + "…" : ad.body}
-                          </p>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {[
-                              { label: "ROAS", value: `${ad.roas.toFixed(2)}x`, color: roasColor(ad.roas) },
-                              { label: "CTR", value: `${ad.ctr.toFixed(1)}%`, color: "rgba(255,255,255,0.7)" },
-                              { label: "Spend", value: fmt(ad.spend, currency), color: "rgba(255,255,255,0.7)" },
-                              { label: "Conv.", value: fmtNum(ad.conversions), color: "rgba(255,255,255,0.7)" },
-                            ].map(({ label, value, color }) => (
-                              <div key={label} className="rounded-lg px-2 py-1.5" style={{ background: "rgba(255,255,255,0.04)" }}>
-                                <div className="text-xs mb-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{label}</div>
-                                <div className="text-xs font-bold" style={{ color }}>{value}</div>
-                              </div>
-                            ))}
-                          </div>
+              )}
+
+              {/* ── AUDIENCE INSIGHTS (collapsible) ── */}
+              {recommendations && (
+                <div>
+                  <button
+                    onClick={() => setAudienceOpen(v => !v)}
+                    style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 8 }}
+                  >
+                    <Users size={13} style={{ color: "#60A5FA" }} />
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#60A5FA" }}>Audience Insights</span>
+                    <span style={{ marginLeft: "auto" }}>{audienceOpen ? <ChevronUp size={12} style={{ color: MUTED }} /> : <ChevronDown size={12} style={{ color: MUTED }} />}</span>
+                  </button>
+                  {audienceOpen && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {recommendations.audienceInsights.map((ins, i) => (
+                        <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.12)" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>{ins.title}</div>
+                          <p style={{ fontSize: 11, lineHeight: 1.55, color: MUTED }}>{ins.detail}</p>
                         </div>
                       ))}
                     </div>
@@ -1063,17 +1095,253 @@ export default function MarketingPage() {
                 </div>
               )}
             </div>
-          </>
-        )}
+          )}
+        </aside>
+
+        {/* ════════════ CAMPAIGN DETAIL SLIDE-IN PANEL ════════════ */}
+        {/* Backdrop */}
+        <div
+          onClick={closeAll}
+          style={{
+            position: "fixed", inset: 0, zIndex: 40,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(6px)",
+            opacity: panelOpen ? 1 : 0,
+            pointerEvents: panelOpen ? "auto" : "none",
+            transition: "opacity 0.25s ease",
+          }}
+        />
+
+        {/* Panel */}
+        <div
+          style={{
+            position: "fixed",
+            top: 56,
+            right: 0,
+            bottom: 0,
+            width: "min(520px, 100vw)",
+            zIndex: 50,
+            background: "#0C0C18",
+            borderLeft: "1px solid rgba(255,255,255,0.09)",
+            transform: panelOpen ? "translateX(0)" : "translateX(100%)",
+            transition: "transform 0.3s cubic-bezier(0.22,1,0.36,1)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          {selectedCampaign && (
+            <>
+              {/* Panel header */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "14px 18px",
+                  borderBottom: "1px solid rgba(255,255,255,0.07)",
+                  background: "rgba(255,255,255,0.02)",
+                  flexShrink: 0,
+                }}
+              >
+                {selectedAdSet && (
+                  <button
+                    onClick={() => { setSelectedAdSet(null); setSelectedAd(null); }}
+                    style={{ padding: 6, borderRadius: 7, background: "rgba(255,255,255,0.06)", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}
+                  >
+                    <ArrowLeft size={14} style={{ color: "rgba(255,255,255,0.6)" }} />
+                  </button>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {selectedAdSet ? (
+                    <>
+                      <div style={{ fontSize: 10, color: MUTED, marginBottom: 2 }}>{selectedCampaign.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedAdSet.name}</div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedCampaign.name}</div>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 5, background: (PLATFORMS_CONFIG[selectedCampaign.platform as string] || { bg: "" }).bg, color: (PLATFORMS_CONFIG[selectedCampaign.platform as string] || { color: "#888" }).color }}>
+                    {selectedCampaign.platform as string}
+                  </span>
+                  <StatusBadge status={selectedCampaign.status} />
+                </div>
+                <button
+                  onClick={closeAll}
+                  style={{ padding: 6, borderRadius: 7, background: "rgba(255,255,255,0.05)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", marginLeft: 4 }}
+                >
+                  <X size={14} style={{ color: MUTED }} />
+                </button>
+              </div>
+
+              {/* Panel KPIs */}
+              {!selectedAdSet && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+                  {[
+                    { label: "Spend",   value: fmt(selectedCampaign.spend, currency) },
+                    { label: "Revenue", value: fmt(selectedCampaign.revenue, currency) },
+                    { label: "ROAS",    value: `${selectedCampaign.roas.toFixed(1)}×`, color: roasColor(selectedCampaign.roas) },
+                    { label: "CTR",     value: `${selectedCampaign.ctr.toFixed(1)}%` },
+                    { label: "CPA",     value: fmt(selectedCampaign.cpa, currency) },
+                    { label: "Conv.",   value: fmtNum(selectedCampaign.conversions) },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ padding: "14px 16px", borderRight: "1px solid rgba(255,255,255,0.05)" }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: MUTED, marginBottom: 5 }}>{label}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: color || TEXT }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Panel body */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
+                {!selectedAdSet ? (
+                  /* ── Ad Sets ── */
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: MUTED, marginBottom: 12 }}>
+                      Ad Sets · {adSets.length || "…"}
+                    </div>
+                    {loadingAdSets ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {[...Array(4)].map((_, i) => <Skeleton key={i} h="96px" rounded="10px" />)}
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {adSets.map((as) => (
+                          <div
+                            key={as.id}
+                            className="panel-adset"
+                            onClick={() => setSelectedAdSet(as)}
+                            style={{
+                              borderRadius: 10,
+                              border: `1px solid ${roasBorder(as.roas)}`,
+                              background: "rgba(255,255,255,0.025)",
+                              padding: "14px 16px",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, marginBottom: 3 }}>{as.name}</div>
+                                <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#A5B4FC" }}>
+                                  {as.audience}
+                                </span>
+                              </div>
+                              <RoasBadge roas={as.roas} />
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+                              {[
+                                { label: "Spend",  value: fmt(as.spend, currency) },
+                                { label: "CTR",    value: `${as.ctr.toFixed(1)}%` },
+                                { label: "Reach",  value: fmtNum(as.reach) },
+                                { label: "Conv.",  value: fmtNum(as.conversions) },
+                              ].map(({ label, value }) => (
+                                <div key={label}>
+                                  <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>{label}</div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
+                            {as.frequency > 5 && (
+                              <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 6, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                                <AlertTriangle size={11} style={{ color: "#F59E0B" }} />
+                                <span style={{ fontSize: 10, color: "#F59E0B" }}>Frequency {as.frequency.toFixed(1)} — ad fatigue risk</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* ── Ads Grid ── */
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: MUTED, marginBottom: 12 }}>
+                      Ads · {ads.length || "…"}
+                    </div>
+                    {loadingAds ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        {[...Array(4)].map((_, i) => <Skeleton key={i} h="220px" rounded="10px" />)}
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        {ads.map((ad) => (
+                          <div
+                            key={ad.id}
+                            className="ad-card"
+                            onClick={() => setSelectedAd(ad)}
+                            style={{
+                              borderRadius: 10,
+                              border: `1px solid ${roasBorder(ad.roas)}`,
+                              background: "rgba(255,255,255,0.025)",
+                              padding: "12px",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            {/* Creative preview */}
+                            <div
+                              style={{
+                                width: "100%",
+                                aspectRatio: "16/9",
+                                borderRadius: 7,
+                                background: "rgba(255,255,255,0.04)",
+                                border: "1px dashed rgba(255,255,255,0.08)",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: 6,
+                                marginBottom: 10,
+                              }}
+                            >
+                              <span style={{ color: "rgba(255,255,255,0.15)", transform: "scale(1.5)", display: "inline-block" }}>
+                                {ad.format === "Video" ? <Video size={16} /> : ad.format === "Carousel" ? <Layers size={16} /> : <ImageIcon size={16} />}
+                              </span>
+                              <FormatBadge format={ad.format} />
+                            </div>
+
+                            {/* Headline */}
+                            <p style={{ fontSize: 11, fontWeight: 700, color: TEXT, lineHeight: 1.4, marginBottom: 6, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+                              {ad.headline}
+                            </p>
+
+                            {/* Stats grid */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                              {[
+                                { label: "ROAS",  value: `${ad.roas.toFixed(1)}×`, color: roasColor(ad.roas) },
+                                { label: "CTR",   value: `${ad.ctr.toFixed(1)}%`,  color: undefined },
+                                { label: "Spend", value: fmt(ad.spend, currency),   color: undefined },
+                                { label: "Conv.", value: fmtNum(ad.conversions),     color: undefined },
+                              ].map(({ label, value, color }) => (
+                                <div key={label} style={{ padding: "6px 8px", borderRadius: 5, background: "rgba(255,255,255,0.04)" }}>
+                                  <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 2 }}>{label}</div>
+                                  <div style={{ fontSize: 11, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: color || "rgba(255,255,255,0.8)" }}>{value}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* ── LAYER 5: Creative Detail Modal ── */}
+      {/* ══════════════════ AD DETAIL MODAL ═══════════════════════ */}
       {selectedAd && (
         <div
           style={{
-            position: "fixed", inset: 0, zIndex: 50,
+            position: "fixed", inset: 0, zIndex: 60,
             background: "rgba(0,0,0,0.85)",
-            backdropFilter: "blur(12px)",
+            backdropFilter: "blur(16px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -1082,191 +1350,174 @@ export default function MarketingPage() {
           }}
           onClick={(e) => { if (e.target === e.currentTarget) setSelectedAd(null); }}
         >
-          <style>{`
-            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-          `}</style>
           <div
-            className="w-full max-w-4xl rounded-2xl overflow-hidden"
             style={{
-              background: "#0A1628",
+              width: "100%",
+              maxWidth: 860,
+              borderRadius: 16,
+              overflow: "hidden",
+              background: "#0d0d1a",
               border: "1px solid rgba(255,255,255,0.1)",
-              maxHeight: "90vh",
+              maxHeight: "88vh",
               display: "flex",
               flexDirection: "column",
-              animation: "slideUp 0.25s ease",
+              animation: "fadeUp 0.25s ease",
             }}
           >
             {/* Modal header */}
-            <div
-              className="flex items-center justify-between px-6 py-4 shrink-0"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-            >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
               <div>
-                <div className="text-xs mb-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>
+                <div style={{ fontSize: 10, color: MUTED, marginBottom: 3 }}>
                   {selectedCampaign?.name} › {selectedAdSet?.name}
                 </div>
-                <div className="font-semibold">{selectedAd.headline}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{selectedAd.headline}</div>
               </div>
-              <button
-                onClick={() => setSelectedAd(null)}
-                className="p-2 rounded-xl hover:bg-white/10 transition-colors"
-              >
-                <X size={18} style={{ color: "rgba(255,255,255,0.6)" }} />
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <FormatBadge format={selectedAd.format} />
+                <RoasBadge roas={selectedAd.roas} />
+                <button
+                  onClick={() => setSelectedAd(null)}
+                  style={{ padding: 7, borderRadius: 8, background: "rgba(255,255,255,0.06)", border: "none", cursor: "pointer", display: "flex" }}
+                >
+                  <X size={15} style={{ color: MUTED }} />
+                </button>
+              </div>
             </div>
 
             {/* Modal body */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
-                {/* Left: Creative preview */}
+            <div style={{ flex: 1, overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+              {/* Left: creative */}
+              <div style={{ padding: "20px", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: 14 }}>
                 <div
-                  className="p-6 flex flex-col gap-4"
-                  style={{ borderRight: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{
+                    aspectRatio: "16/9",
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.03)",
+                    border: `2px solid ${roasBorder(selectedAd.roas)}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 12,
+                  }}
                 >
-                  <div
-                    className="w-full aspect-video rounded-xl flex items-center justify-center"
-                    style={{ background: "rgba(255,255,255,0.03)", border: `2px solid ${roasBorder(selectedAd.roas)}` }}
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      <span style={{ color: "rgba(255,255,255,0.15)", transform: "scale(3)", display: "inline-block" }}>
-                        <FormatIcon format={selectedAd.format} />
-                      </span>
-                      <span
-                        className="text-sm px-3 py-1 rounded-full font-medium"
-                        style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}
-                      >
-                        {selectedAd.format} Creative
-                      </span>
-                    </div>
-                  </div>
-                  <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div className="font-semibold text-sm mb-1">{selectedAd.headline}</div>
-                    <div className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>{selectedAd.body}</div>
-                  </div>
-
-                  {/* Designer Directions */}
-                  <div className="rounded-xl p-4" style={{ background: "rgba(124,58,237,0.07)", border: "1px solid rgba(124,58,237,0.2)" }}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Zap size={14} style={{ color: "#A78BFA" }} />
-                      <span className="text-xs font-bold" style={{ color: "#A78BFA" }}>Designer Directions</span>
-                    </div>
-                    <ul className="space-y-1.5">
-                      {[
-                        "Lead with product in first 3 seconds",
-                        "Add captions — 85% watch without sound",
-                        "Include price anchor / discount callout",
-                        "Test darker background for higher contrast",
-                      ].map((d, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs" style={{ color: "rgba(255,255,255,0.65)" }}>
-                          <span style={{ color: "#A78BFA" }}>›</span> {d}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <span style={{ color: "rgba(255,255,255,0.12)", transform: "scale(3.5)", display: "inline-block" }}>
+                    {selectedAd.format === "Video" ? <Video size={16} /> : selectedAd.format === "Carousel" ? <Layers size={16} /> : <ImageIcon size={16} />}
+                  </span>
+                  <FormatBadge format={selectedAd.format} />
                 </div>
 
-                {/* Right: Metrics */}
-                <div className="p-6 space-y-4">
-                  {/* Performance score */}
-                  <div
-                    className="rounded-xl p-4 flex items-center gap-4"
-                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
-                  >
-                    <div
-                      className="w-16 h-16 rounded-full flex items-center justify-center shrink-0"
-                      style={{
-                        background: `conic-gradient(${roasColor(selectedAd.roas)} ${Math.min(selectedAd.roas / 5 * 100, 100)}%, rgba(255,255,255,0.05) 0)`,
-                      }}
-                    >
-                      <div
-                        className="w-12 h-12 rounded-full flex items-center justify-center"
-                        style={{ background: "#0A1628" }}
-                      >
-                        <span className="text-lg font-bold" style={{ color: roasColor(selectedAd.roas) }}>
-                          {Math.round(Math.min(selectedAd.roas / 5 * 100, 100))}
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs mb-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>Performance Score</div>
-                      <div className="font-bold text-lg" style={{ color: roasColor(selectedAd.roas) }}>
-                        {selectedAd.roas >= 3 ? "Strong" : selectedAd.roas >= 1 ? "Moderate" : "Underperforming"}
-                      </div>
-                      <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
-                        ROAS {selectedAd.roas.toFixed(2)}x · {fmtNum(selectedAd.impressions)} impressions
-                      </div>
-                    </div>
-                  </div>
+                <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{selectedAd.headline}</div>
+                  <p style={{ fontSize: 12, lineHeight: 1.6, color: MUTED }}>{selectedAd.body}</p>
+                </div>
 
-                  {/* Full metrics */}
-                  <div className="grid grid-cols-2 gap-3">
+                <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.18)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                    <Zap size={13} style={{ color: "#A78BFA" }} />
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#A78BFA" }}>Designer Directions</span>
+                  </div>
+                  <ul style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {[
-                      { label: "Spend", value: fmt(selectedAd.spend, currency) },
-                      { label: "Revenue", value: fmt(selectedAd.revenue, currency) },
-                      { label: "ROAS", value: `${selectedAd.roas.toFixed(2)}x`, color: roasColor(selectedAd.roas) },
-                      { label: "CTR", value: `${selectedAd.ctr.toFixed(1)}%` },
-                      { label: "Conversions", value: fmtNum(selectedAd.conversions) },
-                      { label: "Impressions", value: fmtNum(selectedAd.impressions) },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <div className="text-xs mb-1" style={{ color: "rgba(255,255,255,0.35)" }}>{label}</div>
-                        <div className="text-xl font-bold" style={{ color: color || "#fff" }}>{value}</div>
-                      </div>
+                      "Lead with product in first 3 seconds",
+                      "Add captions — 85% watch without sound",
+                      "Include price anchor / discount callout",
+                      "Test darker background for higher contrast",
+                    ].map((d, i) => (
+                      <li key={i} style={{ display: "flex", gap: 6, fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+                        <span style={{ color: "#A78BFA", flexShrink: 0 }}>›</span> {d}
+                      </li>
                     ))}
-                  </div>
-
-                  {/* ROAS trend sparkline */}
-                  <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div className="text-xs mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>ROAS Trend (6 periods)</div>
-                    <ResponsiveContainer width="100%" height={60}>
-                      <LineChart data={selectedAd.trend.map((v, i) => ({ i: i + 1, roas: v }))}>
-                        <Line type="monotone" dataKey="roas" stroke={roasColor(selectedAd.roas)} strokeWidth={2} dot={{ r: 3, fill: roasColor(selectedAd.roas) }} />
-                        <YAxis hide domain={["auto", "auto"]} />
-                        <Tooltip
-                          contentStyle={{ background: "#0F1B2D", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#fff", fontSize: 11 }}
-                          formatter={(v: any) => [`${(v as number).toFixed(2)}x`, "ROAS"]}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  {/* Spend Recommendations */}
-                  {(() => {
-                    const spendRecs = selectedAd.roas >= 3
-                      ? [
-                          "Increase daily budget by 20% — ROAS above threshold",
-                          "Duplicate to new audience segments to expand reach",
-                          "Use as creative template for upcoming campaigns",
-                        ]
-                      : selectedAd.roas >= 1
-                      ? [
-                          "Hold budget steady — monitor for 7 more days",
-                          "A/B test headline copy to improve CTR",
-                          "Refresh creative before next period",
-                        ]
-                      : [
-                          "Pause immediately — negative ROI",
-                          "Analyse audience mismatch before relaunching",
-                          "Do not scale until creative is reworked",
-                        ];
-                    return (
-                      <div className="rounded-xl p-4" style={{ background: "rgba(37,99,235,0.07)", border: "1px solid rgba(37,99,235,0.2)" }}>
-                        <div className="flex items-center gap-2 mb-3">
-                          <ExternalLink size={13} style={{ color: "#60A5FA" }} />
-                          <span className="text-xs font-bold" style={{ color: "#60A5FA" }}>Spend Recommendations</span>
-                        </div>
-                        <ul className="space-y-1.5">
-                          {spendRecs.map((r, i) => (
-                            <li key={i} className="flex items-start gap-2 text-xs" style={{ color: "rgba(255,255,255,0.65)" }}>
-                              <span style={{ color: "#60A5FA" }}>›</span> {r}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })()}
+                  </ul>
                 </div>
+              </div>
+
+              {/* Right: metrics */}
+              <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Score */}
+                <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <div
+                    style={{
+                      width: 60,
+                      height: 60,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background: `conic-gradient(${roasColor(selectedAd.roas)} ${Math.min(selectedAd.roas / 5 * 100, 100)}%, rgba(255,255,255,0.05) 0)`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <span style={{ fontSize: 14, fontWeight: 900, color: roasColor(selectedAd.roas), fontVariantNumeric: "tabular-nums" }}>
+                        {Math.round(Math.min(selectedAd.roas / 5 * 100, 100))}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Performance Score</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: roasColor(selectedAd.roas) }}>{roasLabel(selectedAd.roas)}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                      {selectedAd.roas.toFixed(1)}× ROAS · {fmtNum(selectedAd.impressions)} impressions
+                    </div>
+                  </div>
+                </div>
+
+                {/* Metrics */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { label: "Spend",        value: fmt(selectedAd.spend, currency),    color: undefined },
+                    { label: "Revenue",      value: fmt(selectedAd.revenue, currency),  color: undefined },
+                    { label: "ROAS",         value: `${selectedAd.roas.toFixed(1)}×`,  color: roasColor(selectedAd.roas) },
+                    { label: "CTR",          value: `${selectedAd.ctr.toFixed(1)}%`,   color: undefined },
+                    { label: "Conversions",  value: fmtNum(selectedAd.conversions),     color: undefined },
+                    { label: "Impressions",  value: fmtNum(selectedAd.impressions),     color: undefined },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ padding: "12px 14px", borderRadius: 9, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                      <div style={{ fontSize: 9, color: MUTED, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{label}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: color || TEXT }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ROAS trend */}
+                <div style={{ padding: "12px 14px", borderRadius: 9, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <div style={{ fontSize: 10, color: MUTED, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>ROAS Trend — 6 periods</div>
+                  <ResponsiveContainer width="100%" height={60}>
+                    <LineChart data={selectedAd.trend.map((v, i) => ({ i: i + 1, roas: v }))}>
+                      <Line type="monotone" dataKey="roas" stroke={roasColor(selectedAd.roas)} strokeWidth={2} dot={{ r: 3, fill: roasColor(selectedAd.roas), strokeWidth: 0 }} isAnimationActive={false} />
+                      <YAxis hide domain={["auto", "auto"]} />
+                      <Tooltip
+                        contentStyle={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, color: "#fff", fontSize: 11 }}
+                        formatter={(v: any) => [`${(v as number).toFixed(2)}×`, "ROAS"]}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Spend recs */}
+                {(() => {
+                  const recs = selectedAd.roas >= 3.5
+                    ? ["Scale budget by 20% — ROAS above target", "Duplicate to new audiences for more reach", "Use as template for upcoming campaigns"]
+                    : selectedAd.roas >= 2
+                    ? ["Hold budget — monitor 7 more days", "A/B test headline to improve CTR", "Refresh creative before next period"]
+                    : ["Pause now — negative efficiency", "Analyse audience mismatch before relaunch", "Do not scale until creative reworked"];
+                  return (
+                    <div style={{ padding: "12px 14px", borderRadius: 9, background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+                        <ExternalLink size={12} style={{ color: "#818CF8" }} />
+                        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#818CF8" }}>Spend Recs</span>
+                      </div>
+                      <ul style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {recs.map((r, i) => (
+                          <li key={i} style={{ display: "flex", gap: 6, fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+                            <span style={{ color: "#818CF8", flexShrink: 0 }}>›</span> {r}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
