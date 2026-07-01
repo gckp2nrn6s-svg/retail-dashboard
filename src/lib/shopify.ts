@@ -308,12 +308,25 @@ export function maybeRefreshShopifyItems(): void {
     .catch(e => console.error("[shopify:itemRollup] refresh failed:", e instanceof Error ? e.message : e));
 }
 
-/** Per-item_no Shopify velocity (units + revenue) over the last N days, from the rollup. */
+/** Per-item_no Shopify velocity (units + revenue) over the last N days, from the rollup.
+ *  Bundle-aware: 3-piece sets are exploded to their component items so a fast-selling
+ *  bundled SKU (e.g. the GE3 BRICKLANE sets) counts toward each component's velocity.
+ *  Must match the egypt route's SHOPIFY_BY_ITEM_DATE explosion — both read the single
+ *  source of truth, shopify_bundle_components. Without this, every bundle sale was
+ *  dropped from per-item velocity, overstating days-of-cover on bundled items. */
 export async function getShopifyItemVelocity(days: number): Promise<Map<string, { units: number; revenue: number }>> {
   const rows = await query<{ item_no: string; units: string; revenue: string }>(
-    `SELECT m.item_no, SUM(s.units)::numeric AS units, SUM(s.revenue)::numeric AS revenue
-       FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
-      WHERE s.sale_date >= CURRENT_DATE - ($1::int) GROUP BY m.item_no`,
+    `SELECT item_no, SUM(units)::numeric AS units, SUM(revenue)::numeric AS revenue FROM (
+       -- non-bundle SKUs: direct 1:1
+       SELECT m.item_no::text AS item_no, s.units, s.revenue
+         FROM shopify_item_daily s JOIN shopify_item_map m ON m.sku = s.sku
+        WHERE s.sku NOT LIKE '%+%' AND s.sale_date >= CURRENT_DATE - ($1::int)
+       UNION ALL
+       -- bundle SKUs: exploded, revenue split by component price weight
+       SELECT bc.component_item_no::text AS item_no, s.units, s.revenue * bc.price_weight AS revenue
+         FROM shopify_item_daily s JOIN shopify_bundle_components bc ON bc.bundle_sku = s.sku
+        WHERE s.sale_date >= CURRENT_DATE - ($1::int)
+     ) _x GROUP BY item_no`,
     [days]);
   const map = new Map<string, { units: number; revenue: number }>();
   for (const r of rows) map.set(String(r.item_no), { units: Number(r.units) || 0, revenue: Number(r.revenue) || 0 });

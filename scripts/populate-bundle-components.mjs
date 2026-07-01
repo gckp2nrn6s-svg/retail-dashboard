@@ -1,14 +1,31 @@
 /**
- * One-time migration: parse all bundle SKUs in shopify_item_map (those containing "+"),
+ * Rebuild shopify_bundle_components: parse every bundle SKU (those containing "+"),
  * resolve each component to its item_no + catalogue price, and populate
- * shopify_bundle_components with price-weighted entries.
+ * shopify_bundle_components with price-weighted entries. Idempotent (TRUNCATE+rebuild)
+ * — safe to re-run any time new bundles start selling.
+ *
+ * IMPORTANT: bundle SKUs are sourced from BOTH shopify_item_map AND actual sales
+ * (shopify_item_daily). Orders carry whitespace/format variants of the catalogue SKU
+ * (e.g. "GE3 - 71-005+006+007" vs "GE3-71-005+006+007"); sourcing only from item_map
+ * silently dropped those variants' revenue+units entirely (they contain "+", so the
+ * single-item path skips them, and the bundle path found no match). norm() collapses
+ * the whitespace so both spellings resolve to the same components.
  *
  * Revenue weight = component_price / sum_of_ALL_component_prices (including non-MIE).
  * Non-MIE components (LU4/LU8/QU9 bags) are included so the denominator is correct;
- * they will be silently skipped at attribution time by the livePeriodMie lineOf filter.
+ * they are silently skipped at attribution time by the livePeriodMie lineOf filter.
  *
  * Units: each component gets 1 unit per bundle sale (a 3-piece set = 3 units sold).
  */
+
+// A few sales SKUs are malformed — the base token lacks its "005" size (e.g.
+// "GE3 - 04+006+007" instead of "GE3 - 04 005+006+007"), so parseComponents can't
+// chain the suffixes. Map these explicitly to the same 3 pieces as their clean analog.
+const MANUAL_COMPONENTS = {
+  "GE3 - 04+006+007":  ["22841", "22842", "22843"],
+  "GE3 - 18 +006+007": ["22844", "22845", "22846"],
+  "GE3 - 89+ 006+007": ["20074", "20073", "20072"],
+};
 
 import pg from "pg";
 const { Pool } = pg;
@@ -98,38 +115,53 @@ async function main() {
       PRIMARY KEY (bundle_sku, component_item_no)
     )
   `);
-  await q(`TRUNCATE shopify_bundle_components`);
 
   // ── 4. Process each bundle SKU ───────────────────────────────────────────────
+  // Source from item_map AND actual sales, so order-time SKU spelling variants
+  // (extra spaces/dashes) are decomposed too instead of silently dropping revenue.
   const bundles = await q(
-    `SELECT sku FROM shopify_item_map WHERE sku LIKE '%+%' ORDER BY sku`
+    `SELECT DISTINCT sku FROM (
+       SELECT sku FROM shopify_item_map    WHERE sku LIKE '%+%'
+       UNION
+       SELECT sku FROM shopify_item_daily  WHERE sku LIKE '%+%'
+     ) b ORDER BY sku`
   );
 
   let totalInserted = 0;
   const unresolved = [];
+  const allRows = []; // { bundle_sku, item_no, weight } — inserted in one transaction at the end
 
   for (const { sku: bundleSku } of bundles) {
-    const compStrings = parseComponents(bundleSku);
-    if (compStrings.length === 0) {
-      console.warn(`[SKIP] No components parsed for: "${bundleSku}"`);
-      continue;
-    }
+    // Explicit override for malformed SKUs (base missing its size token).
+    const manual = MANUAL_COMPONENTS[bundleSku];
 
-    // Resolve each component string → item_no + price
+    // Resolve each component → item_no + price
     const resolved = []; // { item_no, price }
-    for (const cs of compStrings) {
-      const n = norm(cs);
-      let itemNo = skuMap.get(n) ?? descCodeMap.get(n);
-      if (!itemNo) {
-        unresolved.push({ bundleSku, compString: cs, normalized: n });
+    if (manual) {
+      for (const itemNo of manual) {
+        // Price may be missing for a component; fall back to equal weight (1).
+        resolved.push({ item_no: itemNo, price: priceMap.get(itemNo) || 1 });
+      }
+    } else {
+      const compStrings = parseComponents(bundleSku);
+      if (compStrings.length === 0) {
+        console.warn(`[SKIP] No components parsed for: "${bundleSku}"`);
         continue;
       }
-      const price = priceMap.get(itemNo);
-      if (!price) {
-        unresolved.push({ bundleSku, compString: cs, itemNo, note: "no price" });
-        continue;
+      for (const cs of compStrings) {
+        const n = norm(cs);
+        let itemNo = skuMap.get(n) ?? descCodeMap.get(n);
+        if (!itemNo) {
+          unresolved.push({ bundleSku, compString: cs, normalized: n });
+          continue;
+        }
+        const price = priceMap.get(itemNo);
+        if (!price) {
+          unresolved.push({ bundleSku, compString: cs, itemNo, note: "no price" });
+          continue;
+        }
+        resolved.push({ item_no: itemNo, price });
       }
-      resolved.push({ item_no: itemNo, price });
     }
 
     if (resolved.length === 0) {
@@ -146,23 +178,45 @@ async function main() {
     const totalPrice = [...merged.values()].reduce((s, p) => s + p, 0);
 
     for (const [item_no, price] of merged) {
-      const weight = price / totalPrice;
-      await q(
-        `INSERT INTO shopify_bundle_components (bundle_sku, component_item_no, price_weight)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (bundle_sku, component_item_no) DO UPDATE SET price_weight = EXCLUDED.price_weight`,
-        [bundleSku, item_no, weight]
-      );
+      allRows.push({ bundle_sku: bundleSku, item_no, weight: price / totalPrice });
       totalInserted++;
     }
 
-    const names = [...merged.keys()].join(", ");
-    console.log(
-      `[OK] "${bundleSku}" → ${merged.size} components [${names}] totalPrice=${totalPrice}`
-    );
   }
 
-  console.log(`\n=== Done: ${totalInserted} component rows inserted ===`);
+  // ── 5. Atomic write: TRUNCATE + batched INSERT in ONE transaction ────────────
+  // Per-row inserts over a remote DB are slow enough to time out mid-rebuild, and
+  // a non-transactional TRUNCATE+partial-insert leaves the table WORSE than before
+  // (some product lines silently missing). One transaction = all-or-nothing.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("TRUNCATE shopify_bundle_components");
+    const CHUNK = 500;
+    for (let i = 0; i < allRows.length; i += CHUNK) {
+      const slice = allRows.slice(i, i + CHUNK);
+      const vals = [];
+      const tuples = slice.map((r, j) => {
+        const b = j * 3;
+        vals.push(r.bundle_sku, r.item_no, r.weight);
+        return `($${b + 1},$${b + 2},$${b + 3})`;
+      }).join(",");
+      await client.query(
+        `INSERT INTO shopify_bundle_components (bundle_sku, component_item_no, price_weight)
+         VALUES ${tuples}
+         ON CONFLICT (bundle_sku, component_item_no) DO UPDATE SET price_weight = EXCLUDED.price_weight`,
+        vals
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  console.log(`\n=== Done: ${totalInserted} component rows across ${bundles.length} bundle SKUs ===`);
 
   if (unresolved.length > 0) {
     console.warn(`\n=== ${unresolved.length} unresolved components (check manually) ===`);
