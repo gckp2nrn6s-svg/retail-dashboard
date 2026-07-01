@@ -15,6 +15,7 @@ import {
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { useCurrency } from "@/components/CurrencyToggle";
+import CreativeStudio from "@/components/marketing/CreativeStudio";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -300,6 +301,7 @@ export default function MarketingPage() {
   const { range } = useDateRange();
   const { currency } = useCurrency();
 
+  const [activeTab, setActiveTab] = useState<"performance" | "creative">("performance");
   const [platform, setPlatform] = useState<Platform>("All");
   const [sortKey, setSortKey] = useState<SortKey>("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -531,8 +533,37 @@ export default function MarketingPage() {
         </div>
       </header>
 
+      {/* ══════════════════════════════ TAB BAR ════════════════════════════════ */}
+      <div style={{ display: "flex", gap: 2, padding: "0 24px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(8,8,16,0.6)" }}>
+        {([["performance", "Performance"], ["creative", "Creative Studio ✦"]] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              padding: "10px 18px",
+              fontSize: 13,
+              fontWeight: 600,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              color: activeTab === tab ? "#A5B4FC" : "rgba(255,255,255,0.35)",
+              borderBottom: activeTab === tab ? "2px solid #6366F1" : "2px solid transparent",
+              marginBottom: -1,
+              transition: "all 0.15s ease",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ═══════════════════════════════ BODY ══════════════════════════════════ */}
-      <div style={{ display: "flex", height: "calc(100vh - 56px)", overflow: "hidden" }}>
+      {activeTab === "creative" ? (
+        <div style={{ overflowY: "auto", height: "calc(100vh - 100px)" }}>
+          <CreativeStudio dateRange={{ from: range.from, to: range.to }} platform={platform} />
+        </div>
+      ) : null}
+      <div style={{ display: activeTab === "performance" ? "flex" : "none", height: "calc(100vh - 100px)", overflow: "hidden" }}>
 
         {/* ────────────── LEFT MAIN (70%) ────────────── */}
         <main
